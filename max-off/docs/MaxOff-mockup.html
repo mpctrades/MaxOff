@@ -1,0 +1,1427 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>html,body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>MaxOff Admin Prototype</title>
+</head>
+<body>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* ============================================================
+   MaxOff — Shopify admin prototype
+   Palette follows Shopify Polaris so the app looks native in the
+   merchant's admin. MaxOff's own accent is a deep money-green.
+   ============================================================ */
+:root{
+  --bg:#f1f1f1;
+  --surface:#ffffff;
+  --surface-2:#fafafa;
+  --surface-3:#f3f3f3;
+  --surface-hover:#f7f7f7;
+  --topbar:#1a1a1a;
+  --topbar-2:#303030;
+  --topbar-text:#e3e3e3;
+  --text:#303030;
+  --text-sub:#616161;
+  --text-dis:#8a8a8a;
+  --border:#e3e3e3;
+  --border-str:#d1d1d1;
+  --btn:#303030;
+  --btn-text:#ffffff;
+  --btn-hover:#1a1a1a;
+  --focus:#005bd3;
+
+  --brand:#c2410c;          /* MPC orange — text-safe on white */
+  --brand-bright:#ea580c;   /* fills: bars, progress, badges */
+  --brand-soft:#fff2e8;
+  --brand-line:#f8c39a;
+  --brand-ink:#ffffff;      /* text placed on a brand fill */
+
+  --ok-bg:#cdfee1; --ok-text:#0c5132; --ok-line:#8fe0b8;
+  --warn-bg:#ffe9b8; --warn-text:#5e4200; --warn-line:#f0c667;
+  --crit-bg:#fee9e8; --crit-text:#8e1f0b; --crit-line:#f2b8b2;
+  --info-bg:#ebf9fc; --info-text:#00527c; --info-line:#a3e0f0;
+  --neutral-bg:#e3e3e3; --neutral-text:#4a4a4a;
+
+  --shadow-card:0 1px 0 rgba(26,26,26,.07), 0 0 0 1px rgba(26,26,26,.07);
+  --shadow-pop:0 4px 12px rgba(26,26,26,.16), 0 0 0 1px rgba(26,26,26,.08);
+  --r-card:12px; --r-ctl:8px; --r-pill:999px;
+
+  --grid:#ececec;
+  --chart-ink:#616161;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  font-size:13px; line-height:1.4; -webkit-font-smoothing:antialiased;
+}
+button,input,select,textarea{font:inherit;color:inherit}
+a{color:var(--focus);text-decoration:none}
+a:hover{text-decoration:underline}
+:focus-visible{outline:2px solid var(--focus);outline-offset:1px;border-radius:4px}
+.mono{font-family:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:500;letter-spacing:-.2px}
+.num{font-variant-numeric:tabular-nums}
+
+/* ---------- Shopify admin chrome ---------- */
+.admin{display:flex;flex-direction:column;height:100vh;min-height:600px}
+.topbar{
+  background:var(--topbar);display:flex;align-items:center;gap:12px;
+  padding:8px 12px;flex:0 0 auto;
+}
+.logo{display:flex;align-items:center;gap:8px;color:#fff;font-weight:600;font-size:13px;padding:0 4px}
+.logo svg{display:block}
+.searchbar{
+  flex:1;max-width:640px;margin:0 auto;background:var(--topbar-2);border:1px solid #4a4a4a;
+  border-radius:var(--r-ctl);display:flex;align-items:center;gap:8px;padding:6px 10px;color:#b5b5b5;
+}
+.searchbar input{background:none;border:0;outline:none;color:#e3e3e3;flex:1;font-size:13px}
+.searchbar kbd{font-size:11px;background:#3a3a3a;border-radius:4px;padding:1px 5px;color:#b5b5b5;font-family:inherit}
+.topright{display:flex;align-items:center;gap:10px;margin-left:auto}
+.iconbtn{background:none;border:0;color:#b5b5b5;cursor:pointer;padding:6px;border-radius:6px;display:grid;place-items:center}
+.iconbtn:hover{background:#3a3a3a;color:#fff}
+.storechip{display:flex;align-items:center;gap:8px;background:var(--topbar-2);border-radius:var(--r-ctl);padding:4px 8px 4px 4px;color:#e3e3e3;font-size:12px;font-weight:500}
+.avatar{width:24px;height:24px;border-radius:6px;background:#f97316;color:#2b1206;display:grid;place-items:center;font-size:11px;font-weight:700}
+.devtag{background:#4a4a4a;color:#d4d4d4;border-radius:4px;padding:1px 5px;font-size:10px;font-weight:600;letter-spacing:.2px}
+
+.body{display:flex;flex:1;min-height:0}
+.sidenav{
+  width:232px;flex:0 0 232px;background:var(--bg);padding:8px;overflow-y:auto;
+  border-right:1px solid var(--border);
+}
+.navsec{margin-bottom:2px}
+.navlabel{font-size:11px;font-weight:600;color:var(--text-sub);padding:10px 8px 4px;letter-spacing:.2px;display:flex;align-items:center;gap:4px}
+.navitem{
+  display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:var(--r-ctl);
+  color:var(--text);font-weight:500;cursor:pointer;border:0;background:none;width:100%;text-align:left;font-size:13px;
+}
+.navitem:hover{background:var(--surface-hover)}
+.navitem.active{background:var(--surface);box-shadow:var(--shadow-card);font-weight:600}
+.navitem .dot{width:5px;height:5px;border-radius:50%;background:var(--brand);margin-left:auto}
+.navitem .badge{margin-left:auto;background:var(--neutral-bg);color:var(--neutral-text);border-radius:var(--r-pill);padding:0 6px;font-size:11px;font-weight:600}
+.subnav{padding-left:14px;border-left:1px solid var(--border);margin-left:14px;display:flex;flex-direction:column;gap:1px}
+.appicon{width:18px;height:18px;border-radius:5px;background:var(--brand-bright);color:var(--brand-ink);display:grid;place-items:center;font-size:10px;font-weight:700;flex:0 0 18px}
+.navi{width:18px;height:18px;display:grid;place-items:center;flex:0 0 18px;color:var(--text-sub)}
+
+.main{flex:1;overflow-y:auto;padding:0 0 64px}
+.page{max-width:998px;margin:0 auto;padding:16px 16px 0}
+.page.wide{max-width:1200px}
+
+/* ---------- page header ---------- */
+.pagehead{display:flex;align-items:flex-start;gap:12px;margin:8px 0 16px;flex-wrap:wrap}
+.pagehead h1{font-size:20px;line-height:1.2;font-weight:650;margin:0 0 2px}
+.pagehead p{margin:0;color:var(--text-sub)}
+.pagehead .acts{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+.backlink{display:inline-flex;align-items:center;gap:4px;color:var(--text-sub);font-weight:500;background:none;border:0;cursor:pointer;padding:4px 0;margin-bottom:2px}
+.backlink:hover{color:var(--text)}
+
+/* ---------- primitives ---------- */
+.card{background:var(--surface);border-radius:var(--r-card);box-shadow:var(--shadow-card);padding:16px;margin-bottom:16px}
+.card.tight{padding:0}
+.card h2{font-size:14px;font-weight:650;margin:0 0 2px}
+.card h3{font-size:13px;font-weight:600;margin:0 0 8px}
+.cardhead{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.cardhead h2{margin:0}
+.cardhead .acts{margin-left:auto;display:flex;gap:8px;align-items:center}
+.sub{color:var(--text-sub)}
+.tiny{font-size:12px}
+.stack{display:flex;flex-direction:column;gap:12px}
+.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.hr{height:1px;background:var(--border);margin:14px -16px}
+
+.btn{
+  background:var(--surface);color:var(--text);border:1px solid var(--border-str);
+  border-radius:var(--r-ctl);padding:6px 12px;font-weight:600;font-size:13px;cursor:pointer;
+  box-shadow:0 1px 0 rgba(26,26,26,.05);display:inline-flex;align-items:center;gap:6px;
+}
+.btn:hover{background:var(--surface-hover)}
+.btn.primary{background:var(--btn);color:var(--btn-text);border-color:transparent}
+.btn.primary:hover{background:var(--btn-hover)}
+.btn.plain{border:0;box-shadow:none;background:none;color:var(--focus);padding:6px 4px}
+.btn.plain:hover{background:var(--surface-hover);text-decoration:underline}
+.btn.crit{color:var(--crit-text)}
+.btn.sm{padding:3px 8px;font-size:12px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+
+.pill{display:inline-flex;align-items:center;gap:5px;border-radius:var(--r-pill);padding:2px 8px;font-size:12px;font-weight:600;white-space:nowrap}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.85}
+.pill.ok{background:var(--ok-bg);color:var(--ok-text)}
+.pill.warn{background:var(--warn-bg);color:var(--warn-text)}
+.pill.crit{background:var(--crit-bg);color:var(--crit-text)}
+.pill.info{background:var(--info-bg);color:var(--info-text)}
+.pill.neutral{background:var(--neutral-bg);color:var(--neutral-text)}
+.pill.flat::before{display:none}
+
+.tag{display:inline-block;border-radius:5px;padding:1px 6px;font-size:10px;font-weight:700;letter-spacing:.4px;vertical-align:middle}
+.tag.v1{background:var(--ok-bg);color:var(--ok-text)}
+.tag.v2{background:var(--info-bg);color:var(--info-text)}
+.tag.pro{background:var(--warn-bg);color:var(--warn-text)}
+body:not(.show-tags) .tag{display:none}
+
+.banner{border-radius:var(--r-card);padding:12px 14px;display:flex;gap:10px;margin-bottom:16px;align-items:flex-start}
+.banner .bi{flex:0 0 18px;margin-top:1px}
+.banner h3{margin:0 0 3px;font-size:13px;font-weight:650}
+.banner p{margin:0 0 8px}
+.banner p:last-child{margin-bottom:0}
+.banner.info{background:var(--info-bg);color:var(--info-text);box-shadow:inset 0 0 0 1px var(--info-line)}
+.banner.ok{background:var(--ok-bg);color:var(--ok-text);box-shadow:inset 0 0 0 1px var(--ok-line)}
+.banner.brand{background:var(--brand-soft);color:var(--brand);box-shadow:inset 0 0 0 1px var(--brand-line)}
+.banner.warn{background:var(--warn-bg);color:var(--warn-text);box-shadow:inset 0 0 0 1px var(--warn-line)}
+.banner .x{margin-left:auto;background:none;border:0;cursor:pointer;color:inherit;opacity:.7;padding:2px;line-height:0}
+.banner .x:hover{opacity:1}
+.banner .btn{color:var(--text)}
+
+/* ---------- form controls ---------- */
+label.fl{display:block;font-weight:500;margin-bottom:4px;font-size:13px}
+.help{color:var(--text-sub);font-size:12px;margin-top:4px}
+.inp,select.inp,textarea.inp{
+  width:100%;background:var(--surface);border:1px solid var(--border-str);border-radius:var(--r-ctl);
+  padding:6px 10px;box-shadow:inset 0 1px 0 rgba(26,26,26,.05);
+}
+.inp:focus{outline:2px solid var(--focus);outline-offset:-1px;border-color:var(--focus)}
+.inpwrap{position:relative;display:flex;align-items:center}
+.inpwrap .prefix,.inpwrap .suffix{position:absolute;color:var(--text-sub);font-weight:500;pointer-events:none}
+.inpwrap .prefix{left:10px}
+.inpwrap .suffix{right:10px}
+.inpwrap.haspre .inp{padding-left:34px}
+.inpwrap.hassuf .inp{padding-right:38px}
+.fgrid{display:grid;gap:12px}
+.fgrid.c2{grid-template-columns:1fr 1fr}
+.fgrid.c3{grid-template-columns:1fr 1fr 1fr}
+@media (max-width:760px){.fgrid.c2,.fgrid.c3{grid-template-columns:1fr}}
+
+.choice{display:flex;gap:8px;align-items:flex-start;padding:2px 0;cursor:pointer}
+.choice input{margin:2px 0 0;accent-color:var(--focus);width:15px;height:15px;flex:0 0 15px}
+.choice .ct{font-weight:450}
+.choice .cd{color:var(--text-sub);font-size:12px}
+.choice.disabled{opacity:.55;cursor:not-allowed}
+
+.seg{display:inline-flex;background:var(--surface-3);border-radius:var(--r-ctl);padding:2px;gap:2px}
+.seg button{border:0;background:none;padding:5px 12px;border-radius:6px;font-weight:600;cursor:pointer;color:var(--text-sub);font-size:12px}
+.seg button.on{background:var(--surface);color:var(--text);box-shadow:0 1px 2px rgba(26,26,26,.12)}
+
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{border:1px solid var(--border-str);background:var(--surface);border-radius:var(--r-pill);padding:3px 10px;font-size:12px;font-weight:500;cursor:pointer}
+.chip:hover{background:var(--surface-hover)}
+.chip.on{background:var(--text);color:var(--surface);border-color:var(--text)}
+
+/* ---------- tables ---------- */
+.tablewrap{overflow-x:auto}
+table.t{width:100%;border-collapse:collapse;font-size:13px}
+table.t th{
+  text-align:left;font-weight:600;color:var(--text-sub);font-size:12px;
+  padding:8px 12px;background:var(--surface-2);border-bottom:1px solid var(--border);white-space:nowrap;
+}
+table.t td{padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:middle}
+table.t tbody tr:last-child td{border-bottom:0}
+table.t tbody tr:hover{background:var(--surface-hover)}
+table.t td.r,table.t th.r{text-align:right}
+.rowlink{font-weight:600;cursor:pointer;background:none;border:0;padding:0;color:var(--text);text-align:left}
+.rowlink:hover{text-decoration:underline}
+.tabs{display:flex;gap:2px;padding:8px 8px 0;border-bottom:1px solid var(--border);overflow-x:auto}
+.tab{border:0;background:none;padding:6px 10px;border-radius:8px 8px 0 0;font-weight:600;color:var(--text-sub);cursor:pointer;white-space:nowrap;font-size:12px}
+.tab:hover{background:var(--surface-hover)}
+.tab.on{color:var(--text);box-shadow:inset 0 -2px 0 var(--text)}
+.tablebar{display:flex;gap:8px;padding:10px 12px;align-items:center;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.emptystate{padding:48px 24px;text-align:center;color:var(--text-sub)}
+.emptystate h3{font-size:15px;color:var(--text);margin:0 0 6px}
+.emptystate p{max-width:44ch;margin:0 auto 14px}
+
+/* ---------- stat tiles ---------- */
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+@media (max-width:900px){.tiles{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:520px){.tiles{grid-template-columns:1fr}}
+.tile{background:var(--surface);border-radius:var(--r-card);box-shadow:var(--shadow-card);padding:14px 16px;display:flex;flex-direction:column;gap:2px}
+.tile .tl{font-size:12px;color:var(--text-sub);font-weight:500}
+.tile .tv{font-size:22px;font-weight:650;letter-spacing:-.4px;font-variant-numeric:tabular-nums}
+.tile .td{font-size:12px;color:var(--text-sub)}
+.tile.hero{background:var(--brand-soft);box-shadow:inset 0 0 0 1px var(--brand-line)}
+.tile.hero .tv{color:var(--brand)}
+.delta{font-weight:600}
+.delta.up{color:var(--ok-text)}
+
+/* ---------- setup guide ---------- */
+.guide{background:var(--surface);border-radius:var(--r-card);box-shadow:var(--shadow-card);margin-bottom:16px;overflow:hidden}
+.guidehead{display:flex;align-items:center;gap:12px;padding:14px 16px}
+.guidehead h2{margin:0;font-size:14px;font-weight:650}
+.progress{height:4px;border-radius:2px;background:var(--border);width:120px;overflow:hidden}
+.progress i{display:block;height:100%;background:var(--brand-bright);border-radius:2px}
+.steps{border-top:1px solid var(--border);padding:6px 8px 10px}
+.step{display:flex;gap:10px;padding:8px 8px;border-radius:var(--r-ctl);align-items:flex-start}
+.step:hover{background:var(--surface-hover)}
+.check{width:18px;height:18px;border-radius:50%;flex:0 0 18px;display:grid;place-items:center;margin-top:1px;
+  border:1.5px dashed var(--border-str);color:transparent;font-size:11px;font-weight:700}
+.step.done .check{background:var(--brand-bright);border:0;color:var(--brand-ink)}
+.step .sb{flex:1}
+.step .st{font-weight:600}
+.step.done .st{color:var(--text-sub);text-decoration:line-through}
+.step .sd{color:var(--text-sub);font-size:12px;margin-top:1px}
+
+/* ---------- 2-col form layout ---------- */
+.cols{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px;align-items:start}
+@media (max-width:900px){.cols{grid-template-columns:1fr}}
+.side{position:sticky;top:68px}
+.sumlist{display:flex;flex-direction:column;gap:6px;font-size:12px}
+.sumrow{display:flex;gap:8px}
+.sumrow .k{color:var(--text-sub);flex:0 0 92px}
+.sumrow .v{font-weight:500;flex:1}
+
+/* ---------- live preview ---------- */
+.preview{background:var(--brand-soft);border-radius:var(--r-card);padding:14px;box-shadow:inset 0 0 0 1px var(--brand-line)}
+.slider{width:100%;accent-color:var(--brand);margin:6px 0 2px}
+.calcline{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;font-size:13px}
+.calcbig{font-size:26px;font-weight:650;letter-spacing:-.5px;font-variant-numeric:tabular-nums;color:var(--brand)}
+.strike{text-decoration:line-through;color:var(--text-sub)}
+.bars{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.barrow{display:grid;grid-template-columns:110px 1fr auto;gap:10px;align-items:center;font-size:12px}
+.bartrack{height:12px;background:var(--surface);border-radius:6px;overflow:hidden;box-shadow:inset 0 0 0 1px var(--border)}
+.barfill{height:100%;border-radius:6px;transition:width .18s ease}
+.barfill.loss{background:var(--crit-line)}
+.barfill.keep{background:var(--brand-bright)}
+.axisnote{font-size:11px;color:var(--text-sub);margin-top:8px}
+
+/* ---------- checkout preview ---------- */
+.checkout{background:var(--surface-2);border-radius:var(--r-card);padding:16px;box-shadow:inset 0 0 0 1px var(--border)}
+.colines{display:flex;flex-direction:column;gap:8px}
+.coline{display:flex;gap:10px;align-items:center;font-size:13px}
+.coline .cn{flex:1}
+.coline .cv{font-variant-numeric:tabular-nums;font-weight:500}
+.coline.discount{color:var(--brand);font-weight:600}
+.coline.total{border-top:1px solid var(--border);padding-top:10px;margin-top:6px;font-size:15px;font-weight:650}
+.capnote{font-size:11px;color:var(--text-sub);margin-top:-4px}
+.thumb{width:34px;height:34px;border-radius:8px;background:var(--surface-3);display:grid;place-items:center;font-size:14px;box-shadow:inset 0 0 0 1px var(--border)}
+.compare{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:760px){.compare{grid-template-columns:1fr}}
+.comparecol h3{display:flex;align-items:center;gap:6px;margin-bottom:8px}
+
+/* ---------- chart ---------- */
+.chartwrap{position:relative}
+.chart{width:100%;height:180px;display:block}
+.chart .bar{fill:var(--brand-bright);cursor:pointer}
+.chart .bar.mute{fill:var(--brand-bright);opacity:.55}
+.chart .grid{stroke:var(--grid);stroke-width:1}
+.chart text{fill:var(--chart-ink);font-size:10px;font-family:Inter,sans-serif}
+.chart text.val{fill:var(--text);font-weight:600;font-size:10px}
+.tooltip{
+  position:absolute;pointer-events:none;background:var(--topbar);color:#fff;border-radius:8px;
+  padding:6px 9px;font-size:12px;box-shadow:var(--shadow-pop);transform:translate(-50%,-115%);opacity:0;transition:opacity .12s;white-space:nowrap;z-index:5;
+}
+.tooltip.on{opacity:1}
+.tooltip b{font-variant-numeric:tabular-nums}
+
+/* ---------- plans ---------- */
+.plans{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+@media (max-width:820px){.plans{grid-template-columns:1fr}}
+.plan{background:var(--surface);border-radius:var(--r-card);box-shadow:var(--shadow-card);padding:18px;display:flex;flex-direction:column;gap:10px}
+.plan.current{box-shadow:0 0 0 2px var(--brand),var(--shadow-card)}
+.plan .pn{font-size:12px;font-weight:700;letter-spacing:.6px;color:var(--text-sub)}
+.plan .pp{font-size:26px;font-weight:650;letter-spacing:-.6px}
+.plan .pp small{font-size:12px;font-weight:500;color:var(--text-sub);letter-spacing:0}
+.plan ul{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:7px;flex:1;font-size:12px}
+.plan li{display:flex;gap:7px;align-items:flex-start}
+.plan li .tick{color:var(--brand);flex:0 0 14px;font-weight:700}
+
+/* ---------- save bar ---------- */
+.savebar{
+  position:sticky;top:0;z-index:20;background:var(--topbar);color:#e3e3e3;border-radius:0 0 12px 12px;
+  display:flex;align-items:center;gap:12px;padding:8px 12px;margin:0 auto 16px;max-width:998px;
+  box-shadow:var(--shadow-pop);
+}
+.savebar .sbt{font-weight:600;font-size:13px}
+.savebar .acts{margin-left:auto;display:flex;gap:8px}
+.savebar .btn{background:#3a3a3a;color:#e3e3e3;border-color:#4a4a4a;box-shadow:none}
+.savebar .btn:hover{background:#4a4a4a}
+.savebar .btn.primary{background:#fff;color:#1a1a1a;border-color:transparent}
+
+/* ---------- modal ---------- */
+.scrim{position:fixed;inset:0;background:rgba(26,26,26,.55);display:grid;place-items:center;padding:20px;z-index:50}
+.modal{background:var(--surface);border-radius:var(--r-card);box-shadow:var(--shadow-pop);max-width:520px;width:100%;max-height:85vh;overflow:auto}
+.modalhead{display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:1px solid var(--border)}
+.modalhead h2{margin:0;font-size:15px;font-weight:650}
+.modalbody{padding:16px}
+.modalfoot{display:flex;gap:8px;justify-content:flex-end;padding:12px 16px;border-top:1px solid var(--border)}
+
+/* ---------- toast ---------- */
+.toast{
+  position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--topbar);
+  color:#fff;padding:10px 16px;border-radius:10px;box-shadow:var(--shadow-pop);font-weight:500;z-index:60;
+  opacity:0;transition:opacity .16s,transform .16s;pointer-events:none;
+}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* ---------- prototype controls ---------- */
+.protobar{
+  background:var(--topbar-2);color:#b5b5b5;font-size:11.5px;display:flex;align-items:center;gap:10px;
+  padding:5px 12px;flex-wrap:wrap;border-bottom:1px solid #3a3a3a;
+}
+.protobar strong{color:#fff;font-weight:600}
+.protobar label{display:inline-flex;align-items:center;gap:5px;cursor:pointer}
+.protobar input{accent-color:#54c9a3}
+.protobar .legend{display:inline-flex;gap:6px;margin-left:auto;align-items:center}
+.protobar select{background:#3a3a3a;color:#fff;border:1px solid #4a4a4a;border-radius:6px;padding:1px 4px;font-size:11.5px}
+
+.screen{display:none}
+.screen.on{display:block}
+
+@media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+@media (max-width:820px){
+  .sidenav{display:none}
+  .searchbar{display:none}
+}
+</style>
+
+<div class="admin">
+
+  <!-- prototype control strip (not part of the real app) -->
+  <div class="protobar">
+    <strong>MaxOff prototype</strong>
+    <span>Click the left menu. Everything calculates for real.</span>
+    <label><input type="checkbox" id="tagToggle" checked> Show build phase tags</label>
+    <label>Currency
+      <select id="curSel" aria-label="Prototype currency"><option value="USD">USD ($)</option><option value="EUR">EUR (€)</option></select>
+    </label>
+    <span class="legend">
+      <span class="tag v1">V1</span><span>8-week build</span>
+      <span class="tag v2">V2</span><span>later</span>
+      <span class="tag pro">PRO</span><span>paid tier</span>
+    </span>
+  </div>
+
+  <!-- Shopify top bar -->
+  <div class="topbar">
+    <div class="logo">
+      <svg width="20" height="22" viewBox="0 0 24 27" aria-hidden="true"><path fill="#95BF47" d="M19.3 5.2c0-.2-.2-.3-.3-.3l-2.1-.2-1.6-1.5c-.1-.2-.4-.1-.5-.1l-.8.2C13.6 2 12.8 1 11.6 1h-.2c-.4-.5-.9-.7-1.3-.7C6.9.4 5.4 4.6 4.9 6.8l-2.2.7c-.7.2-.7.2-.8 1L0 25.3l17 3.2 7-1.5c0-.2-4.7-21.6-4.7-21.8Z"/><path fill="#5E8E3E" d="M19 4.9l-2.1-.2-1.6-1.5c-.1-.1-.1-.1-.2-.1v25.4l7-1.5S19.3 5.2 19.3 5.2c0-.2-.2-.3-.3-.3Z"/><path fill="#fff" d="m11.6 9.6-.9 2.6s-.8-.4-1.7-.4c-1.4 0-1.5.9-1.5 1.1 0 1.2 3.2 1.7 3.2 4.6 0 2.3-1.4 3.7-3.4 3.7-2.4 0-3.6-1.5-3.6-1.5l.6-2.1s1.3 1.1 2.3 1.1c.7 0 1-.5 1-.9 0-1.6-2.6-1.7-2.6-4.3 0-2.2 1.6-4.4 4.8-4.4 1.3 0 1.8.3 1.8.3Z"/></svg>
+      <span>shopify</span>
+    </div>
+    <div class="searchbar">
+      <svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="9" cy="9" r="6" stroke="currentColor" stroke-width="2"/><path d="m14 14 3.5 3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <input type="text" placeholder="Search" aria-label="Search Shopify admin">
+      <kbd>⌘K</kbd>
+    </div>
+    <div class="topright">
+      <button class="iconbtn" aria-label="Notifications"><svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M10 3a5 5 0 0 0-5 5v3l-1 2h12l-1-2V8a5 5 0 0 0-5-5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M8 15a2 2 0 0 0 4 0" stroke="currentColor" stroke-width="1.6"/></svg></button>
+      <div class="storechip"><span class="avatar">MT</span> MPC TRADES <span class="devtag">dev</span></div>
+    </div>
+  </div>
+
+  <div class="body">
+    <!-- Shopify store nav -->
+    <nav class="sidenav" aria-label="Admin">
+      <div class="navsec">
+        <button class="navitem"><span class="navi">⌂</span> Home</button>
+        <button class="navitem"><span class="navi">▤</span> Orders <span class="badge">5</span></button>
+        <button class="navitem"><span class="navi">▦</span> Products</button>
+        <button class="navitem"><span class="navi">☺</span> Customers</button>
+        <button class="navitem"><span class="navi">◔</span> Growth</button>
+        <button class="navitem"><span class="navi">%</span> Discounts</button>
+        <button class="navitem"><span class="navi">✎</span> Content</button>
+        <button class="navitem"><span class="navi">◍</span> Markets</button>
+        <button class="navitem"><span class="navi">€</span> Finance</button>
+        <button class="navitem"><span class="navi">◫</span> Analytics</button>
+      </div>
+      <div class="navlabel">Sales channels ›</div>
+      <div class="navsec">
+        <button class="navitem"><span class="navi">◈</span> Online Store</button>
+      </div>
+      <div class="navlabel">Apps ›</div>
+      <div class="navsec">
+        <button class="navitem active" style="margin-bottom:2px"><span class="appicon">M</span> MaxOff <span class="dot"></span></button>
+        <div class="subnav" id="appnav">
+          <button class="navitem" data-go="home">Home</button>
+          <button class="navitem" data-go="list">Capped discounts</button>
+          <button class="navitem" data-go="create">Create new</button>
+          <button class="navitem" data-go="analytics">Analytics</button>
+          <button class="navitem" data-go="test">Test a cart</button>
+          <button class="navitem" data-go="settings">Settings</button>
+          <button class="navitem" data-go="billing">Plans &amp; billing</button>
+        </div>
+      </div>
+    </nav>
+
+    <main class="main" id="main">
+
+      <!-- ============ HOME ============ -->
+      <section class="screen on" id="s-home">
+        <div class="page">
+          <div class="pagehead">
+            <div>
+              <h1>MaxOff <span class="pill neutral flat" style="font-size:11px;vertical-align:middle">Growth plan</span></h1>
+              <p class="sub">Percentage discounts that stop at a maximum amount.</p>
+            </div>
+            <div class="acts">
+              <button class="btn" data-go="test">Test a cart</button>
+              <button class="btn primary" data-go="create">Create capped discount</button>
+            </div>
+          </div>
+
+          <div class="banner brand">
+            <span class="bi">✓</span>
+            <div style="flex:1">
+              <h3>Cap engine is running</h3>
+              <p>Your cap is applied by Shopify at checkout on 3 active discounts. No theme code was added to your store.</p>
+              <button class="btn sm" data-go="test">Run a test cart</button>
+            </div>
+          </div>
+
+          <div class="guide">
+            <div class="guidehead">
+              <div style="flex:1">
+                <h2>Set up MaxOff <span class="tag v1">V1</span></h2>
+                <p class="sub tiny" style="margin:2px 0 0">3 of 4 done — about 1 minute left</p>
+              </div>
+              <div class="progress" aria-label="75% complete"><i style="width:75%"></i></div>
+              <button class="btn sm" id="guideToggle">Hide</button>
+            </div>
+            <div class="steps" id="guideSteps">
+              <div class="step done"><span class="check">✓</span><div class="sb"><div class="st">Install MaxOff</div></div></div>
+              <div class="step done"><span class="check">✓</span><div class="sb"><div class="st">Create your first capped discount</div><div class="sd">SUMMER15 — 15% off, capped at 150.00 <span class="cur">USD</span></div></div></div>
+              <div class="step done"><span class="check">✓</span><div class="sb"><div class="st">Test it on a big cart</div><div class="sd">Tested 1,400.00 <span class="cur">USD</span> — capped correctly at 150.00 <span class="cur">USD</span></div></div></div>
+              <div class="step"><span class="check">✓</span><div class="sb"><div class="st">Choose a plan</div><div class="sd">You are on Growth. Upgrade to Pro for per-item caps and multi-currency.</div></div><button class="btn sm" data-go="billing">View plans</button></div>
+            </div>
+          </div>
+
+          <div class="tiles">
+            <div class="tile hero">
+              <span class="tl">Over-discounting avoided · this month</span>
+              <span class="tv">1,240.00 <small style="font-size:14px" class="cur">USD</small></span>
+              <span class="td"><span class="delta up">▲ 18%</span> vs last month</span>
+            </div>
+            <div class="tile">
+              <span class="tl">Orders capped</span>
+              <span class="tv num">87</span>
+              <span class="td">of 412 discounted orders</span>
+            </div>
+            <div class="tile">
+              <span class="tl">Active capped discounts</span>
+              <span class="tv num">3</span>
+              <span class="td">1 scheduled, 1 paused</span>
+            </div>
+            <div class="tile">
+              <span class="tl">Biggest single save</span>
+              <span class="tv num">148.50</span>
+              <span class="td">Order #1042 · VIP20</span>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="cardhead">
+              <div>
+                <h2>Money you kept</h2>
+                <p class="sub tiny" style="margin:2px 0 0">Difference between the uncapped discount and what MaxOff actually gave away.</p>
+              </div>
+              <div class="acts"><button class="btn sm" data-go="analytics">View analytics</button></div>
+            </div>
+            <div class="chartwrap">
+              <svg class="chart" id="homeChart" viewBox="0 0 700 180" preserveAspectRatio="none" role="img" aria-label="Money kept per week, last 8 weeks. Highest week 389."></svg>
+              <div class="tooltip" id="homeTip"></div>
+            </div>
+          </div>
+
+          <div class="card tight">
+            <div class="cardhead" style="padding:16px 16px 0;margin-bottom:12px">
+              <h2>Your capped discounts</h2>
+              <div class="acts"><button class="btn sm" data-go="list">View all</button></div>
+            </div>
+            <div class="tablewrap">
+              <table class="t">
+                <thead><tr><th>Code</th><th>Discount</th><th>Maximum</th><th>Cap starts above</th><th class="r">Used</th><th class="r">Kept</th><th>Status</th></tr></thead>
+                <tbody id="homeRows"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="banner info">
+            <span class="bi">★</span>
+            <div style="flex:1">
+              <h3>What's new — Cart tester</h3>
+              <p>Build a test cart and see exactly what the buyer will see at checkout, before you send the code to anyone.</p>
+            </div>
+            <button class="x" aria-label="Dismiss" onclick="this.closest('.banner').remove()">✕</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ LIST ============ -->
+      <section class="screen" id="s-list">
+        <div class="page">
+          <div class="pagehead">
+            <div><h1>Capped discounts</h1><p class="sub">Every percentage discount with a maximum amount.</p></div>
+            <div class="acts">
+              <button class="btn" id="exportBtn">Export</button>
+              <button class="btn primary" data-go="create">Create capped discount</button>
+            </div>
+          </div>
+
+          <div class="card tight">
+            <div class="tabs" id="listTabs">
+              <button class="tab on" data-tab="all">All</button>
+              <button class="tab" data-tab="active">Active</button>
+              <button class="tab" data-tab="scheduled">Scheduled</button>
+              <button class="tab" data-tab="paused">Paused</button>
+              <button class="tab" data-tab="expired">Expired</button>
+            </div>
+            <div class="tablebar">
+              <div class="inpwrap haspre" style="flex:1;min-width:180px;max-width:280px">
+                <span class="prefix">⌕</span>
+                <input class="inp" id="listSearch" type="search" placeholder="Search codes" aria-label="Search discount codes">
+              </div>
+              <button class="btn sm">Method ▾</button>
+              <button class="btn sm">Cap type ▾</button>
+              <button class="btn sm" style="margin-left:auto">Sort: Money kept ▾</button>
+            </div>
+            <div class="tablewrap">
+              <table class="t">
+                <thead>
+                  <tr>
+                    <th style="width:28px"><input type="checkbox" aria-label="Select all" id="selAll"></th>
+                    <th>Code</th><th>Discount</th><th>Maximum</th><th>Cap starts above</th>
+                    <th class="r">Used</th><th class="r">Kept</th><th>Status</th><th class="r">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="listRows"></tbody>
+              </table>
+            </div>
+            <div id="listEmpty" class="emptystate" hidden>
+              <h3>No discounts here yet</h3>
+              <p>When a capped discount reaches this state it will show up here.</p>
+              <button class="btn primary" data-go="create">Create capped discount</button>
+            </div>
+            <div style="display:flex;justify-content:center;gap:8px;padding:12px;border-top:1px solid var(--border)">
+              <button class="btn sm" disabled>‹</button><span class="sub tiny" style="align-self:center">1 of 1</span><button class="btn sm" disabled>›</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ CREATE ============ -->
+      <section class="screen" id="s-create">
+        <div class="savebar">
+          <span class="sbt">Unsaved capped discount</span>
+          <div class="acts">
+            <button class="btn" data-go="list">Discard</button>
+            <button class="btn primary" id="saveBtn">Save &amp; activate</button>
+          </div>
+        </div>
+        <div class="page">
+          <div class="pagehead">
+            <div>
+              <button class="backlink" data-go="list">‹ Capped discounts</button>
+              <h1>Create capped discount</h1>
+              <p class="sub">A percentage off, that never gives away more than your maximum.</p>
+            </div>
+          </div>
+
+          <div class="cols">
+            <div>
+              <!-- method -->
+              <div class="card">
+                <div class="cardhead"><h2>Method <span class="tag v1">V1</span></h2></div>
+                <div class="seg" id="methodSeg" role="tablist" style="margin-bottom:12px">
+                  <button class="on" data-method="code">Discount code</button>
+                  <button data-method="auto">Automatic discount <span class="tag v2">V2</span></button>
+                </div>
+                <div id="codeField">
+                  <label class="fl" for="fCode">Discount code</label>
+                  <div class="row" style="gap:8px;flex-wrap:nowrap">
+                    <input class="inp mono" id="fCode" value="SUMMER15" style="text-transform:uppercase">
+                    <button class="btn" id="genCode" style="flex:0 0 auto">Generate</button>
+                  </div>
+                  <p class="help">Customers enter this code at checkout.</p>
+                </div>
+                <div id="autoField" hidden>
+                  <label class="fl" for="fTitle">Title</label>
+                  <input class="inp" id="fTitle" value="Summer sale — capped">
+                  <p class="help">Applied automatically. Customers see this title in the cart.</p>
+                </div>
+              </div>
+
+              <!-- value + cap -->
+              <div class="card">
+                <div class="cardhead"><h2>Value and maximum <span class="tag v1">V1</span></h2></div>
+                <div class="fgrid c2">
+                  <div>
+                    <label class="fl" for="fPct">Percentage off</label>
+                    <div class="inpwrap hassuf">
+                      <input class="inp num" id="fPct" type="number" min="1" max="100" step="1" value="15">
+                      <span class="suffix">%</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label class="fl" for="fCap">Maximum discount</label>
+                    <div class="inpwrap hassuf">
+                      <input class="inp num" id="fCap" type="number" min="1" step="1" value="150">
+                      <span class="suffix cur" id="curSuffix">USD</span>
+                    </div>
+                  </div>
+                </div>
+                <p class="help" id="capHint"></p>
+                <div class="hr"></div>
+                <h3>The maximum applies to</h3>
+                <div class="stack" style="gap:6px">
+                  <label class="choice"><input type="radio" name="scope" value="order" checked><span><span class="ct">The whole order</span><span class="cd">One maximum for the entire cart. Covers most promotions.</span></span></label>
+                  <label class="choice"><input type="radio" name="scope" value="item"><span><span class="ct">Each item <span class="tag pro">PRO</span></span><span class="cd">Every line gets its own maximum. Good for high-value single products.</span></span></label>
+                  <label class="choice"><input type="radio" name="scope" value="collection"><span><span class="ct">Each collection <span class="tag pro">PRO</span></span><span class="cd">A different maximum per collection, e.g. 50 <span class="cur">USD</span> on K-Beauty, 200 <span class="cur">USD</span> on Plush.</span></span></label>
+                </div>
+              </div>
+
+              <!-- applies to -->
+              <div class="card">
+                <div class="cardhead"><h2>Applies to <span class="tag v1">V1</span></h2></div>
+                <div class="stack" style="gap:6px">
+                  <label class="choice"><input type="radio" name="applies" checked><span class="ct">All products</span></label>
+                  <label class="choice"><input type="radio" name="applies"><span class="ct">Specific collections <span class="tag v2">V2</span></span></label>
+                  <label class="choice"><input type="radio" name="applies"><span class="ct">Specific products <span class="tag v2">V2</span></span></label>
+                </div>
+                <div class="row" style="margin-top:10px">
+                  <div class="inpwrap haspre" style="flex:1"><span class="prefix">⌕</span><input class="inp" placeholder="Search collections" disabled></div>
+                  <button class="btn" disabled>Browse</button>
+                </div>
+              </div>
+
+              <!-- requirements -->
+              <div class="card">
+                <div class="cardhead"><h2>Minimum requirements <span class="tag v1">V1</span></h2></div>
+                <div class="stack" style="gap:6px">
+                  <label class="choice"><input type="radio" name="minreq" checked><span class="ct">No minimum</span></label>
+                  <label class="choice"><input type="radio" name="minreq"><span class="ct">Minimum purchase amount</span></label>
+                  <label class="choice"><input type="radio" name="minreq"><span class="ct">Minimum quantity of items</span></label>
+                </div>
+              </div>
+
+              <!-- eligibility + limits -->
+              <div class="card">
+                <div class="cardhead"><h2>Customers and usage limits <span class="tag v1">V1</span></h2></div>
+                <label class="fl" for="fElig">Who can use it</label>
+                <select class="inp" id="fElig">
+                  <option>All customers</option>
+                  <option>Specific customer segments</option>
+                  <option>Specific customers</option>
+                </select>
+                <div class="hr"></div>
+                <div class="stack" style="gap:8px">
+                  <label class="choice"><input type="checkbox" id="fLimitTotal"><span><span class="ct">Limit total number of uses</span></span></label>
+                  <div class="inpwrap" style="max-width:160px;margin-left:23px"><input class="inp num" id="fLimitTotalN" type="number" value="500" disabled></div>
+                  <label class="choice"><input type="checkbox" checked><span><span class="ct">Limit to one use per customer</span></span></label>
+                  <label class="choice"><input type="checkbox"><span><span class="ct">Stop the code once it has given away a total of… <span class="tag v2">V2</span></span><span class="cd">A budget for the whole campaign, not just per order.</span></span></label>
+                </div>
+              </div>
+
+              <!-- combinations -->
+              <div class="card">
+                <div class="cardhead"><h2>Combinations <span class="tag v1">V1</span></h2></div>
+                <p class="sub tiny" style="margin:-4px 0 10px">This discount can be combined with:</p>
+                <div class="stack" style="gap:6px">
+                  <label class="choice"><input type="checkbox"><span class="ct">Product discounts</span></label>
+                  <label class="choice"><input type="checkbox"><span class="ct">Order discounts</span></label>
+                  <label class="choice"><input type="checkbox" checked><span class="ct">Shipping discounts</span></label>
+                </div>
+                <div class="banner info" style="margin:12px 0 0">
+                  <span class="bi">i</span>
+                  <div><p>When discounts are combined, the maximum still holds. MaxOff caps its own share only — it never touches the other discount.</p></div>
+                </div>
+              </div>
+
+              <!-- checkout message -->
+              <div class="card">
+                <div class="cardhead"><h2>What the customer sees <span class="tag v2">V2</span></h2></div>
+                <label class="fl" for="fMsg">Note under the discount line at checkout</label>
+                <input class="inp" id="fMsg" value="Discount capped at maximum amount" maxlength="60">
+                <p class="help">Leave empty to show nothing. Merchants told us buyers ask why the discount looks small — this answers it.</p>
+              </div>
+
+              <!-- dates -->
+              <div class="card">
+                <div class="cardhead"><h2>Active dates <span class="tag v1">V1</span></h2></div>
+                <div class="fgrid c2">
+                  <div><label class="fl" for="fStart">Start date</label><input class="inp" id="fStart" type="date" value="2026-09-10"></div>
+                  <div><label class="fl" for="fStartT">Start time</label><input class="inp" id="fStartT" type="time" value="00:00"></div>
+                </div>
+                <label class="choice" style="margin-top:12px"><input type="checkbox" id="fHasEnd" checked><span class="ct">Set an end date</span></label>
+                <div class="fgrid c2" id="endWrap" style="margin-top:8px">
+                  <div><label class="fl" for="fEnd">End date</label><input class="inp" id="fEnd" type="date" value="2026-09-30"></div>
+                  <div><label class="fl" for="fEndT">End time</label><input class="inp" id="fEndT" type="time" value="23:59"></div>
+                </div>
+              </div>
+
+              <!-- live preview -->
+              <div class="card">
+                <div class="cardhead">
+                  <div><h2>Live preview <span class="tag v1">V1</span></h2>
+                  <p class="sub tiny" style="margin:2px 0 0">Move the slider to see what happens to a real basket.</p></div>
+                  <div class="acts"><button class="btn sm" id="openCheckout">See checkout view</button></div>
+                </div>
+                <div class="preview">
+                  <div class="row" style="justify-content:space-between">
+                    <label class="fl" for="fSim" style="margin:0">Cart total</label>
+                    <span class="mono num" id="simVal" style="font-size:15px;font-weight:700">1,400.00 EUR</span>
+                  </div>
+                  <input class="slider" id="fSim" type="range" min="50" max="3000" step="10" value="1400" aria-label="Simulated cart total">
+                  <div class="chips" style="margin-bottom:12px">
+                    <button class="chip" data-sim="200">200</button>
+                    <button class="chip" data-sim="800">800</button>
+                    <button class="chip on" data-sim="1400">1,400</button>
+                    <button class="chip" data-sim="2500">2,500</button>
+                  </div>
+                  <div class="calcline">
+                    <span class="calcbig" id="simDiscount">150.00 EUR</span>
+                    <span id="simExplain" class="sub"></span>
+                  </div>
+                  <div class="bars">
+                    <div class="barrow">
+                      <span class="sub">Without a cap</span>
+                      <div class="bartrack"><div class="barfill loss" id="barLoss" style="width:100%"></div></div>
+                      <span class="num" id="barLossV">210.00</span>
+                    </div>
+                    <div class="barrow">
+                      <span class="sub">With MaxOff</span>
+                      <div class="bartrack"><div class="barfill keep" id="barKeep" style="width:71%"></div></div>
+                      <span class="num" id="barKeepV">150.00</span>
+                    </div>
+                  </div>
+                  <p class="axisnote" id="simKeep">You keep 60.00 EUR on this order.</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- right column -->
+            <div class="side">
+              <div class="card">
+                <h2 style="margin-bottom:10px">Summary</h2>
+                <div class="sumlist">
+                  <div class="sumrow"><span class="k">Code</span><span class="v mono" id="sumCode">SUMMER15</span></div>
+                  <div class="sumrow"><span class="k">Type</span><span class="v">Percentage, capped</span></div>
+                  <div class="sumrow"><span class="k">Value</span><span class="v" id="sumValue">15% off</span></div>
+                  <div class="sumrow"><span class="k">Maximum</span><span class="v" id="sumCap">150.00 EUR per order</span></div>
+                  <div class="sumrow"><span class="k">Cap starts</span><span class="v" id="sumStart">above 1,000.00 EUR</span></div>
+                  <div class="sumrow"><span class="k">Applies to</span><span class="v">All products</span></div>
+                  <div class="sumrow"><span class="k">Customers</span><span class="v">All customers · 1 use each</span></div>
+                  <div class="sumrow"><span class="k">Combines</span><span class="v">Shipping discounts</span></div>
+                  <div class="sumrow"><span class="k">Active</span><span class="v" id="sumDates">10 Sep – 30 Sep 2026</span></div>
+                </div>
+                <div class="hr"></div>
+                <p class="sub tiny" style="margin:0">Performance appears here once the discount is live.</p>
+              </div>
+
+              <div class="card">
+                <h2 style="margin-bottom:4px">Start from a template <span class="tag v2">V2</span></h2>
+                <p class="sub tiny" style="margin:0 0 10px">Sensible defaults you can still edit.</p>
+                <div class="stack" style="gap:6px">
+                  <button class="btn" data-tpl="influencer" style="justify-content:flex-start">Influencer code · 20% max 80</button>
+                  <button class="btn" data-tpl="bf" style="justify-content:flex-start">Black Friday · 30% max 200</button>
+                  <button class="btn" data-tpl="welcome" style="justify-content:flex-start">Welcome · 10% max 25</button>
+                  <button class="btn" data-tpl="vip" style="justify-content:flex-start">VIP · 25% max 120</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ DETAIL ============ -->
+      <section class="screen" id="s-detail">
+        <div class="page">
+          <div class="pagehead">
+            <div>
+              <button class="backlink" data-go="list">‹ Capped discounts</button>
+              <h1 class="mono" id="dCode">SUMMER15</h1>
+              <p class="sub" id="dSub">15% off · maximum 150.00 <span class="cur">USD</span> per order · 10–30 Sep 2026</p>
+            </div>
+            <div class="acts">
+              <span class="pill ok" style="align-self:center">Active</span>
+              <button class="btn">Pause</button>
+              <button class="btn">Duplicate</button>
+              <button class="btn primary">Edit</button>
+            </div>
+          </div>
+
+          <div class="tiles">
+            <div class="tile hero"><span class="tl">Money kept</span><span class="tv">612.40 <small style="font-size:14px" class="cur">USD</small></span><span class="td">since 10 Sep</span></div>
+            <div class="tile"><span class="tl">Times used</span><span class="tv num">148</span><span class="td">of 500 allowed</span></div>
+            <div class="tile"><span class="tl">Orders that hit the cap</span><span class="tv num">31</span><span class="td">21% of uses</span></div>
+            <div class="tile"><span class="tl">Average order with this code</span><span class="tv num">742.10</span><span class="td cur">USD</span></div>
+          </div>
+
+          <div class="banner info">
+            <span class="bi">i</span>
+            <div>
+              <h3>Your cap starts working above 1,000.00 <span class="cur">USD</span></h3>
+              <p>Below that, customers get the full 15%. 21% of orders using this code went over — that is where your 612.40 <span class="cur">USD</span> came from.</p>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="cardhead"><h2>Money kept per week</h2></div>
+            <div class="chartwrap">
+              <svg class="chart" id="detailChart" viewBox="0 0 700 180" preserveAspectRatio="none" role="img" aria-label="Money kept per week for SUMMER15"></svg>
+              <div class="tooltip" id="detailTip"></div>
+            </div>
+          </div>
+
+          <div class="card tight">
+            <div class="cardhead" style="padding:16px 16px 0;margin-bottom:12px"><h2>Recent orders where the cap applied <span class="tag v1">V1</span></h2></div>
+            <div class="tablewrap">
+              <table class="t">
+                <thead><tr><th>Order</th><th>Date</th><th class="r">Cart</th><th class="r">15% would be</th><th class="r">Given</th><th class="r">Kept</th></tr></thead>
+                <tbody id="detailRows"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ ANALYTICS ============ -->
+      <section class="screen" id="s-analytics">
+        <div class="page">
+          <div class="pagehead">
+            <div><h1>Analytics</h1><p class="sub">What MaxOff saved you, and which codes are doing the work.</p></div>
+            <div class="acts"><button class="btn">Export CSV <span class="tag pro">PRO</span></button></div>
+          </div>
+
+          <div class="chips" style="margin-bottom:16px">
+            <button class="chip">7 days</button>
+            <button class="chip on">30 days</button>
+            <button class="chip">90 days</button>
+            <button class="chip">12 months <span class="tag pro">PRO</span></button>
+          </div>
+
+          <div class="tiles">
+            <div class="tile hero"><span class="tl">Money kept</span><span class="tv">1,240.00 <small style="font-size:14px" class="cur">USD</small></span><span class="td"><span class="delta up">▲ 18%</span> vs previous 30 days</span></div>
+            <div class="tile"><span class="tl">Orders capped</span><span class="tv num">87</span><span class="td">21% of discounted orders</span></div>
+            <div class="tile"><span class="tl">Average kept per capped order</span><span class="tv num">14.25</span><span class="td cur">USD</span></div>
+            <div class="tile"><span class="tl">Subscription cost</span><span class="tv num">4.99</span><span class="td">USD/month · paid back 248×</span></div>
+          </div>
+
+          <div class="card">
+            <div class="cardhead"><h2>Money kept per week</h2><div class="acts"><span class="sub tiny">Last 8 weeks</span></div></div>
+            <div class="chartwrap">
+              <svg class="chart" id="anaChart" viewBox="0 0 700 180" preserveAspectRatio="none" role="img" aria-label="Money kept per week, last 8 weeks"></svg>
+              <div class="tooltip" id="anaTip"></div>
+            </div>
+          </div>
+
+          <div class="card tight">
+            <div class="cardhead" style="padding:16px 16px 0;margin-bottom:12px"><h2>By discount code</h2></div>
+            <div class="tablewrap">
+              <table class="t">
+                <thead><tr><th>Code</th><th>Rule</th><th class="r">Uses</th><th class="r">Hit the cap</th><th class="r">Given away</th><th class="r">Kept</th></tr></thead>
+                <tbody id="anaRows"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ TEST ============ -->
+      <section class="screen" id="s-test">
+        <div class="page">
+          <div class="pagehead">
+            <div><h1>Test a cart</h1><p class="sub">Build a basket and see the real checkout result before you send the code to anyone.</p></div>
+          </div>
+
+          <div class="cols">
+            <div>
+              <div class="card">
+                <div class="cardhead"><h2>Test basket <span class="tag v1">V1</span></h2><div class="acts"><button class="btn sm" id="addLine">Add product</button></div></div>
+                <div class="colines" id="testLines"></div>
+                <div class="hr"></div>
+                <div class="coline"><span class="cn" style="font-weight:600">Subtotal</span><span class="cv num" id="testSubtotal">1,400.00 EUR</span></div>
+              </div>
+
+              <div class="card">
+                <div class="cardhead"><h2>Discount to test</h2></div>
+                <select class="inp" id="testCode"></select>
+                <p class="help" id="testRule"></p>
+              </div>
+            </div>
+
+            <div class="side">
+              <div class="card">
+                <h2 style="margin-bottom:10px">Result</h2>
+                <div class="compare" style="grid-template-columns:1fr">
+                  <div class="comparecol">
+                    <h3 class="sub">Without MaxOff</h3>
+                    <div class="checkout" style="margin-bottom:12px">
+                      <div class="coline"><span class="cn">Discount given</span><span class="cv num" id="testNoCap">210.00 EUR</span></div>
+                      <div class="coline total"><span class="cn">Customer pays</span><span class="cv num" id="testNoCapTotal">1,190.00 EUR</span></div>
+                    </div>
+                  </div>
+                  <div class="comparecol">
+                    <h3><span class="appicon" style="width:14px;height:14px;font-size:8px">M</span> With MaxOff</h3>
+                    <div class="checkout" style="box-shadow:inset 0 0 0 1px var(--brand-line);background:var(--brand-soft)">
+                      <div class="coline discount"><span class="cn">Discount given</span><span class="cv num" id="testCap">150.00 EUR</span></div>
+                      <div class="capnote" id="testCapNote">Capped at maximum amount</div>
+                      <div class="coline total"><span class="cn">Customer pays</span><span class="cv num" id="testCapTotal">1,250.00 EUR</span></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="hr"></div>
+                <p style="margin:0;font-weight:600;color:var(--brand)" id="testKeep">You keep 60.00 EUR on this order.</p>
+                <button class="btn" style="width:100%;justify-content:center;margin-top:12px" id="openCheckout2">See the buyer's checkout</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ SETTINGS ============ -->
+      <section class="screen" id="s-settings">
+        <div class="page">
+          <div class="pagehead"><div><h1>Settings</h1><p class="sub">How MaxOff behaves in your store.</p></div></div>
+
+          <div class="card">
+            <div class="cardhead"><h2>Checkout wording <span class="tag v2">V2</span></h2></div>
+            <label class="fl" for="setMsg">Default note under a capped discount</label>
+            <input class="inp" id="setMsg" value="Discount capped at maximum amount">
+            <p class="help">Used for new discounts. You can override it on any single discount.</p>
+          </div>
+
+          <div class="card">
+            <div class="cardhead"><h2>Currency and rounding <span class="tag v1">V1</span></h2></div>
+            <div class="fgrid c2">
+              <div><label class="fl" for="setCur">Store currency</label><select class="inp" id="setCur"><option value="USD">USD — US Dollar</option><option value="EUR">EUR — Euro</option></select></div>
+              <div><label class="fl" for="setRound">Rounding</label><select class="inp" id="setRound"><option>To the cent (recommended)</option><option>Down to the whole unit</option></select></div>
+            </div>
+            <div class="banner info" style="margin:12px 0 0"><span class="bi">i</span><div><p>Selling in several currencies? <b>Set a maximum per market</b> instead of converting one number. <span class="tag pro">PRO</span></p></div></div>
+          </div>
+
+          <div class="card">
+            <div class="cardhead"><h2>Email alerts <span class="tag v2">V2</span></h2></div>
+            <div class="stack" style="gap:8px">
+              <label class="choice"><input type="checkbox" checked><span><span class="ct">Weekly summary of money kept</span><span class="cd">Sent Monday to devteam01@mpctrades.com</span></span></label>
+              <label class="choice"><input type="checkbox" checked><span><span class="ct">A discount is about to expire</span><span class="cd">Two days before the end date.</span></span></label>
+              <label class="choice"><input type="checkbox"><span><span class="ct">A single order hits the cap by more than 100 <span class="cur">USD</span></span><span class="cd">Useful for spotting an influencer code being shared publicly.</span></span></label>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="cardhead"><h2>How MaxOff runs <span class="tag v1">V1</span></h2></div>
+            <div class="sumlist">
+              <div class="sumrow"><span class="k">Engine</span><span class="v">Shopify Function · discount · <span class="pill ok" style="font-size:11px">Active</span></span></div>
+              <div class="sumrow"><span class="k">Storefront code</span><span class="v">None. MaxOff adds nothing to your theme.</span></div>
+              <div class="sumrow"><span class="k">Where caps are stored</span><span class="v">On the discount itself, in your Shopify store.</span></div>
+              <div class="sumrow"><span class="k">If you uninstall</span><span class="v">Capped discounts stop capping and can be deleted from Shopify's own Discounts page. Nothing is left behind in your theme.</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ BILLING ============ -->
+      <section class="screen" id="s-billing">
+        <div class="page">
+          <div class="pagehead"><div><h1>Plans &amp; billing</h1><p class="sub">Flat monthly price. No transaction fees, no revenue share — ever.</p></div></div>
+
+          <div class="banner brand" style="margin-bottom:16px">
+            <span class="bi">✓</span>
+            <div><h3>Growth · 4.99 USD/month</h3><p>MaxOff has kept 1,240.00 <span class="cur">USD</span> for you this month. That is 248× the subscription.</p></div>
+          </div>
+
+          <div class="plans">
+            <div class="plan">
+              <span class="pn">FREE</span>
+              <span class="pp">0 <small>USD/month</small></span>
+              <ul>
+                <li><span class="tick">✓</span> 1 active capped discount</li>
+                <li><span class="tick">✓</span> Maximum on the whole order</li>
+                <li><span class="tick">✓</span> Live preview and cart tester</li>
+                <li><span class="tick">✓</span> "Powered by MaxOff" note at checkout</li>
+              </ul>
+              <button class="btn" style="justify-content:center">Downgrade</button>
+            </div>
+            <div class="plan current">
+              <div class="row" style="justify-content:space-between"><span class="pn">GROWTH</span><span class="pill ok">Current plan</span></div>
+              <span class="pp">4.99 <small>USD/month</small></span>
+              <ul>
+                <li><span class="tick">✓</span> Unlimited capped discounts</li>
+                <li><span class="tick">✓</span> Start and end dates</li>
+                <li><span class="tick">✓</span> Money-kept dashboard and analytics</li>
+                <li><span class="tick">✓</span> Custom checkout wording</li>
+                <li><span class="tick">✓</span> Email support</li>
+              </ul>
+              <button class="btn" style="justify-content:center" disabled>Your plan</button>
+            </div>
+            <div class="plan">
+              <span class="pn">PRO</span>
+              <span class="pp">9.99 <small>USD/month</small></span>
+              <ul>
+                <li><span class="tick">✓</span> Everything in Growth</li>
+                <li><span class="tick">✓</span> Maximum per item and per collection</li>
+                <li><span class="tick">✓</span> A different maximum per market currency</li>
+                <li><span class="tick">✓</span> CSV export and 12-month history</li>
+                <li><span class="tick">✓</span> Priority support</li>
+              </ul>
+              <button class="btn primary" style="justify-content:center">Upgrade to Pro</button>
+            </div>
+          </div>
+
+          <p class="sub tiny" style="text-align:center;margin-top:16px">Charged through Shopify with the rest of your bill. Cancel any time from your Shopify admin.</p>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<div id="modalRoot"></div>
+
+<script>
+(function(){
+  "use strict";
+  var CUR = "USD";
+  function money(n){ return n.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  function eur(n){ return money(n)+" "+CUR; }
+  function $(s,r){ return (r||document).querySelector(s); }
+  function $$(s,r){ return Array.prototype.slice.call((r||document).querySelectorAll(s)); }
+
+  /* ---------- data ---------- */
+  var DISCOUNTS = [
+    {code:"SUMMER15", pct:15, cap:150, scope:"order", status:"active",   used:148, kept:612.40, given:1620.00},
+    {code:"VIP20",    pct:20, cap:80,  scope:"order", status:"active",   used:96,  kept:388.20, given:742.00},
+    {code:"WELCOME10",pct:10, cap:25,  scope:"order", status:"active",   used:210, kept:139.40, given:498.00},
+    {code:"BF30",     pct:30, cap:200, scope:"order", status:"scheduled",used:0,   kept:0,      given:0},
+    {code:"BF-TEST",  pct:30, cap:200, scope:"order", status:"paused",   used:4,   kept:62.00,  given:180.00},
+    {code:"SPRING12", pct:12, cap:60,  scope:"order", status:"expired",  used:63,  kept:38.00,  given:301.00}
+  ];
+  var STATUS = {active:["ok","Active"],scheduled:["info","Scheduled"],paused:["warn","Paused"],expired:["neutral","Expired"]};
+  var WEEKS = [
+    {label:"Jul 7",  v:84},{label:"Jul 14", v:132},{label:"Jul 21", v:96},{label:"Jul 28", v:178},
+    {label:"Aug 4",  v:214},{label:"Aug 11", v:296},{label:"Aug 18", v:341},{label:"Aug 25", v:389}
+  ];
+
+  /* ---------- navigation ---------- */
+  function go(id){
+    $$(".screen").forEach(function(s){ s.classList.toggle("on", s.id === "s"+"-"+id); });
+    $$("#appnav .navitem").forEach(function(b){ b.classList.toggle("active", b.dataset.go === id); });
+    $("#main").scrollTop = 0;
+  }
+  document.addEventListener("click", function(e){
+    var t = e.target.closest("[data-go]");
+    if(t){ go(t.dataset.go); }
+  });
+  go("home");
+
+  /* ---------- toast ---------- */
+  var toastEl = $("#toast"), toastTimer;
+  function toast(msg){
+    toastEl.textContent = msg; toastEl.classList.add("on");
+    clearTimeout(toastTimer); toastTimer = setTimeout(function(){ toastEl.classList.remove("on"); }, 2200);
+  }
+
+  /* ---------- build phase tags ---------- */
+  var tagToggle = $("#tagToggle");
+  function syncTags(){ document.body.classList.toggle("show-tags", tagToggle.checked); }
+  tagToggle.addEventListener("change", syncTags); syncTags();
+
+  /* ---------- chart ---------- */
+  function drawChart(svgId, tipId, data){
+    var svg = document.getElementById(svgId), tip = document.getElementById(tipId);
+    if(!svg) return;
+    var W = 700, H = 180, padL = 44, padR = 12, padT = 16, padB = 26;
+    var max = Math.max.apply(null, data.map(function(d){ return d.v; }));
+    var niceMax = Math.ceil(max/100)*100;
+    var iw = W - padL - padR, ih = H - padT - padB;
+    var band = iw / data.length, bw = Math.min(band - 10, 46);
+    var parts = [];
+    [0, niceMax/2, niceMax].forEach(function(gv){
+      var y = padT + ih - (gv/niceMax)*ih;
+      parts.push('<line class="grid" x1="'+padL+'" y1="'+y.toFixed(1)+'" x2="'+(W-padR)+'" y2="'+y.toFixed(1)+'"/>');
+      parts.push('<text x="'+(padL-8)+'" y="'+(y+3.5).toFixed(1)+'" text-anchor="end">'+gv+'</text>');
+    });
+    data.forEach(function(d,i){
+      var h = (d.v/niceMax)*ih, x = padL + band*i + (band-bw)/2, y = padT + ih - h;
+      var isMax = d.v === max;
+      parts.push('<rect class="bar'+(isMax?"":" mute")+'" x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+Math.max(h,2).toFixed(1)+'" rx="4" data-i="'+i+'"/>');
+      parts.push('<text x="'+(x+bw/2).toFixed(1)+'" y="'+(H-8)+'" text-anchor="middle">'+d.label+'</text>');
+      if(isMax) parts.push('<text class="val" x="'+(x+bw/2).toFixed(1)+'" y="'+(y-5).toFixed(1)+'" text-anchor="middle">'+d.v+' '+CUR+'</text>');
+    });
+    svg.innerHTML = parts.join("");
+    svg.addEventListener("mousemove", function(ev){
+      var r = ev.target.closest(".bar");
+      if(!r){ tip.classList.remove("on"); return; }
+      var d = data[+r.dataset.i], box = svg.getBoundingClientRect();
+      tip.innerHTML = d.label + ' · <b>' + eur(d.v) + '</b> kept';
+      tip.style.left = (ev.clientX - box.left) + "px";
+      tip.style.top  = (ev.clientY - box.top) + "px";
+      tip.classList.add("on");
+    });
+    svg.addEventListener("mouseleave", function(){ tip.classList.remove("on"); });
+  }
+  drawChart("homeChart","homeTip",WEEKS);
+  drawChart("anaChart","anaTip",WEEKS);
+  drawChart("detailChart","detailTip",WEEKS.map(function(w){ return {label:w.label, v:Math.round(w.v*0.49)}; }));
+
+  /* ---------- tables ---------- */
+  function pill(status){ var s = STATUS[status]; return '<span class="pill '+s[0]+'">'+s[1]+'</span>'; }
+  function breakEven(d){ return d.cap / (d.pct/100); }
+
+  function rowHTML(d, withActions){
+    return '<tr>'
+      + (withActions ? '<td><input type="checkbox" aria-label="Select '+d.code+'"></td>' : '')
+      + '<td><button class="rowlink mono" data-detail="'+d.code+'">'+d.code+'</button></td>'
+      + '<td class="num">'+d.pct+'% off</td>'
+      + '<td class="num">'+eur(d.cap)+'</td>'
+      + '<td class="num sub">'+eur(breakEven(d))+'</td>'
+      + '<td class="r num">'+d.used+'</td>'
+      + '<td class="r num" style="font-weight:600;color:var(--brand)">'+(d.kept ? eur(d.kept) : "—")+'</td>'
+      + '<td>'+pill(d.status)+'</td>'
+      + (withActions ? '<td class="r"><button class="btn sm" data-act="'+d.code+'">'+(d.status==="paused"?"Activate":"Pause")+'</button></td>' : '')
+      + '</tr>';
+  }
+  function renderHome(){ $("#homeRows").innerHTML = DISCOUNTS.filter(function(d){ return d.status==="active"; }).map(function(d){ return rowHTML(d,false); }).join(""); }
+  renderHome();
+
+  var currentTab = "all";
+  function renderList(){
+    var q = ($("#listSearch").value || "").toLowerCase();
+    var rows = DISCOUNTS.filter(function(d){
+      return (currentTab==="all" || d.status===currentTab) && d.code.toLowerCase().indexOf(q) > -1;
+    });
+    $("#listRows").innerHTML = rows.map(function(d){ return rowHTML(d,true); }).join("");
+    $("#listEmpty").hidden = rows.length > 0;
+  }
+  renderList();
+  $("#listSearch").addEventListener("input", renderList);
+  $$("#listTabs .tab").forEach(function(b){
+    b.addEventListener("click", function(){
+      $$("#listTabs .tab").forEach(function(x){ x.classList.remove("on"); });
+      b.classList.add("on"); currentTab = b.dataset.tab; renderList();
+    });
+  });
+  $("#selAll").addEventListener("change", function(){
+    $$("#listRows input[type=checkbox]").forEach(function(c){ c.checked = $("#selAll").checked; });
+  });
+  $("#listRows").addEventListener("click", function(e){
+    var a = e.target.closest("[data-act]"); if(!a) return;
+    var d = DISCOUNTS.filter(function(x){ return x.code === a.dataset.act; })[0];
+    d.status = d.status === "paused" ? "active" : "paused";
+    renderList(); toast(d.code + (d.status==="paused" ? " paused" : " activated"));
+  });
+  $("#exportBtn").addEventListener("click", function(){ toast("Export is a Pro feature"); });
+
+  document.addEventListener("click", function(e){
+    var b = e.target.closest("[data-detail]"); if(!b) return;
+    var d = DISCOUNTS.filter(function(x){ return x.code === b.dataset.detail; })[0];
+    $("#dCode").textContent = d.code;
+    $("#dSub").textContent = d.pct+"% off · maximum "+eur(d.cap)+" per order · cap starts above "+eur(breakEven(d));
+    go("detail");
+  });
+
+  var ORDERS = [
+    {id:"#1042", date:"31 Aug", cart:1650}, {id:"#1039", date:"30 Aug", cart:1180},
+    {id:"#1031", date:"28 Aug", cart:2240}, {id:"#1024", date:"26 Aug", cart:1075},
+    {id:"#1018", date:"24 Aug", cart:1420}
+  ];
+  function renderDetailRows(){
+  $("#detailRows").innerHTML = ORDERS.map(function(o){
+    var full = o.cart*0.15, given = Math.min(full,150);
+    return '<tr><td class="mono">'+o.id+'</td><td class="sub">'+o.date+'</td><td class="r num">'+eur(o.cart)+'</td>'
+      + '<td class="r num strike">'+eur(full)+'</td><td class="r num">'+eur(given)+'</td>'
+      + '<td class="r num" style="font-weight:600;color:var(--brand)">'+eur(full-given)+'</td></tr>';
+  }).join(""); }
+  renderDetailRows();
+
+  function renderAnaRows(){
+  $("#anaRows").innerHTML = DISCOUNTS.filter(function(d){ return d.used>0; }).map(function(d){
+    var hit = Math.round(d.used*0.21);
+    return '<tr><td><button class="rowlink mono" data-detail="'+d.code+'">'+d.code+'</button></td>'
+      + '<td class="sub">'+d.pct+'% · max '+eur(d.cap)+'</td>'
+      + '<td class="r num">'+d.used+'</td><td class="r num">'+hit+'</td>'
+      + '<td class="r num">'+eur(d.given)+'</td>'
+      + '<td class="r num" style="font-weight:600;color:var(--brand)">'+eur(d.kept)+'</td></tr>';
+  }).join(""); }
+  renderAnaRows();
+
+  /* ---------- create form: live calculation ---------- */
+  var fPct = $("#fPct"), fCap = $("#fCap"), fSim = $("#fSim"), fCode = $("#fCode");
+  function calc(){
+    var pct = Math.max(0, +fPct.value || 0), cap = Math.max(0, +fCap.value || 0), cart = +fSim.value;
+    var full = cart * pct/100, given = Math.min(full, cap), saved = full - given;
+    var be = pct > 0 ? cap/(pct/100) : 0;
+
+    $("#simVal").textContent = eur(cart);
+    $("#simDiscount").textContent = eur(given);
+    $("#simExplain").innerHTML = saved > 0.004
+      ? 'instead of <span class="strike">'+eur(full)+'</span> — the maximum stopped it.'
+      : 'the full '+pct+'% — still under your maximum.';
+    $("#simKeep").textContent = saved > 0.004
+      ? "You keep "+eur(saved)+" on this order."
+      : "This cart is below "+eur(be)+", so the maximum does not apply yet.";
+
+    var scale = Math.max(full, cap, 1);
+    $("#barLoss").style.width = (full/scale*100)+"%";
+    $("#barKeep").style.width = (given/scale*100)+"%";
+    $("#barLossV").textContent = money(full);
+    $("#barKeepV").textContent = money(given);
+
+    $("#capHint").innerHTML = pct > 0
+      ? 'At <b>'+pct+'%</b>, the maximum of <b>'+eur(cap)+'</b> starts working on carts above <b>'+eur(be)+'</b>. Smaller carts get the full percentage.'
+      : 'Enter a percentage to see when the maximum starts working.';
+
+    $("#sumCode").textContent = (fCode.value || "—").toUpperCase();
+    $("#sumValue").textContent = pct+"% off";
+    var scopeEl = document.querySelector('input[name="scope"]:checked');
+    var scopeTxt = scopeEl && scopeEl.value === "item" ? "per item" : (scopeEl && scopeEl.value === "collection" ? "per collection" : "per order");
+    $("#sumCap").textContent = eur(cap)+" "+scopeTxt;
+    $("#sumStart").textContent = "above "+eur(be);
+
+    $$(".chip[data-sim]").forEach(function(c){ c.classList.toggle("on", +c.dataset.sim === cart); });
+  }
+  [fPct,fCap,fSim,fCode].forEach(function(el){ el.addEventListener("input", calc); });
+  $$('input[name="scope"]').forEach(function(r){ r.addEventListener("change", function(){
+    if(r.value !== "order" && r.checked){ toast("Per-item maximums are a Pro feature"); }
+    calc();
+  }); });
+  $$(".chip[data-sim]").forEach(function(c){ c.addEventListener("click", function(){ fSim.value = c.dataset.sim; calc(); }); });
+  calc();
+
+  $("#genCode").addEventListener("click", function(){
+    var w = ["SAVE","DEAL","GIFT","VIP","BOOST"], n = Math.floor(Math.random()*89)+10;
+    fCode.value = w[Math.floor(Math.random()*w.length)] + n; calc();
+  });
+  $$("#methodSeg button").forEach(function(b){
+    b.addEventListener("click", function(){
+      $$("#methodSeg button").forEach(function(x){ x.classList.remove("on"); });
+      b.classList.add("on");
+      var isCode = b.dataset.method === "code";
+      $("#codeField").hidden = !isCode; $("#autoField").hidden = isCode;
+      $("#sumCode").textContent = isCode ? fCode.value.toUpperCase() : $("#fTitle").value;
+    });
+  });
+  $("#fHasEnd").addEventListener("change", function(){ $("#endWrap").hidden = !this.checked; });
+  $("#fLimitTotal").addEventListener("change", function(){ $("#fLimitTotalN").disabled = !this.checked; });
+  ["fStart","fEnd","fHasEnd"].forEach(function(id){
+    $("#"+id).addEventListener("change", function(){
+      var f = function(v){ return v ? new Date(v).toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"}) : "—"; };
+      $("#sumDates").textContent = $("#fHasEnd").checked ? f($("#fStart").value)+" – "+f($("#fEnd").value) : "From "+f($("#fStart").value);
+    });
+  });
+  var TPL = {
+    influencer:{code:"CREATOR20",pct:20,cap:80}, bf:{code:"BLACKFRIDAY30",pct:30,cap:200},
+    welcome:{code:"WELCOME10",pct:10,cap:25},    vip:{code:"VIP25",pct:25,cap:120}
+  };
+  $$("[data-tpl]").forEach(function(b){
+    b.addEventListener("click", function(){
+      var t = TPL[b.dataset.tpl];
+      fCode.value = t.code; fPct.value = t.pct; fCap.value = t.cap; calc();
+      toast("Template applied — edit anything you like");
+    });
+  });
+  $("#saveBtn").addEventListener("click", function(){ toast(($("#fCode").value||"Discount").toUpperCase()+" is live at checkout"); go("list"); });
+
+  /* ---------- test a cart ---------- */
+  var LINES = [
+    {emoji:"🧸", name:"BT21 Plush XXL Set", price:620, qty:1},
+    {emoji:"🧴", name:"K-Beauty Premium Box", price:260, qty:3}
+  ];
+  var testSel = $("#testCode");
+  function renderTestOptions(){
+    var keep = testSel.value;
+    testSel.innerHTML = DISCOUNTS.filter(function(d){ return d.status!=="expired"; })
+      .map(function(d){ return '<option value="'+d.code+'">'+d.code+' — '+d.pct+'% max '+eur(d.cap)+'</option>'; }).join("");
+    if(keep) testSel.value = keep;
+  }
+  renderTestOptions();
+
+  function renderTest(){
+    $("#testLines").innerHTML = LINES.map(function(l,i){
+      return '<div class="coline"><span class="thumb">'+l.emoji+'</span>'
+        + '<span class="cn">'+l.name+'<br><span class="sub tiny">'+eur(l.price)+' each</span></span>'
+        + '<span class="row" style="gap:4px;flex-wrap:nowrap"><button class="btn sm" data-q="'+i+'" data-d="-1" aria-label="Decrease quantity">–</button>'
+        + '<span class="num" style="min-width:18px;text-align:center">'+l.qty+'</span>'
+        + '<button class="btn sm" data-q="'+i+'" data-d="1" aria-label="Increase quantity">+</button></span>'
+        + '<span class="cv num" style="min-width:88px;text-align:right">'+eur(l.price*l.qty)+'</span></div>';
+    }).join("");
+    var subtotal = LINES.reduce(function(s,l){ return s + l.price*l.qty; }, 0);
+    var d = DISCOUNTS.filter(function(x){ return x.code === testSel.value; })[0] || DISCOUNTS[0];
+    var full = subtotal * d.pct/100, given = Math.min(full, d.cap), kept = full - given;
+
+    $("#testSubtotal").textContent = eur(subtotal);
+    $("#testRule").innerHTML = '<b>'+d.pct+'%</b> off, never more than <b>'+eur(d.cap)+'</b> — the maximum starts on carts above <b>'+eur(breakEven(d))+'</b>.';
+    $("#testNoCap").textContent = eur(full);
+    $("#testNoCapTotal").textContent = eur(subtotal-full);
+    $("#testCap").textContent = eur(given);
+    $("#testCapTotal").textContent = eur(subtotal-given);
+    $("#testCapNote").textContent = kept > 0.004 ? "Capped at maximum amount" : "Under the maximum — full percentage applied";
+    $("#testKeep").textContent = kept > 0.004 ? "You keep "+eur(kept)+" on this order." : "This cart is under the cap. Nothing to keep yet — try adding items.";
+  }
+  $("#testLines").addEventListener("click", function(e){
+    var b = e.target.closest("[data-q]"); if(!b) return;
+    var l = LINES[+b.dataset.q]; l.qty = Math.max(1, l.qty + (+b.dataset.d)); renderTest();
+  });
+  testSel.addEventListener("change", renderTest);
+  $("#addLine").addEventListener("click", function(){
+    var pool = [{emoji:"🎧",name:"Idol Photocard Album",price:45},{emoji:"👕",name:"Tour Hoodie",price:89},{emoji:"🍜",name:"Ramyeon Variety Pack",price:32}];
+    LINES.push(Object.assign({qty:1}, pool[LINES.length % pool.length])); renderTest();
+  });
+  renderTest();
+
+  /* ---------- checkout modal ---------- */
+  function openCheckout(cart, pct, cap, code, note){
+    var full = cart*pct/100, given = Math.min(full,cap), kept = full-given;
+    var root = $("#modalRoot");
+    root.innerHTML = ''
+      + '<div class="scrim" role="dialog" aria-modal="true" aria-label="Checkout preview">'
+      +   '<div class="modal">'
+      +     '<div class="modalhead"><h2>What the buyer sees at checkout</h2><button class="btn sm" style="margin-left:auto" data-close>Close</button></div>'
+      +     '<div class="modalbody">'
+      +       '<div class="checkout"><div class="colines">'
+      +         '<div class="coline"><span class="thumb">🧸</span><span class="cn">Order subtotal</span><span class="cv num">'+eur(cart)+'</span></div>'
+      +         '<div class="coline discount"><span class="thumb" style="background:var(--brand-bright);color:var(--brand-ink)">%</span><span class="cn">'+code+' — '+pct+'% off <span class="sub tiny">(max '+eur(cap)+')</span></span><span class="cv num">−'+eur(given)+'</span></div>'
+      +         (kept>0.004 && note ? '<div class="capnote" style="margin-left:44px">'+note+'</div>' : '')
+      +         '<div class="coline"><span class="thumb" style="visibility:hidden"></span><span class="cn sub">Shipping</span><span class="cv num sub">Free</span></div>'
+      +         '<div class="coline total"><span class="cn">Total</span><span class="cv num">'+eur(cart-given)+'</span></div>'
+      +       '</div></div>'
+      +       (kept > 0.004
+                ? '<div class="banner brand" style="margin:14px 0 0"><span class="bi">✓</span><div><p>Without a maximum this order would have given away <b>'+eur(full)+'</b>. You kept <b>'+eur(kept)+'</b>.</p></div></div>'
+                : '<div class="banner info" style="margin:14px 0 0"><span class="bi">i</span><div><p>This cart is under the maximum, so the buyer gets the full '+pct+'%.</p></div></div>')
+      +     '</div>'
+      +     '<div class="modalfoot"><button class="btn primary" data-close>Done</button></div>'
+      +   '</div>'
+      + '</div>';
+    root.addEventListener("click", function h(e){
+      if(e.target.closest("[data-close]") || e.target.classList.contains("scrim")){ root.innerHTML = ""; root.removeEventListener("click", h); }
+    });
+  }
+  $("#openCheckout").addEventListener("click", function(){
+    openCheckout(+fSim.value, +fPct.value, +fCap.value, (fCode.value||"CODE").toUpperCase(), $("#fMsg").value);
+  });
+  $("#openCheckout2").addEventListener("click", function(){
+    var subtotal = LINES.reduce(function(s,l){ return s+l.price*l.qty; },0);
+    var d = DISCOUNTS.filter(function(x){ return x.code === testSel.value; })[0];
+    openCheckout(subtotal, d.pct, d.cap, d.code, $("#setMsg").value);
+  });
+  document.addEventListener("keydown", function(e){ if(e.key === "Escape"){ $("#modalRoot").innerHTML = ""; } });
+
+  /* ---------- currency ---------- */
+  function setCurrency(c){
+    CUR = c;
+    $$(".cur").forEach(function(el){ el.textContent = c; });
+    $("#curSel").value = c; $("#setCur").value = c;
+    renderHome(); renderList(); renderDetailRows(); renderAnaRows(); renderTestOptions();
+    drawChart("homeChart","homeTip",WEEKS);
+    drawChart("anaChart","anaTip",WEEKS);
+    drawChart("detailChart","detailTip",WEEKS.map(function(w){ return {label:w.label, v:Math.round(w.v*0.49)}; }));
+    calc(); renderTest();
+    var d = DISCOUNTS.filter(function(x){ return x.code === $("#dCode").textContent; })[0];
+    if(d) $("#dSub").textContent = d.pct+"% off \u00b7 maximum "+eur(d.cap)+" per order \u00b7 cap starts above "+eur(breakEven(d));
+  }
+  $("#curSel").addEventListener("change", function(){ setCurrency(this.value); toast("Showing amounts in "+this.value); });
+  $("#setCur").addEventListener("change", function(){ setCurrency(this.value); toast("Store currency set to "+this.value); });
+  setCurrency("USD");
+
+  /* ---------- setup guide collapse ---------- */
+  $("#guideToggle").addEventListener("click", function(){
+    var s = $("#guideSteps"); var hidden = s.hasAttribute("hidden");
+    if(hidden){ s.removeAttribute("hidden"); this.textContent = "Hide"; }
+    else { s.setAttribute("hidden",""); this.textContent = "Show"; }
+  });
+})();
+</script>
+
+</body>
+</html>
