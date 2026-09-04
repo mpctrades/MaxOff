@@ -1,0 +1,17 @@
+api_version = "2026-10"
+
+[[extensions]]
+name = "t:name"
+handle = "max-off-cap"
+type = "function"
+uid = "da7fd5bb-423b-fdb9-7d79-d37b1d7ca6ccd6a9cfd3"
+description = "t:description"
+
+  [[extensions.targeting]]
+  target = "cart.lines.discounts.generate.run"
+  input_query = "src/cart_lines_discounts_generate_run.graphql"
+  export = "cart-lines-discounts-generate-run"
+
+  [extensions.build]
+  command = ""
+  path = "dist/function.wasm"

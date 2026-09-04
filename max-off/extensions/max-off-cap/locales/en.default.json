@@ -1,0 +1,4 @@
+{
+  "name": "MaxOff cap",
+  "description": "Applies a percentage discount that stops at a maximum amount."
+}

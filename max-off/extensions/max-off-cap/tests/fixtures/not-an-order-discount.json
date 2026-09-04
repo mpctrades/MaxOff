@@ -1,0 +1,24 @@
+{
+  "payload": {
+    "export": "cart-lines-discounts-generate-run",
+    "target": "cart.lines.discounts.generate.run",
+    "input": {
+      "cart": {
+        "cost": {
+          "subtotalAmount": {
+            "amount": "1400.00",
+            "currencyCode": "USD"
+          }
+        }
+      },
+      "discount": {
+        "discountClasses": [
+          "PRODUCT"
+        ]
+      }
+    },
+    "output": {
+      "operations": []
+    }
+  }
+}
