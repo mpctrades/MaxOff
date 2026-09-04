@@ -1,7 +1,8 @@
 # MaxOff — build specification
 
 **Owner:** Sophea (devteam01@mpctrades.com) · **Reviewer:** Arthur · MPC Trades
-**Status:** v1 spec, 3 Sep 2026 · **Reference UX:** `docs/MaxOff-mockup.html`
+**Status:** v1 spec, 3 Sep 2026 · corrected 4 Sep 2026 after API verification (§3.1, §3.2, §3.3,
+§3.5, §3.6, §4, §4.3, §4.8, §9) · **Reference UX:** `docs/MaxOff-mockup.html`
 
 This document is the contract. If the code and this document disagree, one of them is a bug —
 say which, and ask. If this document and `docs/MaxOff-mockup.html` disagree, the mockup wins on
@@ -97,7 +98,8 @@ The cap configuration is stored **on the Shopify discount itself**, in an app-ow
 that the Function can read it at checkout without a network call. Our Prisma tables are a mirror
 for listing, search, and analytics — **Shopify is the source of truth**, our DB is a cache.
 
-Expected metafield (verify namespace/key rules with `shopify-dev-mcp` before implementing):
+Metafield (**verified 4 Sep 2026** — `$app:` is the documented app-reserved prefix, and Shopify
+recommends a single JSON metafield for nested config):
 
 ```
 namespace: "$app:maxoff"
@@ -113,36 +115,119 @@ value:     {
 }
 ```
 
+Three mechanics that go with it, none of them obvious:
+
+- The Function reads it with
+  `discount { metafield(namespace: "$app:maxoff", key: "cap_config") { jsonValue } }`.
+- `extensions/max-off-cap/shopify.extension.toml` needs an `[extensions.input.variables]` block
+  naming the **same** namespace and key. That binding is what lets the Function see the metafield.
+- `shopify.app.toml` declares the definition in a `[discount.metafields.app.cap_config]` block —
+  it goes exactly where the template's `[product.metafields.app.demo_info]` block is today.
+
+The metafield can be written **inline in the `discountCodeAppCreate` mutation** via its
+`metafields` input. No separate `metafieldsSet` round trip on create.
+
 ### 3.2 The Function
 
-Generate with `npm run generate` (`shopify app generate extension`) and pick the discount template.
-Name it `max-off-cap`.
+**Verified against shopify.dev on 4 Sep 2026. The cap mechanism is confirmed — this is no longer
+an open risk.**
 
-Expected target: `cart.lines.discounts.generate.run`, returning discount operations with a
-candidate whose value is a percentage, constrained by the cap. **Verify all of this against the
-live schema before writing a line** — `introspect_graphql_schema` on the Function API, and
-`search_docs_chunks` for "discounts allocator" and "maximum discount amount".
+Generate with `shopify app generate extension --template discount --name max-off-cap`.
 
-Three things the Function must get right:
+Target: `cart.lines.discounts.generate.run`. Discount class: `ORDER`.
+
+**How the cap is actually expressed.** There is no "percentage constrained by a maximum" in the
+API. You do not hand Shopify a percentage and a ceiling. Instead the Function does the arithmetic
+itself and returns the *result* as a fixed amount:
+
+```
+read pct + cap from the discount's metafield
+subtotal = cart.cost.subtotalAmount.amount
+given    = min(subtotal × pct / 100, cap)      // minor units, half-up, once
+emit     orderDiscountsAdd {
+           candidates: [{
+             value:   { fixedAmount: { amount: given } },
+             targets: [{ orderSubtotal: { excludedCartLineIds: [] } }],
+             message: "SUMMER15 — 15% off (max 150.00 USD)"
+           }],
+           selectionStrategy: FIRST
+         }
+```
+
+Two schema facts make this work, both confirmed on
+`https://shopify.dev/docs/api/functions/2026-10/discount`:
+
+- `OrderDiscountCandidateValue` is a union of exactly **`FixedAmount`** (`amount`, `currencyCode`)
+  and **`Percentage`** (`value`). A fixed amount is legal on an `orderSubtotal` target.
+- `cart.cost.subtotalAmount` is available in the input query, so the Function can see the cart
+  total. Schema description: *"The amount, before taxes and cart-level discounts, for the customer
+  to pay."*
+
+This is not the same as a native fixed-amount discount. A native 150-off discount gives 150 on a
+700 cart. Ours gives 105, because the fixed amount is recomputed from the percentage on every
+checkout. It behaves like a percentage below break-even and like a ceiling above it.
+
+**⚠ Do not use the Discounts Allocator.** Shopify publishes a tutorial — "Build a Discounts
+Allocator Function" — that caps a discount from a `single_discount_cap` metafield and looks
+exactly like our product. It is the wrong tool and must not be used:
+
+- API version `unstable`, feature preview, **Shopify Plus merchants only**
+- needs the `write_discounts_allocator_functions` scope
+- Shopify's own warning: *"You're replacing the Shopify discount engine with the Discounts
+  Allocator Function. Your Function will take precedence over most discount features that are
+  built by Shopify."*
+
+One allocator per shop, shop-wide, overriding every other discount including Shopify's own. That
+breaks our combinations promise, excludes every non-Plus merchant, and cannot pass App Store
+review on an unstable API. If you find that page mid-build and think "this is us" — it is not.
+
+Four things the Function must get right:
 
 1. It reads the cap from the discount's metafield. No hard-coded numbers after week 2.
 2. It computes in **minor units (integers)**. Rounding to the cent, half-up, once, at the end.
-3. When combined with another discount, MaxOff caps **only its own share**. It never inspects or
-   reduces another app's or Shopify's discount. This is stated to the merchant in the create form
-   and must be true.
+3. It returns **no operations** unless `ORDER` is present in `discount.discountClasses`. Shopify's
+   caution: *"Your Function should only return operations for discountClasses that the discount
+   applies to."*
+4. When combined with another discount, MaxOff caps **only its own share**. It never inspects or
+   reduces another app's or Shopify's discount.
 
-If the Function cannot express the cap, the fallback is *not* "compute it in the app" — there is
-no safe way to do that at checkout. The fallback is to escalate to Arthur.
+Point 4 is true **by construction**, not by care: *"All discount functions run concurrently, and
+have no knowledge of each other."* Our Function cannot see another discount even if it wanted to.
+Its candidate is then combined with the others *"in alignment with the combination and stacking
+rules set on the discount node"* — i.e. by `combinesWith`, which the merchant controls on our
+create form.
+
+**Open question, to be answered by a real test in week 2 — not by reading.** The schema says the
+subtotal is before *cart-level* discounts. It does not say whether it is before or after
+*line-level* (product) discounts. So when a product discount is also on the cart, we do not yet
+know whether our 15% is computed on the full 1,400 or on the already-reduced figure. Put a
+combined-discount cart through checkout on the dev store, capture the Function input JSON, and
+record the answer here. Do not guess, and do not defer this past week 2 — it is cheap now and
+expensive in week 6.
 
 ### 3.3 Access scopes
 
 The template ships with `write_products,write_metaobjects,write_metaobject_definitions` — those are
 demo scopes and must be removed. MaxOff needs:
 
-- `write_discounts`, `read_discounts` — create, update, pause, delete capped discounts.
+- `write_discounts` — create, update, pause, delete capped discounts. **Required.**
 - `read_orders` — **only** for the money-kept analytics.
 
-`read_orders` is protected customer data and requires an approved reason in the Partner Dashboard.
+`read_discounts` was in an earlier draft of this spec and has been dropped. The discounts docs list
+only `write_discounts` as required (with `read_customers`, `read_products`, `read_shipping`
+optional); `write_discounts` covers our reads. Fewer scopes is better at review — add it back only
+if a read actually fails without it.
+
+`read_orders` is protected customer data. **It is Level 1, not Level 2**, provided we never read
+name, address, phone or email. Our webhook needs only order name, subtotal, discount applications
+and a timestamp — so keep it that way, and say so explicitly in the Partner Dashboard request:
+
+- **Level 1** — order data excluding name/address/phone/email. Request access in the Partner
+  Dashboard, and implement the level 1 requirements (process the minimum data needed, tell
+  merchants what you process and why, limit processing to the stated purpose).
+- **Level 2** — adds name/address/phone/email, and pulls us into data protection reviews. We do
+  not need this. Do not request it.
+
 Raise this with Arthur at Demo 2, not at Demo 4. If approval is a problem, the fallback for V1 is
 to report money kept from discount usage counts only, and mark the order-level table as V2.
 
@@ -216,18 +301,35 @@ handler. Recompute it, never increment blindly, if you ever backfill.
 Keep `app/uninstalled` and `app/scopes_update` from the template. Add `orders/paid` (not
 `orders/create` — we want money actually taken). Handler:
 
-1. Find our discount by code/gid among the order's discount applications.
+1. Find our discount among the order's discount applications, **matching by discount code**.
 2. `uncapped = round(subtotal × pct/100)`; `given` = what Shopify actually applied.
 3. If `uncapped > given`, write a `CapEvent` with `kept = uncapped − given`.
 4. Update the `CappedDiscount` totals.
 
+**Read `pct` from our own `CappedDiscount` row, never from the order.** Because the Function emits
+a *fixed amount* (§3.2), the order records a fixed-amount discount application — the percentage
+appears nowhere on the order. A handler that tries to infer the percentage from the order will be
+silently wrong.
+
 Handlers must be idempotent — `orderGid` is unique, so a duplicate delivery is a no-op.
+
+Read only what §3.3 permits: order name, subtotal, discount applications, timestamp. No customer
+name, address, phone or email — that is the line between Level 1 and Level 2 protected customer
+data, and crossing it costs us a data protection review.
 
 ### 3.6 Billing
 
-Use **Shopify Managed Pricing** (plans configured in the Partner Dashboard) unless it cannot
-express the tiers; it removes almost all billing code and it is what review expects in 2026.
-Confirm the current recommendation via `shopify-dev-mcp` first.
+Use **Shopify App Pricing** — the feature formerly called Managed Pricing. **Verified 4 Sep
+2026:** *"Shopify App Pricing is the default for new public apps and the recommended approach for
+existing apps with supported pricing models."* Three flat recurring plans with no usage component
+is squarely inside what it supports, and it removes almost all billing code.
+
+Two consequences the rest of this spec has to respect:
+
+- **Shopify hosts the plan selection page.** Merchants choose and change plans on a Shopify-hosted
+  page inside the admin, not on ours. Our billing screen displays and *redirects* — see §4.8.
+- It is configured in the **Partner Dashboard** (under the App Store listing), not the Dev
+  Dashboard, and it cannot coexist with Billing API plans.
 
 | Plan | Price | Limits enforced in code |
 |---|---|---|
@@ -262,6 +364,9 @@ Routes use flat-route file naming.
 App nav in `app/routes/app.tsx` (`<s-app-nav>`): Home · Capped discounts · Create new · Analytics ·
 Test a cart · Settings · Plans & billing. Replace the template's "Additional page" link and delete
 `app.additional.tsx`.
+
+**Eight screens, seven nav entries.** Detail (`app.discounts.$id.tsx`) has no nav link — it is
+reached from a row in the list. Do not add an eighth link trying to make the numbers match.
 
 ### 4.1 Home
 
@@ -322,7 +427,11 @@ Cards, in this order:
 6. **Combinations** — product / order / shipping discount checkboxes, plus the info banner:
    "When discounts are combined, the maximum still holds. MaxOff caps its own share only — it never
    touches the other discount."
-7. **What the customer sees** (V2) — checkout note field, 60 chars.
+7. **What the customer sees** (V2) — checkout note field, 60 chars, rendered disabled.
+   Note that the buyer *always* sees something: the Function's candidate carries a `message`, and
+   there is no "no message" state at checkout. So V1 ships a fixed, non-editable message built
+   from the discount — `"SUMMER15 — 15% off (max 150.00 USD)"` — plus the locked note "Discount
+   capped at maximum amount" (§11). Only *editing* that wording is V2.
 8. **Active dates** — start date/time, optional end date/time.
 9. **Live preview** (V1, the centrepiece) — a cart-total slider 50→3000, quick chips
    200 / 800 / 1,400 / 2,500, and:
@@ -390,6 +499,12 @@ products cheaply from the Admin API, do that instead and say so.
 The three plan cards from section 3.6, current plan outlined in brand colour, plus the banner
 "MaxOff has kept 1,240.00 USD for you this month. That is 248× the subscription." and the footer
 "Charged through Shopify with the rest of your bill. Cancel any time from your Shopify admin."
+
+**This screen displays; it does not transact.** Under Shopify App Pricing (§3.6) the plan
+selection page is hosted by Shopify. The "Upgrade to Pro" and "Downgrade" buttons **redirect** to
+that hosted page — they do not change the plan themselves. Read the current plan back from
+Shopify, never from a local guess. The mockup shows working buttons; the mockup is wrong here, and
+this paragraph wins.
 
 ### 4.9 Checkout preview modal
 
@@ -527,7 +642,10 @@ language — test it against the same table.
 
 | Risk | Signal | Response |
 |---|---|---|
-| The Function cannot cap the way we need | Week 1 spike does not produce 150 on a 1,400 cart | Escalate to Arthur the same day. Do not invent a workaround. |
+| ~~The Function cannot cap the way we need~~ **Closed 4 Sep 2026** | — | Mechanism verified against the 2026-10 Discount Function API. See §3.2. The spike now proves an implementation, not a possibility. |
+| The Function still does not produce 150 on a 1,400 cart | Week 1 checkout is wrong | Capture the Function input and output JSON *before* changing code. The mechanism is known good, so a wrong number is our bug, not a platform limit. |
+| Our percentage is computed on the wrong base when combined with a product discount | A combined-discount cart gives an unexpected number | Named open question in §3.2. Test it on the dev store in **week 2** and write the answer into §3.2. Do not let this reach week 6. |
+| Someone builds the Discounts Allocator | A PR adds `purchase.discounts-allocator.run` or `write_discounts_allocator_functions` | Stop. Read the warning in §3.2. It is Plus-only, unstable, and replaces the shop's discount engine. |
 | `read_orders` approval refused or slow | Partner Dashboard rejects the reason | Ship V1 analytics from discount usage counts only; move the per-order table to V2 |
 | Combined discounts behave unexpectedly | Two discounts on one cart give a wrong total | Reproduce on the dev store, capture the Function input JSON, bring it to the next demo |
 | Shopify changes the discount API mid-build | The MCP docs disagree with our code | Trust the MCP docs. Update this spec, tell Sophea, do not silently diverge |
