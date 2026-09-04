@@ -78,18 +78,43 @@ checkout. **Blocked on a decision — see "Open for Sophea" below.**
    whether `functionId` is deprecated in favour of `functionHandle` in 2026-10; resolve that in
    Gate 3 against the live schema, not the docs.
 
-### Open for Sophea — Gate 1 cannot close without this
+### Route B chosen — `write_discounts` added
 
-The Function is built and tested, but there is no way yet for a discount that *uses* it to exist
-on the dev store, and both routes need a decision:
+Sophea approved route B: the test discount is created once with `discountCodeAppCreate` rather
+than pulling Gate 3's create form forward to satisfy `[extensions.ui.paths]`. `access_scopes` in
+`shopify.app.toml` is now `write_discounts,write_products,write_metaobjects,write_metaobject_definitions`.
+The demo scopes stay until Gate 3 deletes them with the demo action they exist for.
 
-- **Route A — create it in the Shopify admin.** This is what spec §7 assumes ("create a discount by
-  hand in the Shopify admin"). It likely needs `[extensions.ui]` + `[extensions.ui.paths]` in
-  `shopify.extension.toml` pointing at a create route in our app — i.e. Gate 3's create form,
-  pulled forward. The docs do not state whether Shopify shows a default form without those paths,
-  and this session would not guess.
-- **Route B — create it once with `discountCodeAppCreate`** from GraphiQL, running as our app.
-  Keeps Gate 1 tiny, but needs `write_discounts` in `access_scopes`, which currently holds only the
-  template's demo scopes. Changing `access_scopes` needs Sophea's sign-off (CLAUDE.md rule 9).
+The mutation below was validated against the real 2026-10 admin schema, not copied from a doc page:
 
-Nothing else in Gate 1 is outstanding.
+```graphql
+mutation CreateMaxOffTestDiscount {
+  discountCodeAppCreate(codeAppDiscount: {
+    title: "MaxOff Gate 1 test"
+    code: "MAXOFF15"
+    functionHandle: "max-off-cap"
+    discountClasses: [ORDER]
+    startsAt: "2026-09-04T00:00:00Z"
+    combinesWith: { orderDiscounts: false, productDiscounts: false, shippingDiscounts: true }
+  }) {
+    userErrors { field message code }
+  }
+}
+```
+
+Three things that validation settled:
+
+- **`functionHandle` works** and takes the extension handle (`max-off-cap`), so no
+  `shopifyFunctions` lookup query is needed. The docs contradict themselves on whether `functionId`
+  is deprecated; the schema accepts the handle, so use it.
+- **`discountClasses: [ORDER]` must be passed.** Without it the Function's own guard returns no
+  operations and the discount silently does nothing.
+- **`read_discounts` is required to read a discount back.** Adding
+  `codeAppDiscount { discountId status … }` to the mutation's payload raises the required scopes to
+  `write_discounts, read_discounts`; with only `userErrors` selected it is `write_discounts` alone.
+  **This contradicts §3.3**, which dropped `read_discounts` on the grounds that "`write_discounts`
+  covers our reads". It does not. Gate 3's list and detail screens read discounts, so `read_discounts`
+  will have to come back then — §3.3 should be corrected rather than rediscovered in week 4.
+
+Nothing else in Gate 1 is outstanding on our side. It closes when Sophea reports the two checkout
+numbers.
