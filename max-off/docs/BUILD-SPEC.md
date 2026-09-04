@@ -438,3 +438,138 @@ alternative, and colour is never the only signal.
 - Rounding: half-up to the cent, applied once, on the final discount amount.
 - When the store currency changes, every amount **relabels**. Nothing is converted. Say so in the
   settings copy.
+
+---
+
+## 7. The eight weeks, and the four demos
+
+Each demo is a working thing Arthur can click, not a slide. If a week slips, cut scope inside the
+week — never move the demo.
+
+### Weeks 1–2 · Spike: prove the cap at checkout → **Demo 1**
+
+Generate the discount Function. Hard-code 15% / 150 cap. Deploy to
+`maxoff-s7fqtwdd.myshopify.com`. Create a discount by hand in the Shopify admin that runs the
+Function. Put a 1,400 cart through checkout and watch it take 150, not 210.
+
+Nothing else. No admin UI work. This week answers the one question that can kill the project.
+
+**Demo 1 passes when:** a real checkout on the dev store shows 150.00 on a 1,400 cart and 105.00 on
+a 700 cart, and Sophea can explain in one paragraph how the Function decided.
+
+### Weeks 3–4 · Real create form + list → **Demo 2**
+
+Cap config moves from hard-coded to the discount metafield. Build the create form (method, value +
+maximum, dates, limits, combinations) writing a real discount to Shopify. Build the list with
+status tabs, search, and pause/activate. Mirror to Prisma. Fix the access scopes and delete the
+template demo code. Raise `read_orders` approval with Arthur.
+
+**Demo 2 passes when:** Sophea creates SUMMER15 in the app, it appears in Shopify's own Discounts
+page, a checkout on the dev store caps correctly, and pausing it in the list stops it working.
+
+### Weeks 5–6 · Preview, money kept, polish → **Demo 3**
+
+Live preview on the create form. Cart tester. Checkout preview modal. `orders/paid` webhook and
+`CapEvent` writing. Home tiles, weekly chart, detail page, analytics page. Setup guide. Empty
+states. Every screen gets its loading and error state. Accessibility pass.
+
+**Demo 3 passes when:** a merchant can go install → create → test → see money kept, without ever
+leaving the app or reading documentation.
+
+### Weeks 7–8 · Billing, listing, submission → **Demo 4**
+
+Managed Pricing with the three plans. Free-tier limit enforced. Billing page. App Store listing:
+name, tagline, description, screenshots, pricing, privacy. Deploy to the MPC VPS. Submit.
+
+**Demo 4 passes when:** the app is installable from a listing draft, a plan can be chosen and
+changed, and the submission checklist is green.
+
+---
+
+## 8. Definition of done
+
+A task is done when all of these are true. Say which ones you checked, in one line.
+
+- `npm run typecheck` passes.
+- `npm run lint` passes.
+- The screen matches `docs/MaxOff-mockup.html` in structure, copy, and behaviour.
+- Loading, empty, and error states exist — not just the happy path.
+- Every number shown is computed from real data or clearly labelled as an example.
+- No `console.log`, no commented-out code, no `TODO` without an owner.
+- Money handled in minor units; formatting only at the edge.
+- Keyboard reachable, labelled, and readable at 200% zoom.
+- The change is one commit with a message that says what and why.
+
+### Cap arithmetic — the cases that must be right
+
+Write these as unit tests for the shared calc module and run them from week 3 onward:
+
+| pct | cap | subtotal | expected given | expected kept | note |
+|---|---|---|---|---|---|
+| 15 | 150 | 1,400.00 | 150.00 | 60.00 | above break-even |
+| 15 | 150 | 700.00 | 105.00 | 0.00 | below break-even |
+| 15 | 150 | 1,000.00 | 150.00 | 0.00 | exactly at break-even |
+| 15 | 150 | 0.00 | 0.00 | 0.00 | empty cart |
+| 100 | 150 | 200.00 | 150.00 | 50.00 | 100% discount still capped |
+| 15 | 150 | 33.33 | 5.00 | 0.00 | rounding: 4.9995 → 5.00 |
+| 1 | 150 | 1,400.00 | 14.00 | 0.00 | cap never reached |
+| 15 | 0.01 | 1,400.00 | 0.01 | 209.99 | tiny cap |
+
+`breakEven` when `pct` is 0 is undefined — show an em dash, never `Infinity` or `NaN`.
+
+The same calc module is used by the create preview, the cart tester, the checkout preview modal and
+the webhook. One implementation, one test suite. The Function has its own implementation in its own
+language — test it against the same table.
+
+---
+
+## 9. Risks, and what to do about them
+
+| Risk | Signal | Response |
+|---|---|---|
+| The Function cannot cap the way we need | Week 1 spike does not produce 150 on a 1,400 cart | Escalate to Arthur the same day. Do not invent a workaround. |
+| `read_orders` approval refused or slow | Partner Dashboard rejects the reason | Ship V1 analytics from discount usage counts only; move the per-order table to V2 |
+| Combined discounts behave unexpectedly | Two discounts on one cart give a wrong total | Reproduce on the dev store, capture the Function input JSON, bring it to the next demo |
+| Shopify changes the discount API mid-build | The MCP docs disagree with our code | Trust the MCP docs. Update this spec, tell Sophea, do not silently diverge |
+| Scope creep from V2/PRO ideas | "It would only take an hour to…" | It goes on the V2 list. The eight weeks have no slack. |
+
+---
+
+## 10. Open questions for Arthur
+
+Not blockers for weeks 1–2. Get answers by Demo 2.
+
+1. Is MaxOff confirmed as Sophea's project (vs CartRules)?
+2. Partner-account access for Sophea?
+3. Can billing + VPS deploy config be reused from FulfillFlex / Hartly?
+4. Public contact email for the MaxOff site — currently reusing `team@mapetitecoree.com`
+5. Exact MPC brand hex codes, if they differ from the orange used here
+6. Protected customer data (`read_orders`) — who submits the approval request?
+
+---
+
+## 11. Locked copy
+
+Use these words exactly. If you think one is wrong, say so — do not quietly improve it.
+
+| Where | Text |
+|---|---|
+| App subtitle | Percentage discounts that stop at a maximum amount. |
+| Home banner title | Cap engine is running |
+| Home banner body | Your cap is applied by Shopify at checkout on N active discounts. No theme code was added to your store. |
+| Field label | Maximum discount |
+| List column | Cap starts above |
+| Create hint | At **15%**, the maximum of **150.00 USD** starts working on carts above **1,000.00 USD**. Smaller carts get the full percentage. |
+| Preview, capped | instead of ~~210.00 USD~~ — the maximum stopped it. |
+| Preview, not capped | the full 15% — still under your maximum. |
+| Preview footer, capped | You keep 60.00 USD on this order. |
+| Preview footer, under | This cart is below 1,000.00 USD, so the maximum does not apply yet. |
+| Checkout note | Discount capped at maximum amount |
+| Combinations banner | When discounts are combined, the maximum still holds. MaxOff caps its own share only — it never touches the other discount. |
+| Chart subtitle | Difference between the uncapped discount and what MaxOff actually gave away. |
+| Settings, theme | None. MaxOff adds nothing to your theme. |
+| Settings, uninstall | Capped discounts stop capping and can be deleted from Shopify's own Discounts page. Nothing is left behind in your theme. |
+| Billing footer | Charged through Shopify with the rest of your bill. Cancel any time from your Shopify admin. |
+| PRO toast | Per-item maximums are a Pro feature |
+| Export toast | Export is a Pro feature |
+| Save toast | SUMMER15 is live at checkout |
