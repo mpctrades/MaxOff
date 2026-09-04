@@ -103,10 +103,44 @@ max-off/
   shopify.app.toml       App config, scopes, webhooks
 ```
 
-## Known unknown — treat week 1 as a real spike
+## The cap mechanism — resolved 4 Sep 2026
 
-The discount Function API (`cart.lines.discounts.generate.run` and the discounts allocator) is
-believed to support capping, but **no Shopify tutorial dedicated to capping a percentage has been
-verified.** Week 1 exists to prove it on the dev store with a hard-coded cap. If the allocator
-will not cap the way we need, stop and escalate to Arthur the same day — do not spend days
-inventing a workaround.
+Week 1 is no longer a question of *whether*. Verified against the 2026-10 Discount Function API:
+
+- Target `cart.lines.discounts.generate.run`, discount class `ORDER`.
+- `OrderDiscountCandidateValue` is a union of **`FixedAmount`** and **`Percentage`**. There is no
+  "percentage constrained by a maximum" — you do the `min()` yourself and emit a **fixed amount**.
+- `cart.cost.subtotalAmount` is in the input, so the Function can see the cart total.
+- *"All discount functions run concurrently, and have no knowledge of each other"* — so we cap our
+  own candidate and literally cannot touch anyone else's. The combinations promise is structural.
+
+Full detail, including the code shape, is in `docs/BUILD-SPEC.md` §3.2. Week 1 now proves an
+implementation, not a possibility.
+
+**⚠ The Discounts Allocator is a trap.** Shopify's "Build a Discounts Allocator Function" tutorial
+caps a discount from a metafield and looks exactly like MaxOff. Do not use it: `unstable` API,
+Shopify **Plus only**, needs `write_discounts_allocator_functions`, and it *replaces the shop's
+entire discount engine*. If a session proposes it, stop and re-read §3.2.
+
+**Still open, answer it in week 2:** the schema says the subtotal is before *cart-level* discounts
+and is silent on *line-level* ones. So when a product discount is also on the cart, we do not know
+whether our 15% is computed on the full subtotal or the reduced one. Test it on the dev store,
+capture the input JSON, write the answer into §3.2. Cheap now, expensive in week 6.
+
+## When `shopify-dev-mcp` will not connect
+
+It happens — `npx -y @shopify/dev-mcp@latest` can hang on the registry and the server times out.
+That is a connection failure, not a missing capability, and it does **not** license guessing.
+
+Fallback, which queries the same shopify.dev index and is what `AGENTS.md` points at anyway:
+
+```
+node ~/.claude/plugins/cache/claude-plugins-official/shopify-ai-toolkit/*/skills/<skill>/scripts/search_docs.mjs \
+  "<query>" --version 2026-10 --model <model> --client-name claude-code --client-version 2.0
+```
+
+Pick the skill that matches the domain — `shopify-functions`, `shopify-admin`, `shopify-dev` (the
+general one; use it for billing, protected customer data, App Store policy). The search is scoped
+per skill, so a Functions question asked of the `shopify-admin` skill returns junk. For exact
+schema wording, fetch the reference page directly — the vector search paraphrases, the page does
+not.
