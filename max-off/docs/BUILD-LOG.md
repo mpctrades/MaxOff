@@ -118,3 +118,51 @@ Three things that validation settled:
 
 Nothing else in Gate 1 is outstanding on our side. It closes when Sophea reports the two checkout
 numbers.
+
+---
+
+## 7 Sep 2026 · Gate 1 · pre-flight for the exit test
+
+**Built** — nothing. This session only prepared the exit test and answered one question that
+could have made it fail.
+
+**Verified**
+
+- `npm run typecheck` — passes. `npm run lint` — passes. `npm test` — 36 passing (30 unit,
+  6 wasm fixtures through `function-runner`), ~5s, wasm already cached in `dist/`.
+- `shopify app config validate --json` — `{"valid": true, "issues": []}`. CLI 4.7.1, node v26.7.0.
+- The create mutation was re-validated against the live 2026-10 admin schema with
+  `validate_graphql_codeblocks`: VALID, `Required scopes: write_discounts` — which
+  `shopify.app.toml` already has. Confirms the log entry of 4 Sep: selecting only `userErrors`
+  keeps the requirement at `write_discounts` alone.
+- `shopify-dev-mcp` connected this session (it timed out on 4 Sep). No fallback needed.
+
+### `associatedDiscountCode` does not need to be set — resolved
+
+The Function's `OrderDiscountCandidate` has an optional `associatedDiscountCode`. The 2026-10
+schema settles whether MaxOff must set it for a code discount:
+
+> "An optional discount code associated with this discount candidate, for use with **automatic**
+> discounts. If a code discount is the function trigger, the associated discount code will be
+> **overwritten by the triggering discount code**."
+
+So for MAXOFF15 the field is correctly left unset, and no code change is needed for the exit test.
+The same doc comment also says the **Cart**-page notification shows the entered code rather than
+our `message` when the trigger is a code — so the buyer-facing string
+`15% off (max 150.00 USD)` is a checkout-summary string, not a cart-page one. Worth remembering
+before Gate 4 writes copy that assumes otherwise.
+
+### How the exit test runs
+
+Function drafts pushed by `shopify app dev` execute on the development store, so the test does not
+need `shopify app deploy` — this is the flow Shopify's own "Build a Discount Function" tutorial
+uses. GraphiQL is opened by pressing `g` in the running dev session, which authenticates **as the
+app** with the app's scopes (`shopify app graphiql --store …` is the same thing in a second
+terminal). The Discounts admin UI cannot create this discount: the app has no discount UI until
+Gate 3, which is why route B exists.
+
+**Remaining in Gate 1** — the two checkout numbers. Everything on our side is ready; the step list
+was handed to Sophea this session.
+
+**Also uncommitted at the end of this session** — §12 of `docs/BUILD-SPEC.md` (the five mockup
+defects) and `docs/MASTER-BUILD-PROMPT.md`, both from the 4 Sep session.
