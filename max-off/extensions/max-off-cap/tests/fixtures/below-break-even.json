@@ -6,7 +6,7 @@
       "cart": {
         "cost": {
           "subtotalAmount": {
-            "amount": "700.00",
+            "amount": "700.0",
             "currencyCode": "USD"
           }
         }

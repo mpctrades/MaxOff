@@ -57,6 +57,9 @@ describe('parseDecimalToMinor', () => {
     ['1400.00', 140000],
     ['1400', 140000],
     ['1400.5', 140050],
+    // The live wire format: Shopify sends one decimal place, not two.
+    ['1400.0', 140000],
+    ['700.0', 70000],
     ['0.01', 1],
     ['0', 0],
     ['33.33', 3333],
