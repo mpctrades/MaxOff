@@ -6,7 +6,7 @@
       "cart": {
         "cost": {
           "subtotalAmount": {
-            "amount": "700.0",
+            "amount": "1400.00",
             "currencyCode": "USD"
           }
         }
@@ -17,7 +17,7 @@
         ],
         "metafield": {
           "jsonValue": {
-            "version": 1,
+            "version": 2,
             "percentage": 15,
             "capAmount": "150.00",
             "currencyCode": "USD",
@@ -29,30 +29,7 @@
       }
     },
     "output": {
-      "operations": [
-        {
-          "orderDiscountsAdd": {
-            "candidates": [
-              {
-                "message": "MAXOFF15 — 15% off (max 150.00 USD)",
-                "targets": [
-                  {
-                    "orderSubtotal": {
-                      "excludedCartLineIds": []
-                    }
-                  }
-                ],
-                "value": {
-                  "fixedAmount": {
-                    "amount": "105.00"
-                  }
-                }
-              }
-            ],
-            "selectionStrategy": "FIRST"
-          }
-        }
-      ]
+      "operations": []
     }
   }
 }

@@ -1,13 +1,24 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "2054aaf833b91f2a63cd47e8663c88ac"
-application_url = "https://example.com"
+application_url = "https://maxoff-dev.mpctrades.com"
 embedded = true
 name = "MaxOff"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
 scopes = "write_discounts,write_products,write_metaobjects,write_metaobject_definitions"
+
+[discount.metafields.app.cap_config]
+type = "json"
+name = "MaxOff cap configuration"
+description = "The percentage, the maximum discount and the code, read by the MaxOff Function at checkout"
+
+  [discount.metafields.app.cap_config.access]
+  # Merchants can see the cap on the discount but only MaxOff writes it, so the
+  # app's own mirror can never drift from what the Function reads.
+  admin = "merchant_read"
+  storefront = "none"
 
 [product.metafields.app.demo_info]
 type = "single_line_text_field"
@@ -45,8 +56,7 @@ api_version = "2026-10"
   topics = [ "app/scopes_update" ]
 
 [auth]
-redirect_urls = [ "https://example.com/api/auth" ]
+redirect_urls = [ "https://maxoff-dev.mpctrades.com/auth/callback" ]
 
 [build]
-include_config_on_deploy = true
 automatically_update_urls_on_dev = true

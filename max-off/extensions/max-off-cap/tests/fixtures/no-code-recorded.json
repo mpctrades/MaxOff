@@ -6,7 +6,7 @@
       "cart": {
         "cost": {
           "subtotalAmount": {
-            "amount": "700.0",
+            "amount": "1400.0",
             "currencyCode": "USD"
           }
         }
@@ -22,8 +22,7 @@
             "capAmount": "150.00",
             "currencyCode": "USD",
             "scope": "order",
-            "checkoutNote": "Discount capped at maximum amount",
-            "code": "MAXOFF15"
+            "checkoutNote": "Discount capped at maximum amount"
           }
         }
       }
@@ -34,7 +33,7 @@
           "orderDiscountsAdd": {
             "candidates": [
               {
-                "message": "MAXOFF15 — 15% off (max 150.00 USD)",
+                "message": "15% off (max 150.00 USD)",
                 "targets": [
                   {
                     "orderSubtotal": {
@@ -44,7 +43,7 @@
                 ],
                 "value": {
                   "fixedAmount": {
-                    "amount": "105.00"
+                    "amount": "150.00"
                   }
                 }
               }

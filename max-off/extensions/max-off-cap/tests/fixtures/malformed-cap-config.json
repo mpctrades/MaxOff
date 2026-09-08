@@ -13,13 +13,13 @@
       },
       "discount": {
         "discountClasses": [
-          "PRODUCT"
+          "ORDER"
         ],
         "metafield": {
           "jsonValue": {
             "version": 1,
-            "percentage": 15,
-            "capAmount": "150.00",
+            "percentage": 0,
+            "capAmount": "one hundred and fifty",
             "currencyCode": "USD",
             "scope": "order",
             "checkoutNote": "Discount capped at maximum amount",
