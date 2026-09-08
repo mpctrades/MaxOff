@@ -237,3 +237,187 @@ page was open before the CLI pushed its tunnel URL — reload it. And the CLI pu
 **Gate 1 is closed. Gate 2 is open**: config from the discount's metafield, missing or malformed
 config applying NO discount, shared calc module, unit tests against spec §8. `PERCENTAGE` and
 `CAP_MINOR` in `src/cart_lines_discounts_generate_run.ts` are the two constants it replaces.
+
+---
+
+## 8 Sep 2026 · between gates · two things that break the admin, neither of them our code
+
+Both cost a session to diagnose and both look like application bugs. Neither is.
+
+### Every action returned "Bad Request" — React Router's CSRF check
+
+Clicking anything that submits (the template's "Generate a product", and from Gate 3 onward our
+own create form) produced an `Application Error` page reading `Error: Bad Request`, thrown from
+`singleFetchAction`.
+
+React Router 7.12 added a CSRF guard that compares the browser's `Origin` header against the
+origin it computes from the incoming request. An embedded Shopify app can never pass it: the
+browser posts from the public **https** tunnel URL, while the Node server behind that tunnel sees
+plain **http on localhost**. The origins differ, the action is rejected before the loader or the
+action runs, and the 400 says only `Bad Request`.
+
+The allowlist defaults to empty because the template ships no `react-router.config.ts`. Added one:
+
+```ts
+const appUrl = process.env.SHOPIFY_APP_URL || process.env.HOST;
+const appHost = appUrl ? new URL(appUrl).host : undefined;
+export default { allowedActionOrigins: appHost ? [appHost] : [] } satisfies Config;
+```
+
+Derived from the environment so the tunnel URL changing on each `shopify app dev` does not matter.
+Only the app's own public host is allowed, so the guard keeps its intent.
+
+**Verified** by POSTing at the running dev server: a bogus origin still gets 400 `Bad Request`; the
+real tunnel origin on `/app.data?index` gets **410 Gone**, which is `authenticate.admin` rejecting
+a tokenless curl — i.e. the action is reached. A real click carries an App Bridge session token.
+`npm run typecheck` and `npm run lint` both pass.
+
+**Before deploying to the VPS**: `SHOPIFY_APP_URL` must be set at **build** time, not only at
+runtime, or the allowlist bakes in empty and every action 400s in production.
+
+### Uninstall then reinstall, and app home serves "Example Domain"
+
+The app opens to example.com's placeholder page, even with `shopify app dev` running and the
+tunnel alive. Confirmed by reading the iframe `src` off the admin page: it is literally
+`https://example.com/`.
+
+`shopify app dev` never changes the app's real `application_url`. It creates a **dev preview** on
+the dev store and the tunnel URL lives inside that preview — the change "is isolated to the chosen
+dev store". The preview survives until you clean it up **or uninstall the app**. Uninstalling
+destroys it, and the reinstall falls back to the app's *active released version*. We have never run
+`shopify app deploy`, so that version still carries the scaffold placeholder in
+`shopify.app.toml`: `application_url = "https://example.com"`.
+
+A dev session already running cannot repair this. It applied the URL once, at start, to a preview
+that no longer exists.
+
+**Fix** — quit `shopify app dev`, then run it again. That recreates the preview, re-applies the
+tunnel URL, and reinstalls. If it still lands on Example Domain, `shopify app dev clean` first,
+then `shopify app dev`.
+
+**Rule**: an uninstall always strands the app until dev is restarted. Reinstall *from* a running
+dev session, never from the Dev Dashboard's "Install app" while dev is stopped. This stops
+mattering once the VPS deploy gives the released version a real URL.
+
+This supersedes the 8 Sep note above that said to reload the page. Reloading fixes only the
+narrower case where the page was open before the CLI pushed its tunnel URL. After an uninstall
+there is nothing to reload into.
+
+**The expensive part is the data.** When a dev preview goes away, configuration that is not in the
+released version is deleted along with its data — Shopify's own example is a Discount function
+added during `app dev`, where **any discounts referencing it are deleted**. So an uninstall takes
+`MAXOFF15` and the `$app:example` metaobject definition with it. Gate 1's result still stands, the
+two checkout numbers are recorded here, but the discount on the store has to be rebuilt with the
+validated mutation. Check the Discounts page after any reinstall before assuming a test is still
+set up.
+
+---
+
+## 8 Sep 2026 · Gate 2 · the cap is configurable — step 1 of the UI build
+
+**Built** — the percentage and the maximum are no longer in the Function. `PERCENTAGE` and
+`CAP_MINOR` are gone from `src/cart_lines_discounts_generate_run.ts`; there are now no numbers in
+that file at all.
+
+- `src/cap_config.ts` (new) — `parseCapConfig(jsonValue: unknown): CapConfig | null`. The argument
+  is `unknown` on purpose: `jsonValue` is a JSON scalar, so the Function has no type guarantee
+  about what a merchant's store actually holds. One rule, enforced in one place: **config we
+  cannot read with certainty applies NO discount.** Null is returned for a missing or null
+  metafield, a value that is not a JSON object, a `version` that is not exactly 1, a `percentage`
+  that is not an integer 1–100, a `capAmount` that is not a decimal string parsing to at least one
+  minor unit, and a `scope` that is present but not `order`.
+- `src/cart_lines_discounts_generate_run.graphql` — added
+  `discount { metafield(namespace: "$app", key: "cap_config") { jsonValue } }`. Validated against
+  the live 2026-10 `functions_discount` schema with `validate_graphql_codeblocks`: VALID.
+  `shopify app function typegen` re-run, so `CartInput.discount.metafield.jsonValue` is typed
+  `unknown` — the generated types force the careful parse rather than allowing a cast.
+- The buyer-facing message is now `MAXOFF15 — 15% off (max 150.00 USD)`, built from the config.
+  The code is stored in the metafield because there is no other way for the Function to see it
+  (§3.2 correction 2, 4 Sep). It is presentation only: a discount with no `code` recorded still
+  caps and only loses the prefix.
+- The currency label in the message still comes from `cart.cost.subtotalAmount.currencyCode`, not
+  from the config's `currencyCode`. A 150 maximum is 150 in whatever currency the buyer pays in —
+  amounts relabel, they never convert (CLAUDE.md rule 5).
+- `shopify.app.toml` — added `[discount.metafields.app.cap_config]`, type `json`,
+  `access.admin = "merchant_read"`. Not a scope change, so **no reinstall**. The demo blocks and
+  scopes are untouched; step 2 deletes them with the demo action they exist for.
+
+**Verified**
+
+- `npm test` — **82 passing**, up from 38. 32 unit tests in `tests/cap.test.ts` (unchanged),
+  **38 new** in `tests/cap_config.test.ts`, and **12** wasm fixtures through `function-runner`
+  (up from 6).
+- The six new fixtures are the ones that matter: `no-cap-config` (metafield null),
+  `unknown-config-version`, `malformed-cap-config`, `zero-cap`, `unsupported-scope` — every one
+  returns `{"operations": []}` from the **real wasm**, not just from the parser — plus
+  `no-code-recorded`, which still caps 1,400 at 150.00 and drops only the message prefix.
+- `npm run typecheck` passes · `npm run lint` passes · `shopify app config validate --json` →
+  `{"valid": true, "issues": []}`.
+
+### Two errors in §3.1, both corrected in the spec
+
+1. **The namespace is `$app`, not `$app:maxoff`.** `$app:maxoff` is legal in GraphQL (Shopify's own
+   `metafieldsSet` example uses `$app:my-namespace`), but the declarative TOML block that creates
+   the definition is `[discount.metafields.app.<key>]`, and the namespace segment is documented
+   only as `app`. `shopify app config validate` does accept a quoted `"app:maxoff"` segment — I
+   tried it — but that is a shallow schema check, not proof that Shopify creates the definition
+   there, and it cannot be proved without a deploy. `$app` is already private to MaxOff and we
+   store exactly one discount metafield, so the sub-namespace buys nothing.
+2. **`[extensions.input.variables]` is not needed and must not be added.** §3.1 said that block
+   "is what lets the Function see the metafield". It does not. It populates *input query
+   variables* — `query Input($collectionIds: [ID!])` — from a JSON metafield whose **top level
+   keys are variable names**. Our query passes `namespace` and `key` as literal arguments and
+   declares no variables. Adding the block would ask Shopify to read `percentage` and `capAmount`
+   as query variables that do not exist. `shopify.extension.toml` is unchanged.
+
+### What the 12 wasm fixtures do and do not prove
+
+They run the real compiled wasm and prove the Function *reads and honours* a `cap_config` metafield
+that is handed to it. They cannot prove that **Shopify hands it over** at a real checkout —
+`function-runner` feeds it the input JSON we wrote. That binding is the one residual risk in this
+step, and Sophea's checkout re-run is what closes it. If the metafield arrives as `null` at
+checkout, the Function will correctly apply nothing, and the symptom will be "the discount stopped
+working", not a wrong number. Read `.shopify/logs/*_extensions_max-off-cap_*.json` first: the
+captured input shows whether `discount.metafield` was populated.
+
+**Remaining in step 1 — one real checkout, which only Sophea can run.** The existing `MAXOFF15`
+carries no metafield, so it will now apply **nothing**. That is the new rule working, not a
+regression. A new code has to be created with the config inline. Validated against the live
+2026-10 admin schema (`Required scopes: write_discounts`, which we already have):
+
+```graphql
+mutation CreateMaxOffGate2TestDiscount {
+  discountCodeAppCreate(codeAppDiscount: {
+    title: "MaxOff Gate 2 test"
+    code: "MAXOFF15GATE2"
+    functionHandle: "max-off-cap"
+    discountClasses: [ORDER]
+    startsAt: "2026-09-08T00:00:00Z"
+    combinesWith: { orderDiscounts: false, productDiscounts: false, shippingDiscounts: true }
+    metafields: [{
+      namespace: "$app"
+      key: "cap_config"
+      type: "json"
+      value: "{\"version\":1,\"percentage\":15,\"capAmount\":\"150.00\",\"currencyCode\":\"USD\",\"scope\":\"order\",\"checkoutNote\":\"Discount capped at maximum amount\",\"code\":\"MAXOFF15GATE2\"}"
+    }]
+  }) {
+    userErrors { field message code }
+  }
+}
+```
+
+Then the 1,400 cart, via the permalink pattern from the 8 Sep entry:
+`https://maxoff-s7fqtwdd.myshopify.com/cart/48245859647646:2?discount=MAXOFF15GATE2` — expect
+**−150.00**, and the checkout line labelled with the code. The old `MAXOFF15` on `:2` is a free
+negative test: expect **no discount at all**.
+
+### Things a future session must know
+
+- **`extensions/max-off-cap/generated/` is gitignored.** After a fresh clone, or after any change
+  to an input query, run `npm run typegen` in the extension directory or `tsc` fails on missing
+  `CartInput` fields. This is why the type change above does not appear in the commit.
+- `react-router.config.ts` was still uncommitted from the 8 Sep CSRF session. Committed separately
+  from step 1, as its own concern.
+- Step 1's config parser is the first piece of shared ground: step 5's live preview must import the
+  same arithmetic. `cap.ts` stays arithmetic-only and `cap_config.ts` handles the metafield shape,
+  so the admin can import `cap.ts` without dragging in Function-specific parsing.

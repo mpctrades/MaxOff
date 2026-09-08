@@ -98,11 +98,12 @@ The cap configuration is stored **on the Shopify discount itself**, in an app-ow
 that the Function can read it at checkout without a network call. Our Prisma tables are a mirror
 for listing, search, and analytics — **Shopify is the source of truth**, our DB is a cache.
 
-Metafield (**verified 4 Sep 2026** — `$app:` is the documented app-reserved prefix, and Shopify
-recommends a single JSON metafield for nested config):
+Metafield (**corrected 8 Sep 2026 when Gate 2 built it** — the namespace is `$app`, not
+`$app:maxoff`; see the two notes below. Shopify recommends a single JSON metafield for nested
+config, which stands):
 
 ```
-namespace: "$app:maxoff"
+namespace: "$app"
 key:       "cap_config"
 type:      "json"
 value:     {
@@ -111,18 +112,37 @@ value:     {
   "capAmount": "150.00",
   "currencyCode": "USD",
   "scope": "order",
-  "checkoutNote": "Discount capped at maximum amount"
+  "checkoutNote": "Discount capped at maximum amount",
+  "code": "SUMMER15"
 }
 ```
+
+`code` was added in Gate 2. The Function's `Discount` type exposes only `discountClasses` and
+`metafield`, so the metafield is the only way the Function can know the code — without it the
+buyer-facing message cannot say `SUMMER15 — 15% off (max 150.00 USD)`. It is presentation only:
+a discount with no `code` recorded still caps, and only loses the prefix.
 
 Three mechanics that go with it, none of them obvious:
 
 - The Function reads it with
-  `discount { metafield(namespace: "$app:maxoff", key: "cap_config") { jsonValue } }`.
-- `extensions/max-off-cap/shopify.extension.toml` needs an `[extensions.input.variables]` block
-  naming the **same** namespace and key. That binding is what lets the Function see the metafield.
+  `discount { metafield(namespace: "$app", key: "cap_config") { jsonValue } }`.
+- **The namespace is `$app`, not `$app:maxoff`.** `$app:maxoff` is legal in GraphQL, but the
+  declarative TOML form that creates the definition is `[discount.metafields.app.<key>]`, whose
+  namespace segment is documented only as `app` — i.e. `$app`. `shopify app config validate`
+  accepts a quoted `"app:maxoff"` segment, but that is a shallow schema check and not proof that
+  Shopify creates the definition there. `$app` is already private to MaxOff, and we store exactly
+  one discount metafield, so the sub-namespace buys nothing. Do not reintroduce it without
+  deploying a definition and reading it back.
+- **`[extensions.input.variables]` is NOT needed, and must not be added.** The 4 Sep draft of this
+  section said that block "is what lets the Function see the metafield". It is not: it populates
+  *input query variables* (`query Input($collectionIds: [ID!])`) from a JSON metafield whose top
+  level keys are variable names. Our input query passes `namespace` and `key` as literal
+  arguments and declares no variables, so the block is inert at best — and actively wrong, since
+  it would ask Shopify to read `percentage` and `capAmount` as query variables that do not exist.
 - `shopify.app.toml` declares the definition in a `[discount.metafields.app.cap_config]` block —
-  it goes exactly where the template's `[product.metafields.app.demo_info]` block is today.
+  it goes exactly where the template's `[product.metafields.app.demo_info]` block is today, with
+  `access.admin = "merchant_read"`: the merchant can see the cap on the discount, but only MaxOff
+  writes it, so the Prisma mirror cannot drift from what the Function reads.
 
 The metafield can be written **inline in the `discountCodeAppCreate` mutation** via its
 `metafields` input. No separate `metafieldsSet` round trip on create.
@@ -691,3 +711,38 @@ Use these words exactly. If you think one is wrong, say so — do not quietly im
 | PRO toast | Per-item maximums are a Pro feature |
 | Export toast | Export is a Pro feature |
 | Save toast | SUMMER15 is live at checkout |
+
+---
+
+## 12. Defects in the mockup — fix these, do not port them
+
+Found by rendering `docs/MaxOff-mockup.html` at 1440px on 4 Sep 2026. The mockup is the reference
+for layout and copy, but these five things are wrong in it. Build the corrected behaviour.
+
+1. **Radio labels run together.** Every `.choice` renders as
+   "The whole order**One maximum for the entire cart.**" — the title and its description are both
+   inline spans. Title on its own line, description underneath, in every radio and checkbox group.
+   Affects: The maximum applies to · Applies to · Minimum requirements · Customers and usage limits.
+
+2. **The live preview is buried.** It sits at the bottom of a ~2,400px form, eleven cards below the
+   percentage and maximum fields that drive it — so the merchant types a number and the payoff is
+   off-screen. Meanwhile the right rail is empty for the bottom two thirds of the page.
+   **Move the live preview into the right column, sticky, directly under Summary.** It is the
+   argument for the whole product; it should never be scrolled away from the fields it responds to.
+
+3. **Wrong row action on non-active discounts.** The list offers "Pause" on Expired and Scheduled
+   rows. Expired rows get no pause action (offer Duplicate instead); Scheduled rows get "Cancel".
+
+4. **The detail page numbers do not reconcile.** The tile says 612.40 kept, the weekly chart sums to
+   roughly 848, and the "Recent orders" table's Kept column sums to 384.75. Three independent fake
+   datasets. In the real app all three read from the same `CapEvent` rows, and the table must say
+   what it is showing — "Recent orders" is a sample, so label it "Last 5 of 31 capped orders" with a
+   link to the full list. A merchant will add that column up.
+
+5. **The comparison bars invert the intuition.** "Without a cap" draws the longer bar, so the worse
+   outcome looks bigger. Keep the lengths — they are truthful — but make the loss bar visibly a
+   loss: muted fill, and label it "would have been given away" rather than a bare number.
+
+Everything else in the mockup is right and should be matched: the setup guide, the stat-tile
+hierarchy, the "cap starts above" hint under the percentage fields, the cart tester's side-by-side
+result, the checkout preview modal, and the "How MaxOff runs" transparency panel.
