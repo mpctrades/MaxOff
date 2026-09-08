@@ -166,3 +166,74 @@ was handed to Sophea this session.
 
 **Also uncommitted at the end of this session** — §12 of `docs/BUILD-SPEC.md` (the five mockup
 defects) and `docs/MASTER-BUILD-PROMPT.md`, both from the 4 Sep session.
+
+---
+
+## 8 Sep 2026 · Gate 1 · CLOSED — the cap works at checkout
+
+**The exit test passed.** Sophea ran it on `maxoff-s7fqtwdd.myshopify.com` against the function
+draft pushed by `shopify app dev`, with discount code `MAXOFF15` created by the validated
+`discountCodeAppCreate` mutation (route B). Both numbers were read off a real Shopify checkout:
+
+| Cart | Subtotal | Checkout showed | Total | Uncapped 15% would have been |
+|---|---|---|---|---|
+| 2 × 700.00 | 1,400.00 USD | Order discount MAXOFF15 **−150.00** | 1,250.00 | 210.00 |
+| 1 × 700.00 | 700.00 USD | Order discount MAXOFF15 **−105.00** | 595.00 | 105.00 (under the cap) |
+
+The 1,400 cart is the whole product: the cap took 60.00 USD off what a plain 15% would have given
+away. `min(subtotal × 15 / 100, 15000)` behaved identically in the Function and in the admin
+arithmetic.
+
+**Verified at the Function level too**, from `.shopify/logs/*_extensions_max-off-cap_*.json`
+written by the running dev session:
+
+- 1,400 run → `fixedAmount: {amount: "150.00"}`, fuel 372,619, no errors.
+- 700 run → `fixedAmount: {amount: "105.00"}`, fuel 372,464, no errors.
+- `npm test` 38 passing · `npm run typecheck` passes · `npm run lint` passes.
+
+### The wire format is `"1400.0"`, not `"1400.00"`
+
+The captured input JSON reads `subtotalAmount.amount: "1400.0"` — Shopify sends **one** decimal
+place, and every wasm fixture written on 4 Sep assumed two. `parseDecimalToMinor` handles it
+correctly (the regex takes one or more fraction digits, and `${fraction}00`.slice(0, 2) pads),
+so nothing was broken — but the fixtures were testing a shape production does not send.
+`above-break-even.json` and `below-break-even.json` now carry the real captured amounts, and
+`['1400.0', 140000]` / `['700.0', 70000]` were added to the parser table (unit tests 30→32,
+suite 36→38). **Never assume two decimal places from a Shopify `Decimal`.**
+
+### The candidate `message` does not appear at checkout
+
+The checkout summary labels the line **"Order discount / MAXOFF15"** — the code, not our
+`15% off (max 150.00 USD)`. This is the schema behaviour logged on 7 Sep, now seen for real: the
+`message` feeds the **Cart**-page notification, and for a code-triggered discount even that shows
+the code instead.
+
+**So §4.3 item 7 and the locked phrase "Capped at maximum amount" have no confirmed surface at
+checkout.** Do not build Gate 4 copy on the assumption that MaxOff can write a note into the
+checkout summary. Either find the real surface (a checkout UI extension is out of V1 scope, and
+theme code is banned by rule 3) or the phrase belongs only in the admin's checkout *preview*.
+Resolve before Gate 4 writes that screen.
+
+### How the exit test was actually run — reuse this in Gate 3
+
+Finding the Check out button in the theme's cart drawer was the only real friction. Skip it with a
+cart permalink, which builds the cart and lands directly in checkout with the code applied:
+
+```
+https://maxoff-s7fqtwdd.myshopify.com/cart/<variantLegacyId>:<qty>?discount=MAXOFF15
+```
+
+`legacyResourceId` comes from a `products(first: 10, sortKey: CREATED_AT, reverse: true)` query in
+GraphiQL (`write_products` grants the read). Permalinks cannot bypass a storefront password, but
+staff logged into the admin in the same browser see the storefront anyway. The test product is
+`Cap test item`, 700.00 USD, inventory **not** tracked (variant `48245859647646`) — one product
+gives both carts at `:2` and `:1`.
+
+Two dev-session notes: the admin shows the template's `https://example.com` for app home if the
+page was open before the CLI pushed its tunnel URL — reload it. And the CLI pushes
+`enable_creation_ui: true` for this function, so Shopify's own Discounts page may offer it in
+"Create discount"; worth checking in Gate 3 before building the create form.
+
+**Gate 1 is closed. Gate 2 is open**: config from the discount's metafield, missing or malformed
+config applying NO discount, shared calc module, unit tests against spec §8. `PERCENTAGE` and
+`CAP_MINOR` in `src/cart_lines_discounts_generate_run.ts` are the two constants it replaces.
