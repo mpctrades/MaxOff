@@ -7,13 +7,23 @@ name = "MaxOff"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-# read_discounts is required, not optional: `discountCodeAppCreate` selecting
-# `codeAppDiscount { discountId }` — the id we must mirror — reports
-# "Required scopes: write_discounts, read_discounts", and so does the on-blur
-# code uniqueness check. BUILD-SPEC §3.3 said write_discounts covered our
-# reads; validation on 10 Sep 2026 showed it does not. Adding it needs a
-# reinstall on the dev store.
-scopes = "write_discounts,read_discounts,write_products,write_metaobjects,write_metaobject_definitions"
+# Every scope MaxOff needs, and nothing else (BUILD-SPEC §3.3):
+#
+#   write_discounts  create, update, pause and delete capped discounts, and
+#                    declare the discount metafield below.
+#   read_discounts   required, not optional: `discountCodeAppCreate` selecting
+#                    `codeAppDiscount { discountId }` — the id we must mirror —
+#                    reports "Required scopes: write_discounts,
+#                    read_discounts", and so does the code uniqueness check.
+#                    §3.3 said write_discounts covered our reads; validation on
+#                    10 Sep 2026 showed it does not.
+#   read_products    the cart tester's resource picker, so a merchant tests the
+#                    cap against their own catalogue.
+#
+# The template's write_products, write_metaobjects and write_metaobject_definitions
+# went with the demo action they existed for. read_orders comes with the
+# money-kept analytics and needs protected-customer-data approval first.
+scopes = "write_discounts,read_discounts,read_products"
 
 [discount.metafields.app.cap_config]
 type = "json"
@@ -25,30 +35,6 @@ description = "The percentage, the maximum discount and the code, read by the Ma
   # app's own mirror can never drift from what the Function reads.
   admin = "merchant_read"
   storefront = "none"
-
-[product.metafields.app.demo_info]
-type = "single_line_text_field"
-name = "Demo Source Info"
-description = "Tracks products created by the Shopify app template for development"
-
-  [product.metafields.app.demo_info.access]
-  admin = "merchant_read_write"
-
-[metaobjects.app.example]
-name = "Example"
-description = "An example metaobject definition created by this template"
-
-  [metaobjects.app.example.access]
-  admin = "merchant_read_write"
-
-[metaobjects.app.example.fields.title]
-name = "Title"
-type = "single_line_text_field"
-required = true
-
-[metaobjects.app.example.fields.description]
-name = "Description"
-type = "multi_line_text_field"
 
 [webhooks]
 api_version = "2026-10"
