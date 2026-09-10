@@ -11,6 +11,8 @@ import type { Prisma } from "@prisma/client";
 import prisma from "../db.server";
 import { capStartsAboveMinor, displayStatus, DISCOUNT_TABS } from "../lib/cap";
 import type { DiscountTab, DisplayStatus } from "../lib/cap";
+import { capConfigMetafield, DEFAULT_CHECKOUT_NOTE } from "../lib/cap-config";
+import { formatMoney } from "../lib/format";
 
 /** §4 of docs/PROMPT-DISCOUNTS.md. Offset pagination is fine at this scale:
  * a shop with more capped discounts than a few pages does not exist yet, and
@@ -303,9 +305,10 @@ export async function setDiscountPaused(input: {
  * enforces in code. Enforced here rather than only in the UI, so a second
  * browser tab cannot get around it.
  */
-async function freePlanRefusal(
+export async function freePlanRefusal(
   shop: string,
-  id: string,
+  /** The discount being activated, excluded from the count. Null on create. */
+  id: string | null,
   now: Date,
 ): Promise<{ ok: false; message: string; upgradeUrl: string } | null> {
   const settings = await prisma.shopSettings.findUnique({ where: { shop } });
@@ -314,7 +317,10 @@ async function freePlanRefusal(
   }
 
   const activeElsewhere = await prisma.cappedDiscount.count({
-    where: { ...activeDiscountWhere(shop, now), id: { not: id } },
+    where: {
+      ...activeDiscountWhere(shop, now),
+      ...(id === null ? {} : { id: { not: id } }),
+    },
   });
 
   if (activeElsewhere === 0) {
@@ -327,4 +333,278 @@ async function freePlanRefusal(
       "The Free plan allows one active capped discount. Pause the other one, or choose a plan.",
     upgradeUrl: "/app/billing",
   };
+}
+
+/**
+ * The Function's handle, from `extensions/max-off-cap/shopify.extension.toml`.
+ * `functionHandle` — not `functionId`, which the 2026-10 schema reports as
+ * deprecated ("Use `functionHandle` instead"), resolving the contradiction
+ * BUILD-LOG flagged on 8 Sep.
+ */
+const FUNCTION_HANDLE = "max-off-cap";
+
+/**
+ * Creating the discount. `codeAppDiscount { discountId }` is selected because
+ * `discountGid` is `@unique` on our mirror and is how the orders/paid webhook
+ * will find the discount — and that selection is why this app needs
+ * `read_discounts` (BUILD-SPEC §3.3, corrected 10 Sep 2026).
+ *
+ * The cap metafield goes in inline: no separate `metafieldsSet` round trip
+ * (§3.1), so there is no window in which a live discount has no config.
+ */
+const CREATE_MUTATION = `#graphql
+  mutation MaxOffCreateDiscount($discount: DiscountCodeAppInput!) {
+    discountCodeAppCreate(codeAppDiscount: $discount) {
+      codeAppDiscount {
+        discountId
+      }
+      userErrors {
+        field
+        code
+        message
+      }
+    }
+  }`;
+
+/** The uniqueness check §4.3 wants on blur. Needs `read_discounts`. */
+const CODE_TAKEN_QUERY = `#graphql
+  query MaxOffCodeTaken($code: String!) {
+    codeDiscountNodeByCode(code: $code) {
+      id
+    }
+  }`;
+
+export interface CreateDiscountInput {
+  shop: string;
+  admin: AdminGraphqlClient;
+  code: string;
+  percentage: number;
+  capMinor: number;
+  currencyCode: string;
+  startsAt: Date;
+  endsAt: Date | null;
+  usageLimit: number | null;
+  oncePerCustomer: boolean;
+  combinesProduct: boolean;
+  combinesOrder: boolean;
+  combinesShipping: boolean;
+}
+
+export type CreateDiscountResult =
+  | {
+      ok: true;
+      code: string;
+      discountGid: string;
+      /** False when Shopify accepted but our mirror write failed (§2b). */
+      mirrored: boolean;
+    }
+  | {
+      ok: false;
+      message: string;
+      upgradeUrl?: string;
+      /** Field name → message, so the form shows errors on the field. */
+      fieldErrors?: Record<string, string>;
+    };
+
+/**
+ * Is this code already used by any discount in the shop — ours or Shopify's own?
+ *
+ * Returns null when we cannot tell (a transport failure), so the caller can
+ * stay quiet rather than claim a code is free. Shopify enforces uniqueness on
+ * create regardless; this only moves the error to the field, on blur.
+ */
+export async function isCodeTaken(
+  admin: AdminGraphqlClient,
+  code: string,
+): Promise<boolean | null> {
+  const trimmed = code.trim();
+  if (trimmed === "") {
+    return null;
+  }
+
+  try {
+    const response = await admin.graphql(CODE_TAKEN_QUERY, {
+      variables: { code: trimmed },
+    });
+    const body = (await response.json()) as {
+      data?: { codeDiscountNodeByCode?: { id: string } | null } | null;
+    };
+
+    return Boolean(body.data?.codeDiscountNodeByCode);
+  } catch {
+    return null;
+  }
+}
+
+interface CreateResponse {
+  data?: {
+    discountCodeAppCreate?: {
+      codeAppDiscount?: { discountId?: string | null } | null;
+      userErrors: UserError[];
+    } | null;
+  } | null;
+  errors?: { message: string }[] | null;
+}
+
+/**
+ * Create a capped discount: Shopify first, then the mirror (§3.1).
+ *
+ * If Shopify accepts and the mirror write then fails, the discount is **kept**.
+ * It is live and capping correctly at checkout, and deleting it because our
+ * own database hiccuped would be the worse outcome — so the caller gets
+ * `mirrored: false` and warns the merchant that it will appear in the list once
+ * MaxOff resyncs. A real reconcile-from-Shopify job is V2.
+ */
+export async function createCappedDiscount(
+  input: CreateDiscountInput,
+): Promise<CreateDiscountResult> {
+  const now = new Date();
+
+  const refusal = await freePlanRefusal(input.shop, null, now);
+  if (refusal) {
+    return refusal;
+  }
+
+  let metafield;
+  try {
+    metafield = capConfigMetafield({
+      percentage: input.percentage,
+      capMinor: input.capMinor,
+      currencyCode: input.currencyCode,
+      code: input.code,
+    });
+  } catch (error) {
+    // buildCapConfig throws only on input the Function would refuse, which
+    // means validation upstream let something through.
+    return {
+      ok: false,
+      message:
+        error instanceof Error ? error.message : "That cap could not be saved.",
+    };
+  }
+
+  const title = `${input.code} — ${input.percentage}% capped at ${formatMoney(
+    input.capMinor,
+    input.currencyCode,
+  )}`;
+
+  const response = await input.admin.graphql(CREATE_MUTATION, {
+    variables: {
+      discount: {
+        title,
+        code: input.code,
+        functionHandle: FUNCTION_HANDLE,
+        // Without ORDER the Function returns no operations and the discount
+        // silently does nothing (BUILD-LOG, 8 Sep).
+        discountClasses: ["ORDER"],
+        startsAt: input.startsAt.toISOString(),
+        endsAt: input.endsAt?.toISOString() ?? null,
+        usageLimit: input.usageLimit,
+        appliesOncePerCustomer: input.oncePerCustomer,
+        // V1 eligibility is every buyer. `context` replaces the deprecated
+        // `customerSelection`; segments and specific customers are V2 and would
+        // also need read_customers.
+        context: { all: "ALL" },
+        combinesWith: {
+          orderDiscounts: input.combinesOrder,
+          productDiscounts: input.combinesProduct,
+          shippingDiscounts: input.combinesShipping,
+        },
+        metafields: [metafield],
+      },
+    },
+  });
+
+  const body = (await response.json()) as CreateResponse;
+
+  const transportError = body.errors?.[0]?.message;
+  if (transportError) {
+    return { ok: false, message: transportError };
+  }
+
+  const payload = body.data?.discountCodeAppCreate;
+  const userError = payload?.userErrors?.[0];
+  if (userError) {
+    return {
+      ok: false,
+      message: userError.message,
+      fieldErrors: fieldErrorsFrom(payload?.userErrors ?? []),
+    };
+  }
+
+  const discountGid = payload?.codeAppDiscount?.discountId;
+  if (!discountGid) {
+    return {
+      ok: false,
+      message:
+        "Shopify did not return the new discount's id, so MaxOff cannot track it. Nothing was created.",
+    };
+  }
+
+  try {
+    await prisma.cappedDiscount.create({
+      data: {
+        shop: input.shop,
+        discountGid,
+        method: "code",
+        code: input.code,
+        title,
+        percentage: input.percentage,
+        capMinor: input.capMinor,
+        currencyCode: input.currencyCode,
+        scope: "order",
+        checkoutNote: DEFAULT_CHECKOUT_NOTE,
+        startsAt: input.startsAt,
+        endsAt: input.endsAt,
+        // Intent, not display: the list derives scheduled and expired from the
+        // dates (§1a of docs/PROMPT-DISCOUNTS.md).
+        status: "active",
+        usageLimit: input.usageLimit,
+        oncePerCustomer: input.oncePerCustomer,
+        combinesProduct: input.combinesProduct,
+        combinesOrder: input.combinesOrder,
+        combinesShipping: input.combinesShipping,
+      },
+    });
+
+    return { ok: true, code: input.code, discountGid, mirrored: true };
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error(
+      `[maxoff] ${input.code} (${discountGid}) was created in Shopify but the mirror write failed`,
+      error,
+    );
+
+    return { ok: true, code: input.code, discountGid, mirrored: false };
+  }
+}
+
+/**
+ * Map Shopify's `userErrors[].field` onto our form field names, so an error
+ * lands on the field rather than in a banner (§4.3).
+ */
+function fieldErrorsFrom(errors: UserError[]): Record<string, string> {
+  const mapped: Record<string, string> = {};
+
+  for (const error of errors) {
+    const last = error.field?.[error.field.length - 1];
+    switch (last) {
+      case "code":
+        mapped.code = error.message;
+        break;
+      case "startsAt":
+        mapped.startsAt = error.message;
+        break;
+      case "endsAt":
+        mapped.endsAt = error.message;
+        break;
+      case "usageLimit":
+        mapped.usageLimit = error.message;
+        break;
+      default:
+        break;
+    }
+  }
+
+  return mapped;
 }

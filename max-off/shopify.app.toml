@@ -7,7 +7,13 @@ name = "MaxOff"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "write_discounts,write_products,write_metaobjects,write_metaobject_definitions"
+# read_discounts is required, not optional: `discountCodeAppCreate` selecting
+# `codeAppDiscount { discountId }` — the id we must mirror — reports
+# "Required scopes: write_discounts, read_discounts", and so does the on-blur
+# code uniqueness check. BUILD-SPEC §3.3 said write_discounts covered our
+# reads; validation on 10 Sep 2026 showed it does not. Adding it needs a
+# reinstall on the dev store.
+scopes = "write_discounts,read_discounts,write_products,write_metaobjects,write_metaobject_definitions"
 
 [discount.metafields.app.cap_config]
 type = "json"
