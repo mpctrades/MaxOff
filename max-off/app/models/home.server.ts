@@ -8,7 +8,10 @@
  */
 
 import prisma from "../db.server";
+import { capStartsAboveMinor, displayStatus } from "../lib/cap";
+import type { DisplayStatus } from "../lib/cap";
 import { formatMoney, formatPercent } from "../lib/format";
+import { statusWhere } from "./discounts.server";
 
 /** How many weeks the "Money you kept" chart shows. §4.1: eight bars. */
 const CHART_WEEKS = 8;
@@ -25,7 +28,7 @@ export interface HomeDiscountRow {
   capStartsAboveMinor: number | null;
   timesUsed: number;
   keptMinor: number;
-  status: string;
+  status: DisplayStatus;
 }
 
 export interface HomeWeek {
@@ -74,30 +77,6 @@ export interface HomeData {
   setup: HomeSetup;
 }
 
-/**
- * "Cap starts above" in minor units: the cart size at which the maximum starts
- * to bite, `cap ÷ (percentage / 100)`.
- *
- * Integer arithmetic with one half-up rounding, so a 150.00 maximum at 15%
- * gives exactly 1,000.00 and not 999.99. Returns null when the percentage is
- * zero, which §8 requires to render as an em dash rather than Infinity.
- *
- * TODO(sophea): this is cap arithmetic and belongs beside `capDiscount` in the
- * shared module once we settle where that module lives — the create preview
- * (step 5) needs the same number, and two copies is exactly what CLAUDE.md
- * forbids.
- */
-export function capStartsAboveMinor(
-  capMinor: number,
-  percentage: number,
-): number | null {
-  if (percentage <= 0) {
-    return null;
-  }
-
-  return Math.floor((capMinor * 200 + percentage) / (percentage * 2));
-}
-
 export async function getHomeData(shop: string): Promise<HomeData> {
   const settings = await prisma.shopSettings.upsert({
     where: { shop },
@@ -111,7 +90,9 @@ export async function getHomeData(shop: string): Promise<HomeData> {
   const chartStart = startOfUtcWeek(now, -(CHART_WEEKS - 1));
 
   const [
-    statusCounts,
+    activeCount,
+    scheduledCount,
+    pausedCount,
     totalCount,
     thisMonth,
     lastMonth,
@@ -121,10 +102,18 @@ export async function getHomeData(shop: string): Promise<HomeData> {
     activeDiscounts,
     newestDiscount,
   ] = await Promise.all([
-    prisma.cappedDiscount.groupBy({
-      by: ["status"],
-      where: { shop },
-      _count: { _all: true },
+    // Counted with the list's own predicates (`statusWhere`), so the banner's
+    // "N active discounts" and the list's Active tab can never disagree. A
+    // groupBy on the stored column would count a discount that is scheduled or
+    // expired by the clock as active.
+    prisma.cappedDiscount.count({
+      where: { shop, ...statusWhere("active", now) },
+    }),
+    prisma.cappedDiscount.count({
+      where: { shop, ...statusWhere("scheduled", now) },
+    }),
+    prisma.cappedDiscount.count({
+      where: { shop, ...statusWhere("paused", now) },
     }),
     prisma.cappedDiscount.count({ where: { shop } }),
     prisma.capEvent.aggregate({
@@ -154,7 +143,7 @@ export async function getHomeData(shop: string): Promise<HomeData> {
       select: { occurredAt: true, keptMinor: true },
     }),
     prisma.cappedDiscount.findMany({
-      where: { shop, status: "active" },
+      where: { shop, ...statusWhere("active", now) },
       orderBy: { createdAt: "desc" },
       take: HOME_DISCOUNT_LIMIT,
     }),
@@ -165,15 +154,12 @@ export async function getHomeData(shop: string): Promise<HomeData> {
     }),
   ]);
 
-  const countFor = (status: string) =>
-    statusCounts.find((row) => row.status === status)?._count._all ?? 0;
-
   return {
     plan: settings.plan,
     currencyCode: settings.currencyCode,
-    activeCount: countFor("active"),
-    scheduledCount: countFor("scheduled"),
-    pausedCount: countFor("paused"),
+    activeCount,
+    scheduledCount,
+    pausedCount,
     totalCount,
     keptThisMonthMinor: thisMonth._sum.keptMinor ?? 0,
     keptLastMonthMinor: lastMonth._sum.keptMinor ?? 0,
@@ -198,7 +184,8 @@ export async function getHomeData(shop: string): Promise<HomeData> {
       ),
       timesUsed: discount.timesUsed,
       keptMinor: discount.keptMinor,
-      status: discount.status,
+      // Derived, not the stored column — the same function the list uses.
+      status: displayStatus(discount, now),
     })),
     setup: buildSetup({
       settings,
