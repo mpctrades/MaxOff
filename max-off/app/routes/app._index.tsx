@@ -9,22 +9,8 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import { dismissSetupGuide, getHomeData } from "../models/home.server";
 import type { HomeData, HomeSetupStep, HomeWeek } from "../models/home.server";
+import { CAP_ENGINE_DEPLOYED } from "../lib/cap";
 import { formatMoney, formatPercent } from "../lib/format";
-
-/**
- * Whether the cap engine is live for this shop.
- *
- * Gate 1 closed on 8 Sep 2026: the Function in `extensions/max-off-cap` took
- * 150.00 on a 1,400 cart and 105.00 on a 700 cart at a real checkout on the
- * dev store. So the engine exists — this constant asserts that, and it is the
- * only place the assertion lives.
- *
- * It is a build-time fact, not a runtime check: proving deployment per shop
- * would need an Admin API call, and Home reads only our own tables. When the
- * app ships to a merchant who has somehow not got the Function, the banner
- * would be wrong; the honest fix is a runtime check, which is Gate 3 work.
- */
-const CAP_ENGINE_DEPLOYED = true;
 
 const PLAN_LABELS: Record<string, string> = {
   free: "Free plan",

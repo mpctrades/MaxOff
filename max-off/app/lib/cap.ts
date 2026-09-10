@@ -10,6 +10,21 @@
  * preview all import this file.
  */
 
+/**
+ * Whether MaxOff's cap engine is live.
+ *
+ * Gate 1 closed on 8 Sep 2026: the Function in `extensions/max-off-cap` took
+ * 150.00 on a 1,400 cart and 105.00 on a 700 cart at a real checkout on the
+ * dev store. This constant asserts that, and it lives here because **two**
+ * screens claim it — Home's "Cap engine is running" banner and the Settings
+ * transparency panel's Active pill. Two hard-coded truths in two files is how
+ * they end up disagreeing.
+ *
+ * It is a build-time fact, not a per-shop runtime check: proving deployment
+ * for a given shop needs an Admin API call, and neither screen makes one.
+ */
+export const CAP_ENGINE_DEPLOYED = true;
+
 /** Minor units per major unit. §6 fixes money at two decimals. */
 const MINOR_UNITS = 100;
 
