@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import {
   combineDateTime,
+  defaultEndDate,
   discountFormStateFrom,
   initialDiscountFormState,
   validateDiscountForm,
@@ -252,5 +253,30 @@ describe("a submission that skipped the client", () => {
     expect("value" in result && result.value.oncePerCustomer).toBe(false);
     expect("value" in result && result.value.combinesShipping).toBe(false);
     expect("value" in result && result.value.usageLimit).toBeNull();
+  });
+});
+
+describe("defaultEndDate", () => {
+  test("is thirty days out, keeping the format", () => {
+    expect(defaultEndDate("2026-09-10")).toBe("2026-10-10");
+    expect(defaultEndDate("2026-12-15")).toBe("2027-01-14");
+  });
+
+  test("31 January plus thirty days is 2 March, not a rolled-over 3 March", () => {
+    expect(defaultEndDate("2026-01-31")).toBe("2026-03-02");
+  });
+
+  test("an unusable date gives an empty string, never Invalid Date", () => {
+    expect(defaultEndDate("")).toBe("");
+    expect(defaultEndDate("not-a-date")).toBe("");
+  });
+
+  test("the result is always a date the end field will accept", () => {
+    const result = defaultEndDate("2026-09-10");
+    expect(result).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    // And it validates as an end date after the start date.
+    expect(
+      errorsOf(valid({ endDateOn: true, startDate: "2026-09-10", endDate: result })).endDate,
+    ).toBeUndefined();
   });
 });

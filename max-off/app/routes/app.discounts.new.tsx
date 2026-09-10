@@ -21,6 +21,7 @@ import { DEFAULT_CHECKOUT_NOTE } from "../lib/cap-config";
 import {
   discountFormStateFrom,
   initialDiscountFormState,
+  defaultEndDate,
   validateDiscountForm,
 } from "../lib/discount-form";
 import type {
@@ -28,6 +29,12 @@ import type {
   DiscountFormState,
 } from "../lib/discount-form";
 import { formatMoney, formatPercent } from "../lib/format";
+import { useNativeChange } from "../lib/polaris-events";
+import type {
+  CheckedElement,
+  ValueElement,
+  ValuesElement,
+} from "../lib/polaris-events";
 
 const SAVE_BAR_ID = "create-discount-save-bar";
 const CHECKOUT_PREVIEW_ID = "create-checkout-preview";
@@ -202,6 +209,48 @@ export default function CreateDiscountPage() {
       });
     }
   }, [saveFetcher.data, shopify, navigate]);
+
+  // Polaris fields that only emit `change` need a native listener; React's
+  // onChange never fires for a custom element. See app/lib/polaris-events.ts.
+  const onStartDateChange = useNativeChange<ValueElement>((element) =>
+    set("startDate", element.value),
+  );
+  const onEndDateChange = useNativeChange<ValueElement>((element) =>
+    set("endDate", element.value),
+  );
+  const onUsageLimitOnChange = useNativeChange<CheckedElement>((element) =>
+    set("usageLimitOn", element.checked),
+  );
+  const onOncePerCustomerChange = useNativeChange<CheckedElement>((element) =>
+    set("oncePerCustomer", element.checked),
+  );
+  const onCombinesChange = useNativeChange<ValuesElement>((element) => {
+    const values = element.values ?? [];
+    setState((current) => ({
+      ...current,
+      combinesProduct: values.includes("product"),
+      combinesOrder: values.includes("order"),
+      combinesShipping: values.includes("shipping"),
+    }));
+    setDirty(true);
+  });
+
+  /**
+   * Ticking "Set an end date" prefills a date a month out rather than leaving
+   * an empty field that fails validation before the merchant has touched it —
+   * which is what put a red "Enter an end date" under an untouched control.
+   */
+  const onEndDateOnChange = useNativeChange<CheckedElement>((element) => {
+    const on = element.checked;
+
+    setState((current) => ({
+      ...current,
+      endDateOn: on,
+      endDate: on && current.endDate === "" ? defaultEndDate(current.startDate) : current.endDate,
+    }));
+    setDirty(true);
+    setErrors((current) => ({ ...current, endDateOn: undefined, endDate: undefined }));
+  });
 
   const validate = (): boolean => {
     const result = validateDiscountForm(state);
@@ -485,7 +534,7 @@ export default function CreateDiscountPage() {
           label="Limit the total number of uses"
           name="usageLimitOn"
           checked={state.usageLimitOn}
-          onChange={(event) => set("usageLimitOn", event.currentTarget.checked)}
+          ref={onUsageLimitOnChange}
         ></s-checkbox>
 
         {state.usageLimitOn && (
@@ -504,7 +553,7 @@ export default function CreateDiscountPage() {
           label="Limit to one use per customer"
           name="oncePerCustomer"
           checked={state.oncePerCustomer}
-          onChange={(event) => set("oncePerCustomer", event.currentTarget.checked)}
+          ref={onOncePerCustomerChange}
         ></s-checkbox>
 
         <s-checkbox
@@ -525,16 +574,7 @@ export default function CreateDiscountPage() {
             ...(state.combinesOrder ? ["order"] : []),
             ...(state.combinesShipping ? ["shipping"] : []),
           ]}
-          onChange={(event) => {
-            const values = event.currentTarget.values ?? [];
-            setState((current) => ({
-              ...current,
-              combinesProduct: values.includes("product"),
-              combinesOrder: values.includes("order"),
-              combinesShipping: values.includes("shipping"),
-            }));
-            setDirty(true);
-          }}
+          ref={onCombinesChange}
         >
           <s-choice value="product">
             Product discounts
@@ -592,7 +632,7 @@ export default function CreateDiscountPage() {
             label="Start date"
             name="startDate"
             value={state.startDate}
-            onChange={(event) => set("startDate", event.currentTarget.value)}
+            ref={onStartDateChange}
             {...(errors.startDate ? { error: errors.startDate } : {})}
           ></s-date-field>
           {/* Polaris has no time field in this version, so the time is a
@@ -610,7 +650,7 @@ export default function CreateDiscountPage() {
           label="Set an end date"
           name="endDateOn"
           checked={state.endDateOn}
-          onChange={(event) => set("endDateOn", event.currentTarget.checked)}
+          ref={onEndDateOnChange}
         ></s-checkbox>
 
         {state.endDateOn && (
@@ -622,7 +662,8 @@ export default function CreateDiscountPage() {
               label="End date"
               name="endDate"
               value={state.endDate}
-              onChange={(event) => set("endDate", event.currentTarget.value)}
+              allow={`${state.startDate}--`}
+              ref={onEndDateChange}
               {...(errors.endDate ? { error: errors.endDate } : {})}
             ></s-date-field>
             <s-text-field

@@ -25,6 +25,8 @@ import type { BasketLine, PickedVariant } from "../lib/basket";
 import { capDiscountMinor } from "../lib/cap";
 import { DEFAULT_CHECKOUT_NOTE } from "../lib/cap-config";
 import { formatMoney, formatPercent } from "../lib/format";
+import { useNativeChange } from "../lib/polaris-events";
+import type { ValueElement } from "../lib/polaris-events";
 
 const CHECKOUT_PREVIEW_ID = "test-checkout-preview";
 
@@ -105,6 +107,11 @@ export default function TestACartPage() {
   );
 
   const money = (minor: number) => formatMoney(minor, currencyCode);
+
+  // React's onChange never fires for <s-select>; see app/lib/polaris-events.ts.
+  const onDiscountChange = useNativeChange<ValueElement>((element) =>
+    setSelectedId(element.value),
+  );
 
   /**
    * §2c: the first capped result in this visit completes setup step 3. Not on
@@ -213,7 +220,7 @@ export default function TestACartPage() {
               label="Capped discount"
               name="discount"
               value={discount?.id ?? ""}
-              onChange={(event) => setSelectedId(event.currentTarget.value)}
+              ref={onDiscountChange}
             >
               {discounts.map((row) => (
                 <s-option key={row.id} value={row.id}>

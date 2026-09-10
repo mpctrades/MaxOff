@@ -85,6 +85,27 @@ export function combineDateTime(date: string, time: string): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+/** How far out an end date is prefilled when a merchant switches one on. */
+const DEFAULT_END_DATE_DAYS = 30;
+
+/**
+ * The end date to prefill when a merchant ticks "Set an end date", so the field
+ * is never empty and failing validation before it has been touched.
+ *
+ * Thirty days rather than "one month", because adding a calendar month to
+ * 31 January rolls over to 3 March in JavaScript, and a default nobody can
+ * predict is worse than one that is slightly arbitrary.
+ */
+export function defaultEndDate(startDate: string): string {
+  const parsed = new Date(`${startDate}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) {
+    return "";
+  }
+
+  parsed.setUTCDate(parsed.getUTCDate() + DEFAULT_END_DATE_DAYS);
+  return parsed.toISOString().slice(0, 10);
+}
+
 /**
  * The rules from §4.3: percentage a whole 1-100, maximum above zero, end after
  * start, code present. Field-level messages, because §4.3 wants the error on
