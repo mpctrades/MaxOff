@@ -231,11 +231,30 @@ The template ships with `write_products,write_metaobjects,write_metaobject_defin
 demo scopes and must be removed. MaxOff needs:
 
 - `write_discounts` — create, update, pause, delete capped discounts. **Required.**
+- `read_discounts` — **required** (corrected 10 Sep 2026, see below).
 - `read_orders` — **only** for the money-kept analytics.
 
-`read_discounts` was in an earlier draft of this spec and has been dropped. The discounts docs list
-only `write_discounts` as required (with `read_customers`, `read_products`, `read_shipping`
-optional); `write_discounts` covers our reads. Fewer scopes is better at review — add it back only
+**Corrected 10 Sep 2026, when Gate 3 built the create form.** An earlier draft of this section
+dropped `read_discounts` on the reasoning that "`write_discounts` covers our reads". It does not.
+Validated against the live 2026-10 schema with `validate_graphql_codeblocks`:
+
+| Operation | Required scopes |
+|---|---|
+| `discountCodeAppCreate` selecting only `userErrors` | `write_discounts` |
+| `discountCodeAppCreate` selecting `codeAppDiscount { discountId }` | `write_discounts, read_discounts` |
+| `discountCodeDeactivate` / `discountCodeActivate` selecting only `userErrors` | `write_discounts` |
+| the same, selecting `codeDiscountNode` back | `write_discounts, read_discounts` |
+| `codeDiscountNodeByCode(code:)` — the uniqueness check | `read_discounts` |
+| `discountNode(id:)` — reading a discount or its metafield back | `read_discounts` |
+
+`discountGid` is `@unique` on `CappedDiscount` and is how the `orders/paid` webhook finds our
+discount, so we cannot avoid learning the id, and there is no narrower selection that returns it.
+`read_discounts` is therefore in `access_scopes`, and adding it required a reinstall on the dev
+store.
+
+For the App Store version there is a gentler path worth considering: `shopify.scopes.request()`
+opens a permission-grant modal for scopes declared as **optional** in the app config, which avoids
+making an existing merchant reinstall. That is a pre-submission decision, not a V1 one. Fewer scopes is better at review — add it back only
 if a read actually fails without it.
 
 `read_orders` is protected customer data. **It is Level 1, not Level 2**, provided we never read

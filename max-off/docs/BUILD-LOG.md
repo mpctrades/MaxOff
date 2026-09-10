@@ -650,3 +650,132 @@ there is a separate test database — same open question as wiring `vitest` into
   tooltip anchor, so that is the honest maximum.
 - The Kept column stays plain table text, consistent with Home. If brand orange is wanted it
   changes in both screens at once, and needs CSS around Polaris.
+
+---
+
+## 10 Sep 2026 · the Create screen · Gate 3
+
+Built to `docs/PROMPT-CREATE.md`. Committed as `5beaba6`. This is the screen that makes the other
+three real — until now nothing wrote a `CappedDiscount` row or a `cap_config` metafield.
+
+### The two §2 blockers, settled with Sophea before any code
+
+**a · `read_discounts` is added to `access_scopes`, and the dev store needs reinstalling.**
+Verified rather than assumed, because the decision turned on it:
+
+| Selection on `discountCodeAppCreate` | Required scopes |
+|---|---|
+| `userErrors` only | `write_discounts` |
+| `codeAppDiscount { discountId }` — the narrowest way to learn the id | `write_discounts, read_discounts` |
+
+There is no third path to the id, and `discountGid` is `@unique` on our mirror and is how the
+`orders/paid` webhook will find the discount. `codeDiscountNodeByCode` — the on-blur uniqueness
+check — needs `read_discounts` too, so both of §2a's reasons are the same one-line change.
+BUILD-SPEC §3.3 is corrected with the full scope table.
+
+Worth knowing for the App Store version: `shopify.scopes.request()` opens a permission-grant modal
+for scopes declared **optional** in the app config, which would let an existing merchant grant a
+new scope without reinstalling. A pre-submission decision, not a V1 one.
+
+**b · If Shopify accepts and the mirror write fails, the discount is kept.** It is live and capping
+correctly at checkout, so deleting it because our own SQLite hiccuped is the worse outcome. The
+merchant gets a warning banner naming the code and saying it will appear in the list once MaxOff
+resyncs, and the failure is logged with the code and the gid. A reconcile-from-Shopify job is V2 —
+noted, not built. A test forces the case by making the mirror write violate its unique constraint
+and asserts `mirrored: false` with the Shopify call still made.
+
+### What §3's verification settled
+
+1. **`metafields: [MetafieldInput!]`** on `DiscountCodeAppInput` — `namespace`, `key`, `type`,
+   `value` — written inline on create, confirmed against the live 2026-10 schema. §3.1 was right
+   that no `metafieldsSet` round trip is needed, which also means there is no window where a live
+   discount has no config.
+2. **The full input**: `title`, `code`, `functionHandle`, `discountClasses`, `startsAt`, `endsAt`,
+   `usageLimit`, `appliesOncePerCustomer`, `combinesWith`, `context`, `tags`, `metafields`,
+   `appliesOnOneTimePurchase`, `appliesOnSubscription`, `recurringCycleLimit`.
+3. **`functionHandle`, definitively.** The schema reports `DiscountCodeAppInput.functionId` as
+   *"deprecated. Use `functionHandle` instead."* The 8 Sep note about the docs contradicting
+   themselves is now closed. A test asserts we never send `functionId`.
+4. **Reads**: `codeDiscountNodeByCode(code:)` for uniqueness; `discountNode(id:)` with
+   `metafield(namespace: "$app", key: "cap_config")` for reading a discount back — note
+   `codeDiscountNode(id:)` is **deprecated** in favour of `discountNode`.
+5. **Tags.** Two more components do not exist, and both were on the prompt's list:
+   **no `s-segmented-control`** (Method is a radio `s-choice-list`) and **no `s-time-field`** (the
+   time is a validated `HH:MM` text field beside `s-date-field`, labelled UTC). Confirmed working:
+   `s-number-field` with `suffix`, `s-money-field` with `currencyCode="auto"`, `s-text-field`,
+   `s-date-field`, `s-checkbox`, `s-choice-list` + `s-choice` (with `multiple` for the combinations
+   group), `s-modal` opened by `s-button commandFor="…" command="--show"` — the command values are
+   `--show` / `--hide` / `--toggle` / `--copy` / `--auto`, with the dashes.
+   **Save bar**: two mutually exclusive approaches — `<form data-save-bar>` for automatic dirty
+   tracking with Shopify's own labels, or `<ui-save-bar id>` plus
+   `shopify.saveBar.show/hide/toggle` with your own `<button>` children. We use the second, because
+   §4.3 specifies the label "Save & activate". `variant="primary"` on those plain buttons is typed
+   by `@shopify/app-bridge-types`, which is why `validate_component_codeblocks` flags it while
+   `tsc` accepts it — the validator loads Polaris types only.
+
+### The finding that lands on the spec, not the code
+
+**`DiscountCodeAppInput` has no `minimumRequirement` field.** Minimum purchase amount and minimum
+quantity — BUILD-SPEC §2's V1 item 9, and §4.3's card 4 — **cannot be expressed on an app
+discount at all.** `customerSelection` is deprecated in favour of `context`, which does cover
+eligibility (`all`, `customers`, `customerSegments`, `markets`), so card 5 is fine; only the
+minimums have nowhere to go.
+
+The only way to enforce a minimum is inside the Function: read it from the metafield and return no
+operations below it. That is a Gate 2 change plus a `cap_config` version bump — and the deployed
+Function refuses any `version` but `1`, so it cannot be done from the admin alone. The card is
+therefore rendered with its options **disabled** and an info banner explaining why. **Sophea needs
+to decide** whether to schedule the Function work or move minimums to V2.
+
+### Also deviated, deliberately
+
+- The maximum uses `s-money-field currencyCode="auto"`, which resolves to the shop's own currency,
+  rather than casting our stored `ShopSettings.currencyCode` string into Shopify's `CurrencyCode`
+  union. Amounts still relabel and never convert.
+- The `instead of ~~210.00 USD~~` strikethrough is a plain `<del>`: `s-text` has no
+  strikethrough prop, and `<del>` is the semantic element for it.
+- Client and server validation were briefly two copies of the same rules. They are now one
+  function in `app/lib/discount-form.ts`, called by the component for immediacy and by the action
+  as the gate — which is what §6 asks for and removes a real drift risk.
+
+### Verified
+
+1. `npm run typecheck`, `npm run lint`, `npm run build` all clean. `shopify app config validate
+   --json` → `{"valid": true, "issues": []}` after the scope change.
+2. **`npm test`: 82 Function tests. Admin: 114**, up from 44 — 51 new in `cap-config.test.ts`
+   (the §8 table through `buildCapConfig` **and the Function's real `parseCapConfig`**, plus every
+   way §1 says the metafield can be got wrong), 19 in `discount-form.test.ts`, and
+   `capDiscountMinor`/`parseDecimalToMinor`/`toDecimalString` against the §8 table.
+   `capAmount` is asserted to be the string `"150.00"` — not the number `150`, not `"15000"`.
+3-5. **Not verified — needs the dev store, and now a reinstall first.** The real checkout at
+   −150.00 and −105.00, reading the metafield back from Shopify, and watching Home's banner flip
+   are §7 items 3, 4 and 5, and all three need the app running with the new scope. What *is*
+   verified locally, against a fake Admin client that captures the wire payload: the exact
+   metafield JSON, `functionHandle`, `discountClasses: [ORDER]`, `context: { all: "ALL" }`, the
+   mirror row, and then the list showing the row and `getHomeData().activeCount === 1` with the
+   setup guide reading "SUMMER15 — 15% off, capped at 150.00 USD".
+6. All eleven V2/PRO controls carry `disabled` — checked line by line: automatic discount, each
+   item, each collection, specific collections, specific products, budget cap, the checkout note,
+   the four templates, customer segments, and both minimum requirement options.
+7-8, 11. **Right column, sticky, and the keyboard pass need a browser.** Structurally: the preview
+   is in `s-page`'s `aside` slot under Summary with `position: sticky`; the slider is a native
+   `input type="range"`, so arrow keys work without our help; radio and checkbox descriptions use
+   Polaris' `details` slot, which renders the title on its own line with the description beneath
+   (§12.1) rather than the mockup's inline run-together.
+9. The Free-plan refusal on create is tested, reuses the list's own helper, and refuses **before**
+   Shopify is called, so nothing is created anywhere.
+10. A bypassed client is tested directly through `discountFormStateFrom` + `validateDiscountForm`:
+    an empty POST, a percentage of 150, a zero or negative maximum, and absent checkboxes
+    defaulting to false rather than true.
+
+`dev.sqlite` was reset to empty afterwards; the verification harness was temporary and is deleted.
+
+### What Sophea has to do next, in order
+
+1. `npm run dev`, then **reinstall the app on the dev store** so `read_discounts` is granted.
+   Read the dev-preview trap in `docs/UI-BUILD-PROMPT.md` first: reinstall from a running dev
+   session, and expect the reinstall to destroy `MAXOFF15GATE2` and any discount referencing the
+   Function.
+2. Create `SUMMER15` — 15%, maximum 150.00 — through the form.
+3. Run the two checkouts: a 1,400.00 cart should take **150.00**, a 700.00 cart **105.00**.
+4. Read the metafield back and confirm `capAmount` is the string `"150.00"`.
