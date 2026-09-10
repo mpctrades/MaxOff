@@ -544,3 +544,109 @@ The Gate 2 exit checkout, with the validated `discountCodeAppCreate` mutation in
 the old `MAXOFF15` carries no metafield and will now correctly apply nothing. And the §3.2 open
 question: whether `cart.cost.subtotalAmount` is net of *line-level* discounts. Both need a real
 checkout.
+
+---
+
+## 10 Sep 2026 · the Capped discounts list
+
+Built to `docs/PROMPT-DISCOUNTS.md`. Committed as `2ace54e`.
+
+### The three §1 decisions, as recommended
+
+**a · Status is derived, not stored.** `CappedDiscount.status` now means the merchant's *intent*
+— `active` or `paused`, the only two states a human sets — and `displayStatus(discount, now)` in
+`app/lib/cap.ts` reads "scheduled" and "expired" off the dates. Nothing updates a row when the
+clock passes it, so a stored status would have started lying within a day of a scheduled discount
+going live. `statusWhere(tab, now)` in `discounts.server.ts` is the SQL twin of that function, in
+the same order, and **Home imports it** — its banner count and the list's Active tab now come from
+one definition. A verification test asserts `home.activeCount === list({tab:"active"}).total`.
+
+One deviation from the prompt's wording: the predicates use `status != "paused"` rather than
+`status = "active"`. A row still carrying a stored "scheduled" or "expired" from an earlier write
+would otherwise vanish from every tab; `displayStatus` treats anything not paused as intent-active
+and re-derives, so the SQL has to agree.
+
+**b · No checkbox column.** §4.2 lists no bulk action, so the column is left out rather than
+selecting rows into a void. Bulk pause / bulk activate is the honest V2 line item.
+
+**c · Method and Cap type render disabled** (`s-select disabled`), per rule 6.
+
+### What `shopify-dev-mcp` settled (§3)
+
+1. **Tags.** `s-search-field` (events `input`/`change`, exposed to React as `onInput`/`onChange`
+   with a typed `currentTarget`); `s-select` + `s-option` with `disabled` for the V2 filters;
+   `s-badge` for the status pill; pagination is **on the table itself** — `paginate`,
+   `hasNextPage`, `hasPreviousPage`, `onNextPage`, `onPreviousPage`. The finished markup passes
+   `validate_component_codeblocks`.
+2. **Two things do not exist, and both would have been invented if we had guessed:**
+   - **There is no `s-tabs`/`s-tab`.** Confirmed by validation: *"Property 's-tabs' does not exist
+     on type 'JSX.IntrinsicElements'"*. The status tabs are therefore an `s-button-group` whose
+     current tab is `variant="primary"`.
+   - **`s-empty-state` is documented but "Not supported in this version"** — it is 1.1-rc only,
+     and we load the stable Polaris 1 channel. It is composed from `s-grid`/`s-stack`/`s-heading`/
+     `s-paragraph`/`s-button`, the way the v1.0 Index template does.
+3. **Mutations.** `discountCodeDeactivate(id:)` and `discountCodeActivate(id:)`, both validated
+   against the live 2026-10 schema with `DiscountCodeApp` in the union — so they *are* the right
+   mechanism for an app discount, and §4.2's assumption holds. Nothing had to stop.
+   - Selecting `codeDiscountNode` back reports **`Required scopes: write_discounts, read_discounts`**;
+     selecting only `userErrors` reports **`write_discounts`** alone. The mutations therefore
+     select only `userErrors`, which keeps this screen inside the scopes we already have. See the
+     scope question below.
+   - Shopify's own documentation, worth knowing before Gate 3: *"Activating a code discount set to
+     start in the future sets its `startsAt` to now."* So activating a paused-and-not-yet-started
+     discount silently reschedules it. The mirror now writes `startsAt = now` in exactly that case,
+     or our derived status would keep calling a live discount "scheduled". A test covers it.
+4. **Toast.** `shopify.toast.show(message, { isError, duration, action, onAction, onDismiss })`.
+   The Free-plan refusal uses `action: "View plans"` to get the merchant to `/app/billing`.
+
+### The build failure worth remembering
+
+`npm run build` failed the first time with *"Server-only module referenced by client:
+'../models/discounts.server' imported by route 'app.discounts._index.tsx'"*. React Router strips
+`loader`/`action` from the client bundle, but the **component** was reading `DISCOUNT_TABS` from
+the server module, which pins the whole module — Prisma included — into the browser build. Home
+never hit this because its component imports only *types* from `home.server.ts`, and types erase.
+
+`DiscountTab`, `DISCOUNT_TABS`, `isDiscountTab` and `DISCOUNT_TAB_LABELS` now live in
+`app/lib/cap.ts`. **Rule for every future screen: a route component may import types from a
+`.server` module, never values.**
+
+### Verified
+
+1. `npm run typecheck`, `npm run lint`, `npm run build` all clean; the client bundle contains
+   neither `PrismaClient` nor `discountCodeDeactivate`.
+2. `npx vitest run app/lib/cap.test.ts` — **19 passing**, the §8 table plus `percentage = 0`
+   returning null, negative percentages, the stale-stored-status cases and the date boundaries
+   (starting now is active, ending now is expired). With `format.test.ts` that is 44 admin tests;
+   the Function's 82 still pass.
+3. `prisma/seed/dev-home-state.mjs list` seeds the six mockup rows — SUMMER15, VIP20, WELCOME10
+   active; BF30 scheduled; BF-TEST paused; SPRING12 expired — on Growth, or `list --free` for the
+   plan-limit test. Tab counts verified to add up: 3 + 1 + 1 + 1 = 6 = All.
+4. Pause SUMMER15 → mirror flips to paused and Home's `activeCount` drops to 2; activate → back to
+   3. Verified against a fake Admin client, not through the browser.
+5. A forced `userErrors` response returns Shopify's exact message, leaves `status` alone **and
+   leaves `updatedAt` untouched** — asserted, so the mirror provably was not written.
+6. On Free with three active rows, activating a fourth is refused with the billing pointer; with
+   one active row, re-activating it is allowed. Shopify is never called on a refusal.
+7. Three empty states exist in code and two are verified at the data layer: a search that matches
+   nothing, and an empty database. The per-tab variant differs only in copy.
+8. **Not verified — needs the dev store**: screenshots of every tab, the keyboard pass, and seeing
+   the optimistic pill flip and revert in a browser. §7 items 3, 8 and the visual halves of 4-7.
+9. `dev.sqlite` reset: 0 `CappedDiscount`, 0 `CapEvent`, 0 `ShopSettings`. The one `Session` row is
+   the real dev session and was never touched.
+
+The verification harness for items 3-7 was a temporary `discounts.verify.test.ts`, deleted after
+the run because it writes to `dev.sqlite`. Those 17 assertions are worth keeping permanently once
+there is a separate test database — same open question as wiring `vitest` into `npm test`.
+
+### Open, and needing Sophea
+
+- **`read_discounts`.** Not needed by this screen as written, but the moment a screen reads a
+  discount back from Shopify — Gate 3's create form confirming what it wrote, or the detail page —
+  it is required, and adding it to `access_scopes` forces a reinstall (rule 9). Worth adding on the
+  next deliberate reinstall rather than mid-flow.
+- **Cancel and Duplicate are disabled**, as the prompt allows, with the reason in their
+  `accessibilityLabel` and a line under the table for sighted users. `s-button` has no `title` or
+  tooltip anchor, so that is the honest maximum.
+- The Kept column stays plain table text, consistent with Home. If brand orange is wanted it
+  changes in both screens at once, and needs CSS around Polaris.
