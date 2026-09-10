@@ -992,3 +992,146 @@ exit: create `SUMMER15` through the form, the 1,400.00 → **150.00** and 700.00
 checkouts, the `cap_config` read-back, and confirming the resource picker returns products at all.
 Plus the two open scope decisions: whether per-store rounding gets its own gate, and whether
 minimum requirements move to V2 or get the Function work `DiscountCodeAppInput` cannot do.
+
+---
+
+## 10 Sep 2026 · Plans & billing
+
+Built to `docs/PROMPT-BILLING.md`, in Shuffly's shape rather than the mockup's three price cards.
+Two commits: `430b5aa` for the entitlement matrix and the limit refactor, `009f648` for the screen.
+
+### The three §0 decisions, all as recommended, with Sophea's sign-off
+
+**a · The plan is read from Shopify; the column is a cache.** `ShopSettings.plan` was never
+written, so every merchant was Free forever — including one who paid, and including the Free-plan
+limit that refuses their second discount. `app/models/plan.server.ts` is now the only thing that
+resolves a plan.
+
+The gates read it **live**: `createCappedDiscount` and `setDiscountPaused` both hold an admin
+client, so they ask Shopify rather than trusting the cache. A merchant who upgraded a minute ago
+must not be refused because nobody had opened the billing page since — that is a billing complaint,
+not a bug report. Home keeps reading the cache, because `PROMPT-HOME` §3 forbids Admin API calls
+there, and the cache is now actually written.
+
+**b · "Powered by MaxOff" is out of the plan ladder entirely.** §3.6 lists it as a Free-plan limit;
+nothing implements it and the Function *cannot* — it builds the buyer message from `cap_config`,
+which carries no plan. The line is gone from the Free card rather than left sitting above dead
+code. **The four-part scope, so it can be gated properly later:** (1) a `plan` or `showPoweredBy`
+flag in `cap_config`; (2) the Function reading it and appending the note; (3) rewriting the
+metafield on **every existing discount** whenever the merchant changes plan — a write across N
+discounts needing partial-failure handling; (4) a `version` decision, because the deployed Function
+refuses any `cap_config` whose version is not `1`. A merchant paying to remove a note that was
+never there is the worst version of this.
+
+**c · Start and end dates stay in Free.** They were sold as Growth and shipped to everyone ungated.
+They are built, they cost nothing to give away, and they make Free genuinely useful; taking a
+working feature off Free merchants later is worse than never offering it. The line is dropped from
+the Growth card and dates are a Free capability in the matrix.
+
+### §1 · The entitlement matrix
+
+`app/lib/plans.ts` holds the table, and every entry carries **both** the entitlement and whether
+it is built. The cards render from it; `planLimitRefusal` reads `activeDiscountLimit()` from it;
+Home's setup step 4 reads `toPlanKey()` from it. There is no longer a second `plan !== "free"`
+anywhere in the app.
+
+"Included now" lists only what is built. Entitled-but-unbuilt appears in a separate list headed
+"On your plan, not built yet — you will not be charged extra when it arrives", so a Growth merchant
+is not told they have an analytics dashboard that is blocked on `read_orders`.
+
+### What §2's verification settled — including one thing that changes §0a
+
+1. **Reading the plan.** `currentAppInstallation { activeSubscriptions { name status
+   currentPeriodEnd } app { handle } }` validates against the live 2026-10 schema and reports **no
+   required access scope** — the same signal `shop { currencyCode }` gave. One query returns both
+   the plan and the app handle the pricing URL needs.
+
+   **But the App Pricing docs name a different mechanism**, quoted: *"Query
+   `activeSubscription(appId:, shopId:)` on the Partner API to get a merchant's current
+   subscription"*, and there is **no mention** of `currentAppInstallation.activeSubscriptions`
+   being available for this purpose. The Partner API needs a Partner-organisation token, which an
+   embedded app request does not have — and Partner-account access for Sophea is still project
+   open question 2.
+
+   So the Admin query is what the app can actually reach, and it is what this ships with. Whether
+   it sees App Pricing subscriptions cannot be established until the three plans exist in the
+   Partner Dashboard (Sophea's Gate 6 task). Until then it correctly reports Free, because there
+   genuinely is no paid subscription. **This is the one open risk in the screen** and it is named
+   in the module's own doc comment.
+
+2. **The hosted plan page URL**, confirmed rather than recalled:
+   `https://admin.shopify.com/store/:store_handle/charges/:app_handle/pricing_plans`. The store
+   handle is the shop domain without `.myshopify.com`; the app handle comes from the same query as
+   the plan. The docs say the redirect must leave the embedded frame and that React Router apps
+   should *"use the framework's redirect utility"* — which is the `redirect` helper
+   `authenticate.admin` returns, supporting `target: '_self' | '_parent' | '_top' | '_blank'`. The
+   button is a plain `<form method="post">` so the browser performs a real navigation and honours
+   that response; `target: "_top"` takes the merchant out of the iframe.
+
+3. **There is no plan-change webhook any more.** Quoted: *"Shopify App Pricing doesn't use webhooks
+   to notify your app of subscription changes."* Details arrive as URL parameters on the
+   welcome-link redirect instead, and `APP_SUBSCRIPTIONS_UPDATE` is legacy, deprecated through
+   28 April 2026 — already past. So the cache cannot self-heal via webhook: it is refreshed when
+   the billing page loads, when a gate runs, and by the `plan_handle` parameter, which
+   `recordPlanHandle` already accepts. **Nothing to wire, and nothing to wait for.**
+
+4. **No meter or progress component exists.** `s-progress-bar`, `s-meter` and
+   `s-progress-indicator` all fail validation, consistent with the Home build. The usage meter is
+   the same two nested `s-box`es, with the sentence above it as the text alternative — and
+   unlimited plans get the sentence and no bar, because a bar pinned at 100% reads as a limit that
+   is not there.
+
+### The sixth mockup defect
+
+**§12.6 — the billing screen's two working buttons.** The mockup draws "Upgrade to Pro" and
+"Downgrade" as separate controls that change the plan. §4.8 says outright that this screen displays
+and does not transact: under App Pricing, Shopify hosts the plan page and owns every upgrade,
+downgrade and cancellation. There is one destination and one button, "View plans & pricing →".
+Recording it here alongside §12's five.
+
+### Verified
+
+1. `npm run typecheck`, `npm run lint`, `npm run build` clean. `npm test`: 82 Function tests;
+   **admin 150**, up from 132.
+2. `app/lib/plans.test.ts` — **18 tests**: the Free limit is 1, Growth and Pro unlimited, an
+   unknown plan is treated as Free and never as unlimited, and `can()` is checked against a
+   transcription of the §1 table for **every key on every plan**. Also asserted: the module has an
+   entry for every key and no extras, nothing claims a "Powered by" entitlement, and every unbuilt
+   capability carries a note saying why.
+3. **The plan comes from Shopify, proved the way §4 asks:** with `ShopSettings.plan` set to `"pro"`
+   by hand and Shopify reporting no subscription, `getCurrentPlan` returns **free** and corrects
+   the column. Also verified: an active "Growth" is read as Growth; names match in any case; a
+   `CANCELLED` subscription is not an active plan; an unrecognised *paid* subscription is not
+   silently downgraded to Free but reported with its raw name; and an unreachable Shopify leaves
+   the cached plan standing, flagged "Last known" rather than downgrading anyone.
+4. Reading the plan changes Home's badge **and** setup step 4 together — `plan: "growth"` and
+   `setup.plan.done: true` after one `getCurrentPlan` call, from the same row.
+5. The Free limit still refuses a second active discount, now through `activeDiscountLimit()`; and
+   a merchant whose cache says Free while Shopify says Growth **is allowed** two, which is the
+   live-at-the-gate behaviour working.
+6. The URL is asserted to build as
+   `https://admin.shopify.com/store/maxoff-s7fqtwdd/charges/max-off/pricing_plans`, and to be null
+   rather than broken when the app handle is unknown. **Clicking it needs the dev store.**
+7. `nextPlan("pro")` is null and `upgradeAdds("pro")` is empty, so the upsell section cannot
+   render on Pro. **The three screenshots need a browser.**
+8. With an empty `CapEvent` table there is no money figure — the loader's `hasCapEvents` is false
+   and the kept sentence and the "N× the subscription" line are both dropped, not zeroed.
+9. **The footer matches §11 character for character**, compared programmatically against the spec
+   table.
+10. **Keyboard pass needs a browser.** The meter carries its text alternative in the sentence and
+    in `accessibilityLabel`, and the redirect is a real submit button in a real form.
+
+`dev.sqlite` reset to empty. The verification harness was temporary and is deleted.
+
+### Where V1 stands after this
+
+All eight screens from §4 now exist, and six of them are built out: Home, the list, Create, Test a
+cart, Settings and Plans & billing. **Detail (`app.discounts.$id.tsx`) and Analytics
+(`app.analytics.tsx`) are still stubs**, and both are mostly blocked on the same thing — `CapEvent`
+rows, which need the `orders/paid` webhook, which needs `read_orders` protected-customer-data
+approval. That approval is project open question 6 and has not been requested yet.
+
+Still queued for Sophea, in order: the reinstall carrying `read_discounts` and `read_products`; the
+Gate 3 exit checkouts (1,400.00 → **150.00**, 700.00 → **105.00**); the `cap_config` read-back;
+confirming the resource picker returns products; the `read_orders` request; and the three App
+Pricing plans in the Partner Dashboard, which is also what makes the plan read testable.
