@@ -208,6 +208,36 @@ export async function dismissSetupGuide(shop: string): Promise<void> {
   });
 }
 
+/**
+ * Record that the merchant tested a cart and the cap actually bit — setup
+ * step 3 on Home (§4.1).
+ *
+ * `cappedMinor` is the **discount given** (`givenMinor`), not the amount kept.
+ * `buildSetup` renders these as "Tested 1,400.00 USD — capped correctly at
+ * 150.00 USD", so passing `keptMinor` here would read "capped correctly at
+ * 60.00 USD": wrong, and plausible enough to survive a review.
+ *
+ * Only called for a capped result. A cart that never reached the maximum did
+ * not test the cap, so it leaves the step incomplete.
+ */
+export async function recordCartTest(input: {
+  shop: string;
+  subtotalMinor: number;
+  cappedMinor: number;
+}): Promise<void> {
+  const data = {
+    lastCartTestAt: new Date(),
+    lastCartTestSubtotalMinor: input.subtotalMinor,
+    lastCartTestCappedMinor: input.cappedMinor,
+  };
+
+  await prisma.shopSettings.upsert({
+    where: { shop: input.shop },
+    update: data,
+    create: { shop: input.shop, ...data },
+  });
+}
+
 interface SetupInput {
   settings: {
     plan: string;
