@@ -747,7 +747,7 @@ export default function CreateDiscountPage() {
                     onChange={(event) =>
                       setSimSubtotalMinor(Number(event.target.value))
                     }
-                    style={{ width: "100%", accentColor: "#c2410c" }}
+                    style={{ width: "100%", accentColor: "var(--maxoff-orange-700)" }}
                   />
 
                   <s-button-group>
@@ -765,12 +765,12 @@ export default function CreateDiscountPage() {
                   </s-button-group>
 
                   <div
+                    className="maxoff-tabular"
                     style={{
                       fontSize: "26px",
                       fontWeight: 650,
                       letterSpacing: "-0.5px",
-                      fontVariantNumeric: "tabular-nums",
-                      color: "#c2410c",
+                      color: "var(--maxoff-orange-700)",
                     }}
                   >
                     {money(preview.givenMinor)}
@@ -871,7 +871,7 @@ function PreviewBars({
           style={{
             height: "8px",
             borderRadius: "4px",
-            background: "#f3f3f3",
+            background: "var(--maxoff-track)",
             overflow: "hidden",
           }}
         >
@@ -879,7 +879,7 @@ function PreviewBars({
             style={{
               width: width(uncappedMinor),
               height: "100%",
-              background: "#e0b4ab",
+              background: "var(--maxoff-loss)",
             }}
           />
         </div>
@@ -893,7 +893,7 @@ function PreviewBars({
           style={{
             height: "8px",
             borderRadius: "4px",
-            background: "#f3f3f3",
+            background: "var(--maxoff-track)",
             overflow: "hidden",
           }}
         >
@@ -901,7 +901,7 @@ function PreviewBars({
             style={{
               width: width(givenMinor),
               height: "100%",
-              background: "#ea580c",
+              background: "var(--maxoff-orange-500)",
             }}
           />
         </div>

@@ -1,5 +1,8 @@
 import { Links, Meta, Outlet, Scripts, ScrollRestoration } from "react-router";
 
+// MaxOff brand tokens, defined once. See app/styles/theme.css.
+import "./styles/theme.css";
+
 export default function App() {
   return (
     <html lang="en">

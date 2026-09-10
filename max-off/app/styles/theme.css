@@ -1,0 +1,57 @@
+/**
+ * MaxOff brand tokens — defined once, referenced everywhere.
+ *
+ * These apply only to markup **we** draw: the money-kept chart's SVG, the
+ * create preview's comparison bars, and the cart-size slider. Polaris web
+ * components cannot consume them, and cannot be restyled at all — Shopify's
+ * own documentation is explicit that "component styling is controlled by the
+ * merchant's branding settings and can't be overridden with custom CSS". So
+ * orange is an accent on our own surfaces, and Polaris keeps its own pixels,
+ * which is also what BUILD-SPEC §5 requires.
+ *
+ * Never use orange as the only signal for meaning: every status in the app is
+ * carried by a Polaris badge with a text label, not by colour.
+ */
+
+:root {
+  /* Brand */
+  --maxoff-orange-500: #ea580c; /* primary accent, money-kept values, chart bars */
+  --maxoff-orange-400: #fb923c; /* secondary, hover, in-progress */
+  --maxoff-orange-300: #fdba74; /* tint backgrounds and progress tracks only */
+  --maxoff-orange-700: #c2410c; /* text-safe orange on white (4.5:1 on #fff) */
+  --maxoff-ink: #141210; /* primary text */
+
+  /* Neutrals for our own drawings, matched to the Polaris admin surface. */
+  --maxoff-chart-grid: #e3e3e3;
+  --maxoff-chart-label: #616161;
+  --maxoff-chart-value: #303030;
+  --maxoff-track: #f3f3f3;
+
+  /* The "would have been given away" bar: a muted loss, never a brighter win. */
+  --maxoff-loss: #e0b4ab;
+}
+
+/**
+ * Dark mode is out of V1 scope (§5 is light-only), but the admin can be dark
+ * and our own SVG text would otherwise be near-invisible on it. These keep the
+ * things we draw legible; they are not a dark-mode design.
+ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --maxoff-orange-700: #fb923c; /* orange-700 fails contrast on dark */
+    --maxoff-chart-grid: #4a4a4a;
+    --maxoff-chart-label: #b5b5b5;
+    --maxoff-chart-value: #e3e3e3;
+    --maxoff-track: #303030;
+    --maxoff-loss: #8e5b52;
+  }
+}
+
+/**
+ * Tabular numerals for the figures we render ourselves, so digits line up
+ * column to column. Polaris table cells handle their own alignment through
+ * `format="numeric"` and `format="currency"` on the header.
+ */
+.maxoff-tabular {
+  font-variant-numeric: tabular-nums;
+}

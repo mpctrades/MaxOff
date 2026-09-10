@@ -40,6 +40,12 @@ export interface DiscountList {
   rows: DiscountListRow[];
   /** Row count for the tab being shown. */
   total: number;
+  /**
+   * Every capped discount in the shop, ignoring the tab and the search. This
+   * is what separates "this shop has none yet" from "these filters match
+   * none" — two different empty states with two different actions.
+   */
+  storeTotal: number;
   /** Row count per tab, for the tab labels. Search is applied to these too. */
   tabCounts: Record<DiscountTab, number>;
   page: number;
@@ -115,7 +121,8 @@ export async function listCappedDiscounts(input: {
     ...statusWhere(input.tab, now),
   };
 
-  const [total, rows, ...counts] = await Promise.all([
+  const [storeTotal, total, rows, ...counts] = await Promise.all([
+    prisma.cappedDiscount.count({ where: { shop: input.shop } }),
     prisma.cappedDiscount.count({ where }),
     prisma.cappedDiscount.findMany({
       where,
@@ -155,6 +162,7 @@ export async function listCappedDiscounts(input: {
       currencyCode: row.currencyCode,
     })),
     total,
+    storeTotal,
     tabCounts,
     page,
     pageCount,

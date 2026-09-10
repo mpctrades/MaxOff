@@ -17,7 +17,7 @@ import {
   displayStatusLabel,
   isDiscountTab,
 } from "../lib/cap";
-import type { DiscountTab, DisplayStatus } from "../lib/cap";
+import type { DisplayStatus } from "../lib/cap";
 import { formatMoney, formatPercent } from "../lib/format";
 
 /** How long to wait after the last keystroke before searching. */
@@ -201,7 +201,13 @@ export default function DiscountsListPage() {
           </s-table-body>
         </s-table>
 
-        {list.rows.length === 0 && <EmptyState tab={tab} query={query} />}
+        {list.rows.length === 0 && (
+          /* A shop with no capped discounts at all gets the product's empty
+             state. A tab or search that simply matches nothing gets a way back
+             — showing "create your first" to a merchant who has six is the
+             version of this that reads as a bug. */
+          <EmptyState storeIsEmpty={list.storeTotal === 0} />
+        )}
 
         {hasScheduledOrExpired && (
           <s-paragraph color="subdued">
@@ -363,28 +369,29 @@ function RowAction({
   );
 }
 
-function EmptyState({ tab, query }: { tab: DiscountTab; query: string }) {
-  const searching = query.trim() !== "";
-
+function EmptyState({ storeIsEmpty }: { storeIsEmpty: boolean }) {
   return (
     <s-grid gap="base" justifyItems="center" paddingBlock="large-400">
       <s-grid justifyItems="center" maxInlineSize="450px" gap="base">
         <s-stack direction="block" gap="small-200" alignItems="center">
           <s-heading>
-            {searching ? "No codes matched that search" : "No discounts here yet"}
+            {storeIsEmpty
+              ? "No capped discounts yet"
+              : "No discounts match these filters"}
           </s-heading>
           <s-paragraph>
-            {searching
-              ? `Nothing in ${DISCOUNT_TAB_LABELS[tab]} matches “${query.trim()}”.`
-              : "When a capped discount reaches this state it will show up here."}
+            {storeIsEmpty
+              ? "A capped discount gives the full percentage on small carts and stops at your maximum on large ones."
+              : "Nothing here matches what you are looking for. Clear the filters to see every capped discount."}
           </s-paragraph>
         </s-stack>
-        {searching ? (
-          <s-button href={`/app/discounts?tab=${tab}`}>Clear search</s-button>
-        ) : (
+
+        {storeIsEmpty ? (
           <s-button variant="primary" href="/app/discounts/new">
             Create capped discount
           </s-button>
+        ) : (
+          <s-button href="/app/discounts">Clear filters</s-button>
         )}
       </s-grid>
     </s-grid>

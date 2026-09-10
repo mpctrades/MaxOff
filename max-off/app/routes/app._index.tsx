@@ -412,7 +412,7 @@ function WeeklyChart({
               y1={y}
               x2={WIDTH - PAD_RIGHT}
               y2={y}
-              stroke="#e3e3e3"
+              stroke="var(--maxoff-chart-grid)"
               strokeWidth="1"
             />
             <text
@@ -420,7 +420,7 @@ function WeeklyChart({
               y={y + 3.5}
               textAnchor="end"
               fontSize="10"
-              fill="#616161"
+              fill="var(--maxoff-chart-label)"
             >
               {Math.round(value / 100)}
             </text>
@@ -442,7 +442,7 @@ function WeeklyChart({
               width={barWidth}
               height={Math.max(barHeight, 2)}
               rx="4"
-              fill="#ea580c"
+              fill="var(--maxoff-orange-500)"
               opacity={isTallest ? 1 : 0.55}
             >
               <title>
@@ -457,7 +457,7 @@ function WeeklyChart({
               y={HEIGHT - 8}
               textAnchor="middle"
               fontSize="10"
-              fill="#616161"
+              fill="var(--maxoff-chart-label)"
             >
               {label(week)}
             </text>
@@ -468,7 +468,7 @@ function WeeklyChart({
                 textAnchor="middle"
                 fontSize="10"
                 fontWeight="600"
-                fill="#303030"
+                fill="var(--maxoff-chart-value)"
               >
                 {formatMoney(week.keptMinor, currencyCode)}
               </text>
