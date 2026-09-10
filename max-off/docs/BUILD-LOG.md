@@ -421,3 +421,126 @@ negative test: expect **no discount at all**.
 - Step 1's config parser is the first piece of shared ground: step 5's live preview must import the
   same arithmetic. `cap.ts` stays arithmetic-only and `cap_config.ts` handles the metafield shape,
   so the admin can import `cap.ts` without dragging in Function-specific parsing.
+
+---
+
+## 10 Sep 2026 · the walking skeleton, and the Home screen
+
+Two commits: the skeleton an earlier session had left uncommitted, then Home built to
+`docs/PROMPT-HOME.md`. Gate 2's code was already closed on 8 Sep; the one thing still open in it
+is a real checkout, which only Sophea can run.
+
+### The skeleton (committed as found, plus the migration it was missing)
+
+`app/routes/app.tsx` carries MaxOff's seven nav entries, the seven route files exist as stubs,
+`app.additional.tsx` is gone, and the three models from spec §3.4 are in `prisma/schema.prisma`.
+
+**The migration was the loose end.** `prisma/dev.sqlite` already had the three tables but
+`prisma/migrations/` had no folder for them — an earlier `db push`. So the SQL for
+`CappedDiscount`, `CapEvent` and `ShopSettings` existed nowhere in the repo, and
+`prisma migrate deploy` on the VPS would have created nothing. Running `prisma migrate dev`
+reconciled the drift into `20260910035614_add_maxoff_models`, which is now committed;
+`prisma migrate status` says the database is up to date, and the three tables are present.
+
+`ShopSettings` carries four fields beyond §3.4 — `setupGuideDismissedAt`, `lastCartTestAt`,
+`lastCartTestSubtotalMinor`, `lastCartTestCappedMinor` — so the setup guide can record state
+instead of pretending. All nullable, no destructive migration. **Still awaiting Sophea's sign-off**
+(`docs/PROMPT-HOME.md` flagged it); if refused, drop the fields and make the guide
+non-dismissible with step 3 permanently incomplete.
+
+### Home (`app/routes/app._index.tsx`)
+
+The template's `productCreate` demo action and its fetcher UI are deleted. `shopify.app.toml` is
+untouched — the demo scopes and metafield blocks are still there, and are week 3's job.
+
+- `app/lib/format.ts` — `formatMoney(minor, currencyCode)` → `1,234.50 USD`, `formatPercent`,
+  `formatDate`, `formatDateRange`. Month names are written out rather than taken from `Intl`,
+  which renders September as "Sept" in current ICU and would silently break §6 — and would render
+  differently again on whatever Node the VPS runs.
+- `app/models/home.server.ts` — `getHomeData(shop)`, reading **only** our own tables. Nine queries
+  in one `Promise.all`. Month and week boundaries are UTC with a named `TODO(sophea)`: a merchant
+  in Phnom Penh sees "this month" turn over seven hours late. Nothing is lost or double-counted;
+  the boundary is just in the wrong place until the shop's timezone is stored.
+- Three states, as `PROMPT-HOME.md` §4 requires. **A** (no discounts): one explanatory card and a
+  single primary button, no tiles and no chart. **B** (discounts, no `CapEvent` rows): the active
+  count and the discounts table are real; tiles 1, 2 and 4 and the chart say "No capped orders
+  yet" rather than a confident `0.00 USD`. **C**: as the mockup.
+- The chart is inline SVG — eight bars, two gridlines, tallest labelled, the rest at 55% opacity,
+  a `<title>` per bar for the hover tooltip, and the whole series in `aria-label` as the text
+  alternative. No charting library.
+
+### What the Polaris docs settled, via `shopify-dev-mcp`
+
+Every tag was checked against `polaris-app-home` (conversation `ba11abd8`), and the finished
+markup went through `validate_component_codeblocks`: **VALID**. Four findings worth keeping:
+
+1. **`s-page` has no subheading.** Its title-bar slots are `primary-action`, `secondary-actions`,
+   `breadcrumb-actions` and `accessory` (the plan badge). The §4.1 subtitle is therefore the first
+   element in the page body, not part of the header.
+2. **`s-table-row` has no `href`.** Row navigation is `clickDelegate="<id>"` pointing at an
+   `s-link` inside the row — which is why each code cell carries `id={discount-link-<id>}`. The
+   docs are explicit that this is click-only and the link must exist for keyboard and screen
+   reader users.
+3. **There is no stat-tile and no progress-bar component.** Shopify's own Metrics card and Setup
+   guide compositions build both from `s-grid`/`s-box`/`s-stack`/`s-text`. The progress bar is two
+   nested `s-box`es (`background="subdued"` outer, `background="strong"` inner at `N%`).
+4. **`s-icon` takes no `accessibilityLabel`.** A coloured tick would have been colour as the only
+   signal anyway, so setup steps use `s-badge tone="success" icon="check-circle">Done</s-badge>`
+   and a plain `<s-badge>To do</s-badge>` — text, not colour.
+
+Also verified, for step 4's fallback: `discountNodes(first:, query: "method:code")` with
+`discount { ... on DiscountCodeApp { … } }` and our `$app`/`cap_config` metafield validates
+against the live 2026-10 admin schema, and reports **`Required scopes: read_discounts`** — the
+scope §3.3 wrongly dropped, confirming the 8 Sep finding a second way.
+
+### Where the mockup and Polaris disagreed, and what I did
+
+Polaris cannot be restyled — *"Component styling is controlled by the merchant's branding settings
+and can't be overridden with custom CSS."* So the mockup's brand colour cannot land on a Polaris
+surface, and §5's "Polaris wins" decides it:
+
+- Tile 1 is marked out with `s-box background="subdued"`, not `--orange-soft`.
+- The "Kept" column is plain table text, not `--orange`.
+- The progress bar is Polaris' `strong` fill, not `--orange-bright`.
+- Brand orange appears in exactly one place: the chart's own SVG, which is our markup.
+
+If Sophea wants the branded tile and the orange Kept column, they need hand-written CSS around
+Polaris components — say the word and I will add it, but it is a deliberate step away from
+looking native.
+
+Two smaller deviations, both deliberate: the mockup's "What's new — Cart tester" banner is not
+built (`PROMPT-HOME` §5 does not list it, and there is nothing true to announce yet), and the
+warning variant of the cap-engine banner is **new copy** — "Cap engine is not capping anything
+yet" — because §11 locks only the success wording. Both need a yes or no.
+
+### Verified
+
+- `npm run typecheck` clean · `npm run lint` clean · `npm run build` clean, and the client bundle
+  contains no `PrismaClient`, so nothing server-only leaked into the browser.
+- `app/lib/format.test.ts` — **25 tests, all passing**, covering §6 and every amount in the §8
+  table. Run with `npx vitest run app/lib/format.test.ts`: root `npm test` only runs workspaces,
+  so **these tests are not yet wired into `npm test`**. Doing that means adding `vitest` to the
+  root `devDependencies`, which is rule 9 — Sophea's call.
+- `getHomeData` was run against a real SQLite database in all three states, seeded by
+  `prisma/seed/dev-home-state.mjs` (a dev-only script; every number in it is invented). State C
+  asserts the reconciliation that mockup defect §12.4 got wrong: chart total, month total and the
+  discount row's `keptMinor` all come to the same 126,300 minor units. The database was reset to
+  state A afterwards, so nothing fabricated is sitting in `dev.sqlite`.
+- `tsconfig.json` gained `@shopify/app-bridge-types` in `types`. It was reaching JSX only because
+  the deleted demo code imported `@shopify/app-bridge-react`; without it, `<s-app-nav>` in
+  `app.tsx` fails to typecheck. It is currently a transitive package — promoting it to an explicit
+  `devDependency` is the tidier fix and is also rule 9.
+
+### Not verified — needs Sophea
+
+`PROMPT-HOME` §8 items 2, 4 and 5 need the app running on `maxoff-s7fqtwdd.myshopify.com`:
+the screenshot, clicking all nine links, and the keyboard/focus pass. Every `href` was checked
+statically against the route files and all six resolve. Read the dev-preview trap in
+`docs/UI-BUILD-PROMPT.md` before reinstalling anything.
+
+### Still open in Gate 2
+
+The Gate 2 exit checkout, with the validated `discountCodeAppCreate` mutation in the 8 Sep entry —
+the old `MAXOFF15` carries no metafield and will now correctly apply nothing. And the §3.2 open
+question: whether `cart.cost.subtotalAmount` is net of *line-level* discounts. Both need a real
+checkout.
