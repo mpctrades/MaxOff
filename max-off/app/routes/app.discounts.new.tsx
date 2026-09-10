@@ -28,7 +28,7 @@ import type {
   DiscountFieldErrors,
   DiscountFormState,
 } from "../lib/discount-form";
-import { formatMoney, formatPercent } from "../lib/format";
+import { formatAmountPlain, formatMoney, formatPercent } from "../lib/format";
 import { useNativeChange } from "../lib/polaris-events";
 import type {
   CheckedElement,
@@ -143,6 +143,14 @@ export default function CreateDiscountPage() {
     () => (ready ? capStartsAboveMinor(capMinor!, percentage) : null),
     [ready, capMinor, percentage],
   );
+
+  /**
+   * `150 ÷ 15% = 1,000` is only an equals sign when the division comes out
+   * even. `capStartsAboveMinor` rounds to the nearest cent, so anything else
+   * gets `≈` — the aside is there to show the merchant the sum, and a sum that
+   * quietly rounds is worse than no sum.
+   */
+  const startsAboveIsExact = ready && (capMinor! * 100) % percentage === 0;
 
   const preview = useMemo(
     () =>
@@ -346,9 +354,21 @@ export default function CreateDiscountPage() {
           </s-choice>
           <s-choice value="automatic" disabled>
             Automatic discount
-            <s-text slot="details" color="subdued">
-              Applies with no code. Coming in a later version.
-            </s-text>
+            {/* Description and badge share one line, so they go in one slot.
+                `details` would be the natural home for the text, but Polaris
+                extracts that slot to plain text and would render the badge as
+                the bare word "Later version" — `secondary-content` is the only
+                slot that keeps real markup. See the note in app.discounts.new
+                above the "Pro" choices. */}
+            <s-stack
+              slot="secondary-content"
+              direction="inline"
+              gap="small-300"
+              alignItems="center"
+            >
+              <s-text color="subdued">Applies with no code.</s-text>
+              <s-badge>Later version</s-badge>
+            </s-stack>
           </s-choice>
         </s-choice-list>
 
@@ -376,73 +396,122 @@ export default function CreateDiscountPage() {
 
       {/* ---------------- 2 · Value and maximum ---------------- */}
       <s-section heading="Value and maximum">
-        <s-grid
-          gridTemplateColumns="@container (inline-size <= 500px) 1fr, 1fr 1fr"
-          gap="base"
-        >
-          <s-number-field
-            label="Percentage off"
-            name="percentage"
-            suffix="%"
-            min={1}
-            max={100}
-            step={1}
-            value={state.percentage}
-            onInput={(event) => set("percentage", event.currentTarget.value)}
-            {...(errors.percentage ? { error: errors.percentage } : {})}
-          ></s-number-field>
+        {/* One block stack for the whole section: `s-divider` only stretches
+            to full width inside a stack, exactly as on the settings screen. */}
+        <s-stack direction="block" gap="base">
+          <s-grid
+            gridTemplateColumns="@container (inline-size <= 500px) 1fr, 1fr 1fr"
+            gap="base"
+          >
+            <s-number-field
+              label="Percentage off"
+              name="percentage"
+              suffix="%"
+              min={1}
+              max={100}
+              step={1}
+              value={state.percentage}
+              onInput={(event) => set("percentage", event.currentTarget.value)}
+              {...(errors.percentage ? { error: errors.percentage } : {})}
+            ></s-number-field>
 
-          <s-money-field
-            label="Maximum discount"
-            name="capAmount"
-            currencyCode="auto"
-            min={0}
-            value={state.capAmount}
-            onInput={(event) => set("capAmount", event.currentTarget.value)}
-            {...(errors.capAmount ? { error: errors.capAmount } : {})}
-          ></s-money-field>
-        </s-grid>
+            <s-money-field
+              label="Maximum discount"
+              name="capAmount"
+              currencyCode="auto"
+              min={0}
+              value={state.capAmount}
+              onInput={(event) => set("capAmount", event.currentTarget.value)}
+              {...(errors.capAmount ? { error: errors.capAmount } : {})}
+            ></s-money-field>
+          </s-grid>
 
-        {/* Locked wording, §11. Rendered from the real numbers. */}
-        {ready && startsAboveMinor !== null ? (
-          <s-paragraph>
-            At <s-text type="strong">{formatPercent(percentage)}</s-text>, the
-            maximum of <s-text type="strong">{money(capMinor!)}</s-text> starts
-            working on carts above{" "}
-            <s-text type="strong">{money(startsAboveMinor)}</s-text>. Smaller
-            carts get the full percentage.
-          </s-paragraph>
-        ) : (
-          <s-paragraph color="subdued">
-            Enter a percentage and a maximum to see where the maximum starts
-            working.
-          </s-paragraph>
-        )}
+          {ready && startsAboveMinor !== null ? (
+            <div className="maxoff-cap-callout">
+              <span>The maximum starts working above</span>
+              <strong className="maxoff-cap-callout__value maxoff-tabular">
+                {money(startsAboveMinor)}
+              </strong>
+              {/* The sum behind the figure. "÷" and "≈" are the explanation,
+                  not decoration, so it is spelled out for screen readers
+                  rather than hidden from them. */}
+              <span className="maxoff-cap-callout__working maxoff-tabular">
+                <span aria-hidden="true">
+                  {formatAmountPlain(capMinor!)} ÷ {formatPercent(percentage)}{" "}
+                  {startsAboveIsExact ? "=" : "≈"}{" "}
+                  {formatAmountPlain(startsAboveMinor)}
+                </span>
+                <span className="maxoff-visually-hidden">
+                  {formatAmountPlain(capMinor!)} divided by{" "}
+                  {formatPercent(percentage)}{" "}
+                  {startsAboveIsExact ? "equals" : "is about"}{" "}
+                  {formatAmountPlain(startsAboveMinor)}
+                </span>
+              </span>
+            </div>
+          ) : (
+            <s-paragraph color="subdued">
+              Enter a percentage and a maximum to see where the maximum starts
+              working.
+            </s-paragraph>
+          )}
 
-        <s-choice-list
-          label="The maximum applies to"
-          name="scope"
-          values={["order"]}
-        >
-          <s-choice value="order">
-            The whole order
-            <s-text slot="details" color="subdued">
-              One maximum for the entire cart.
-            </s-text>
-          </s-choice>
-          <s-choice value="item" disabled>
-            Each item
-            <s-text slot="details" color="subdued">
-              A separate maximum on every line. A Pro feature.
-            </s-text>
-          </s-choice>
-          <s-choice value="collection" disabled>
-            Each collection
-            <s-text slot="details" color="subdued">
-              A separate maximum per collection. A Pro feature.
-            </s-text>
-          </s-choice>
-        </s-choice-list>
+          <s-divider direction="inline"></s-divider>
+
+          <s-choice-list
+            label="The maximum applies to"
+            name="scope"
+            values={["order"]}
+          >
+            <s-choice value="order">
+              The whole order
+              <s-text slot="details" color="subdued">
+                One maximum for the entire cart.
+              </s-text>
+            </s-choice>
+            {/* The description and its badge sit on one line, so they have
+                to live in one slot. `details` cannot hold the badge — Polaris
+                extracts that slot to plain text and the badge would arrive as
+                the bare word "Pro" — and a badge alone in `secondary-content`
+                lands on a line of its own under the description. Putting both
+                in `secondary-content` is the only arrangement that keeps a
+                real badge beside its text.
+
+                The cost: `details` is what Polaris wires to the input with
+                `aria-describedby`, and this gives that up. It is only spent on
+                choices that are disabled and so unreachable by keyboard, and
+                the text is still read in document order. The one enabled
+                choice above keeps its `details`. */}
+            <s-choice value="item" disabled>
+              Each item
+              <s-stack
+                slot="secondary-content"
+                direction="inline"
+                gap="small-300"
+                alignItems="center"
+              >
+                <s-text color="subdued">
+                  A separate maximum on every line.
+                </s-text>
+                <s-badge>Pro</s-badge>
+              </s-stack>
+            </s-choice>
+            <s-choice value="collection" disabled>
+              Each collection
+              <s-stack
+                slot="secondary-content"
+                direction="inline"
+                gap="small-300"
+                alignItems="center"
+              >
+                <s-text color="subdued">
+                  A separate maximum per collection.
+                </s-text>
+                <s-badge>Pro</s-badge>
+              </s-stack>
+            </s-choice>
+          </s-choice-list>
+        </s-stack>
       </s-section>
 
       {/* ---------------- 3 · Applies to ---------------- */}

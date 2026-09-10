@@ -2,6 +2,7 @@ import { Links, Meta, Outlet, Scripts, ScrollRestoration } from "react-router";
 
 // MaxOff brand tokens, defined once. See app/styles/theme.css.
 import "./styles/theme.css";
+import { brandThemeCss } from "./lib/brand-theme";
 
 export default function App() {
   return (
@@ -16,6 +17,10 @@ export default function App() {
         />
         <Meta />
         <Links />
+        {/* Polaris' own theme tokens, set to the MaxOff palette. Rendered on
+            the server so the app never paints a frame of Shopify default
+            colours. See app/lib/brand-theme.ts. */}
+        <style dangerouslySetInnerHTML={{ __html: brandThemeCss() }} />
       </head>
       <body>
         <Outlet />

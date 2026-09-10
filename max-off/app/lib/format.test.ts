@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  formatAmountPlain,
   formatDate,
   formatDateRange,
   formatMoney,
@@ -28,6 +29,30 @@ const SPEC_8_AMOUNTS: [minor: number, expected: string][] = [
   [1, "0.01 USD"],
   [20999, "209.99 USD"],
 ];
+
+describe("formatAmountPlain", () => {
+  test("drops the cents when they are zero", () => {
+    expect(formatAmountPlain(100000)).toBe("1,000");
+    expect(formatAmountPlain(15000)).toBe("150");
+    expect(formatAmountPlain(0)).toBe("0");
+  });
+
+  test("keeps the cents when they are not", () => {
+    expect(formatAmountPlain(15050)).toBe("150.50");
+    expect(formatAmountPlain(214286)).toBe("2,142.86");
+    expect(formatAmountPlain(1)).toBe("0.01");
+  });
+
+  test("groups thousands and carries no currency code", () => {
+    expect(formatAmountPlain(123456789)).toBe("1,234,567.89");
+    expect(formatAmountPlain(100000)).not.toContain("USD");
+  });
+
+  test("keeps the sign on a negative amount", () => {
+    expect(formatAmountPlain(-15000)).toBe("-150");
+    expect(formatAmountPlain(-15050)).toBe("-150.50");
+  });
+});
 
 describe("formatMoney", () => {
   test.each(SPEC_8_AMOUNTS)("%i minor units renders as %s", (minor, expected) => {

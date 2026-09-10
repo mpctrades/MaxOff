@@ -1,13 +1,13 @@
 /**
  * MaxOff brand tokens — defined once, referenced everywhere.
  *
- * These apply only to markup **we** draw: the money-kept chart's SVG, the
- * create preview's comparison bars, and the cart-size slider. Polaris web
- * components cannot consume them, and cannot be restyled at all — Shopify's
- * own documentation is explicit that "component styling is controlled by the
- * merchant's branding settings and can't be overridden with custom CSS". So
- * orange is an accent on our own surfaces, and Polaris keeps its own pixels,
- * which is also what BUILD-SPEC §5 requires.
+ * These are the values MaxOff draws with directly: the money-kept chart's
+ * SVG, the create preview's comparison bars, and the cart-size slider.
+ *
+ * Polaris components do not read these. They are painted through Polaris'
+ * own theme layer instead — see app/lib/brand-theme.ts, which maps the same
+ * palette onto the `--t-*` tokens Polaris exposes. Keep the two in step: this
+ * file is the source for our own pixels, that one for Polaris'.
  *
  * Never use orange as the only signal for meaning: every status in the app is
  * carried by a Polaris badge with a text label, not by colour.
@@ -18,13 +18,17 @@
   --maxoff-orange-500: #ea580c; /* primary accent, money-kept values, chart bars */
   --maxoff-orange-400: #fb923c; /* secondary, hover, in-progress */
   --maxoff-orange-300: #fdba74; /* tint backgrounds and progress tracks only */
+  --maxoff-orange-200: #f8c39a; /* 1px border on branded surfaces (§5 orange-line) */
+  --maxoff-orange-050: #fff2e8; /* branded card and banner backgrounds (§5 orange-soft) */
   --maxoff-orange-700: #c2410c; /* text-safe orange on white (4.5:1 on #fff) */
   --maxoff-ink: #141210; /* primary text */
 
   /* Neutrals for our own drawings, matched to the Polaris admin surface. */
+  --maxoff-text: #303030;
+  --maxoff-text-subdued: #616161;
   --maxoff-chart-grid: #e3e3e3;
-  --maxoff-chart-label: #616161;
-  --maxoff-chart-value: #303030;
+  --maxoff-chart-label: var(--maxoff-text-subdued);
+  --maxoff-chart-value: var(--maxoff-text);
   --maxoff-track: #f3f3f3;
 
   /* The "would have been given away" bar: a muted loss, never a brighter win. */
@@ -39,9 +43,9 @@
 @media (prefers-color-scheme: dark) {
   :root {
     --maxoff-orange-700: #fb923c; /* orange-700 fails contrast on dark */
+    --maxoff-text: #e3e3e3;
+    --maxoff-text-subdued: #b5b5b5;
     --maxoff-chart-grid: #4a4a4a;
-    --maxoff-chart-label: #b5b5b5;
-    --maxoff-chart-value: #e3e3e3;
     --maxoff-track: #303030;
     --maxoff-loss: #8e5b52;
   }
@@ -54,4 +58,59 @@
  */
 .maxoff-tabular {
   font-variant-numeric: tabular-nums;
+}
+
+/**
+ * The "starts working above" callout on the create screen — the one place the
+ * cap's own number gets a branded surface of its own, because it is the number
+ * the whole product exists to explain.
+ *
+ * This is our markup, not Polaris', so it is styled here directly. The orange
+ * is carried by a border and a tint, never by the text alone: the label reads
+ * the same in greyscale, and the figure it highlights is also spelled out in
+ * the Summary panel beside it.
+ */
+.maxoff-cap-callout {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--maxoff-orange-200);
+  border-radius: 10px;
+  background: var(--maxoff-orange-050);
+  color: var(--maxoff-text);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.maxoff-cap-callout__value {
+  font-weight: 600;
+  color: var(--maxoff-orange-700);
+}
+
+/**
+ * `150 ÷ 15% = 1,000`. Pushed to the far end on a wide card and allowed to
+ * wrap underneath on a narrow one, which is why it is `margin-inline-start`
+ * rather than a second grid column.
+ */
+.maxoff-cap-callout__working {
+  margin-inline-start: auto;
+  color: var(--maxoff-text-subdued);
+}
+
+/**
+ * Text for screen readers only. Polaris has `accessibilityVisibility` for its
+ * own components; this is for the handful of places we draw the markup.
+ */
+.maxoff-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }

@@ -38,6 +38,33 @@ export function formatMoney(minor: number, currencyCode: string): string {
   return `${sign}${grouped}.${String(cents).padStart(2, "0")} ${currencyCode}`;
 }
 
+/**
+ * `1,000`, `150.50` — the number with no currency code, and with the cents
+ * dropped when they are zero.
+ *
+ * This is for the arithmetic aside beside the "starts working above" callout,
+ * where `150 ÷ 15% = 1,000` has to read as a sum. `150.00 USD ÷ 15% =
+ * 1,000.00 USD` reads as a sentence about money instead, and the point of the
+ * aside is to show the merchant the division. Everywhere a figure is presented
+ * *as* money it goes through `formatMoney`, code and all.
+ */
+export function formatAmountPlain(minor: number): string {
+  const sign = minor < 0 ? "-" : "";
+  const absolute = Math.abs(Math.trunc(minor));
+
+  const whole = Math.floor(absolute / MINOR_UNITS);
+  const cents = absolute % MINOR_UNITS;
+
+  const grouped = new Intl.NumberFormat("en-US", {
+    useGrouping: true,
+    maximumFractionDigits: 0,
+  }).format(whole);
+
+  return cents === 0
+    ? `${sign}${grouped}`
+    : `${sign}${grouped}.${String(cents).padStart(2, "0")}`;
+}
+
 /** `15%`. Whole numbers only, per §6. */
 export function formatPercent(percentage: number): string {
   return `${Math.trunc(percentage)}%`;
