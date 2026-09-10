@@ -12,6 +12,7 @@ import { capStartsAboveMinor, displayStatus } from "../lib/cap";
 import type { DisplayStatus } from "../lib/cap";
 import { formatMoney, formatPercent } from "../lib/format";
 import { statusWhere } from "./discounts.server";
+import { ensureShopSettings } from "./settings.server";
 
 /** How many weeks the "Money you kept" chart shows. §4.1: eight bars. */
 const CHART_WEEKS = 8;
@@ -78,11 +79,7 @@ export interface HomeData {
 }
 
 export async function getHomeData(shop: string): Promise<HomeData> {
-  const settings = await prisma.shopSettings.upsert({
-    where: { shop },
-    update: {},
-    create: { shop },
-  });
+  const settings = await ensureShopSettings(shop);
 
   const now = new Date();
   const thisMonthStart = startOfUtcMonth(now);

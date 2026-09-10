@@ -9,8 +9,8 @@ import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 
 import { authenticate } from "../shopify.server";
-import prisma from "../db.server";
 import { createCappedDiscount, isCodeTaken } from "../models/discounts.server";
+import { ensureShopSettings } from "../models/settings.server";
 import { CheckoutPreviewModal } from "../components/CheckoutPreviewModal";
 import {
   capDiscountMinor,
@@ -41,11 +41,7 @@ const QUICK_CHIPS_MINOR = [20000, 80000, 140000, 250000];
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
 
-  const settings = await prisma.shopSettings.upsert({
-    where: { shop: session.shop },
-    update: {},
-    create: { shop: session.shop },
-  });
+  const settings = await ensureShopSettings(session.shop);
 
   return {
     currencyCode: settings.currencyCode,
@@ -79,14 +75,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     };
   }
 
-  const settings = await prisma.shopSettings.findUnique({
-    where: { shop: session.shop },
-  });
+  const settings = await ensureShopSettings(session.shop);
 
   const result = await createCappedDiscount({
     shop: session.shop,
     admin,
-    currencyCode: settings?.currencyCode ?? "USD",
+    currencyCode: settings.currencyCode,
     ...parsed.value,
   });
 
