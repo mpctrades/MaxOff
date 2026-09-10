@@ -32,3 +32,67 @@ model Session {
   refreshToken        String?
   refreshTokenExpires DateTime?
 }
+
+// --- MaxOff models (BUILD-SPEC §3.4) ---
+
+model CappedDiscount {
+  id                String   @id @default(cuid())
+  shop              String
+  discountGid       String   @unique      // gid://shopify/DiscountCodeNode/…
+  method            String                // "code" | "automatic"   (V1: always "code")
+  code              String?
+  title             String?
+  percentage        Int                   // whole percent, 1–100
+  capMinor          Int                   // cap in minor units, e.g. 15000
+  currencyCode      String                // "USD" | "EUR"
+  scope             String   @default("order")   // "order" | "item" | "collection" (V1: order)
+  checkoutNote      String?
+  startsAt          DateTime
+  endsAt            DateTime?
+  status            String                // "active"|"scheduled"|"paused"|"expired"
+  usageLimit        Int?
+  oncePerCustomer   Boolean  @default(true)
+  combinesShipping  Boolean  @default(true)
+  combinesProduct   Boolean  @default(false)
+  combinesOrder     Boolean  @default(false)
+  timesUsed         Int      @default(0)
+  keptMinor         Int      @default(0)   // running total, denormalised for the list
+  givenMinor        Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  events            CapEvent[]
+
+  @@index([shop, status])
+}
+
+model CapEvent {
+  id                 String   @id @default(cuid())
+  shop               String
+  cappedDiscountId   String
+  discount           CappedDiscount @relation(fields: [cappedDiscountId], references: [id], onDelete: Cascade)
+  orderGid           String   @unique
+  orderName          String                // "#1042"
+  subtotalMinor      Int
+  uncappedMinor      Int                   // what the raw percentage would have given
+  givenMinor         Int
+  keptMinor          Int
+  occurredAt         DateTime
+
+  @@index([shop, occurredAt])
+}
+
+model ShopSettings {
+  shop                String   @id
+  currencyCode        String   @default("USD")
+  rounding            String   @default("cent")   // "cent" | "down"
+  defaultCheckoutNote String   @default("Discount capped at maximum amount")
+  plan                String   @default("free")   // "free" | "growth" | "pro"
+  updatedAt           DateTime @updatedAt
+
+  // Beyond BUILD-SPEC §3.4 — added 10 Sep 2026 so the Home setup guide can be stateful.
+  // All nullable and additive; no destructive migration. Flagged to Sophea for sign-off.
+  setupGuideDismissedAt     DateTime?   // "Hide" button on the setup guide card
+  lastCartTestAt            DateTime?   // step 3, "Test it on a big cart"
+  lastCartTestSubtotalMinor Int?
+  lastCartTestCappedMinor   Int?
+}
