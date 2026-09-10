@@ -779,3 +779,117 @@ to decide** whether to schedule the Function work or move minimums to V2.
 2. Create `SUMMER15` — 15%, maximum 150.00 — through the form.
 3. Run the two checkouts: a 1,400.00 cart should take **150.00**, a 700.00 cart **105.00**.
 4. Read the metafield back and confirm `capAmount` is the string `"150.00"`.
+
+---
+
+## 10 Sep 2026 · Test a cart
+
+Built to `docs/PROMPT-TEST-A-CART.md`. Two commits: `285ef2f` for the screen, `3e9d0fd` for the
+scope cleanup, one concern each.
+
+**This screen closes setup step 3.** Nothing wrote `lastCartTestAt` before, so Home's setup card
+could never complete or dismiss itself. A verification run confirms all four steps now finish.
+
+### The three §2 decisions, all as recommended, with Sophea's sign-off
+
+**a · Real products, through the App Bridge resource picker, and the scope cleanup with it.**
+`shopify.resourcePicker({ type: "variant", multiple: true })` returns `ProductVariant[]` whose
+`price` is a `Money` — and `type Money = string`, a decimal string like `"620.00"` — plus
+`displayName` and `image`. So **no follow-up Admin API read is needed**, which was §4 item 2.
+Prices go through the same `parseDecimalToMinor` as every other amount.
+
+Final scopes: **`write_discounts, read_discounts, read_products`**. Gone: `write_products`,
+`write_metaobjects`, `write_metaobject_definitions`, and the template's
+`[product.metafields.app.demo_info]` and `[metaobjects.app.example]` blocks.
+`[discount.metafields.app.cap_config]` untouched, `shopify app config validate --json` →
+`{"valid": true, "issues": []}`.
+
+**One honest gap:** the resource-picker docs **never state a required scope.** They say only that
+the picker is *"permission-aware: Select resources that both the app and the user have permissions
+to access."* `read_products` is the obvious minimum and matches that sentence, but it is inference,
+not documentation — so if the picker comes up empty on the dev store after the reinstall, that is
+the first thing to check, and the fallback is the seeded basket §4.6 permits.
+
+On deleting the two demo definitions, Shopify's documented behaviour, quoted: *"If a metafield
+definition is deleted from `shopify.app.toml` and the app is re-deployed, Shopify deletes the
+definition and keeps the metafields and their values for a short period."* Cleanup then runs
+asynchronously. Nothing of ours depends on either definition — `demo_info` only ever tagged
+products the deleted demo action created — so there is no data of value at risk.
+
+**b · The subtitle is reworded, not just caveated.** The mockup promises "see the real checkout
+result", and this screen cannot know the real checkout result: it is `capDiscountMinor`, with no
+taxes, no shipping, no combined discounts, and §3.2's line-level-discount question still open. The
+overstatement is in the subtitle itself, so the subtitle now reads **"Build a basket and see what
+the cap will do before you send the code to anyone."** and the result carries the quiet line
+*"This is the same arithmetic the cap uses at checkout. Taxes, shipping and other discounts are not
+included."* §11 does not lock this subtitle. Rule 2 is respected — the admin previews the same
+arithmetic and decides no money.
+
+**c · Step 3 is stamped on the first capped result of a visit.** An idempotent fetcher POST, fired
+once per visit, never on an uncapped cart, and never on a quantity change. `lastCartTestCappedMinor`
+is **`givenMinor`** — writing `keptMinor` there would render "capped correctly at 60.00 USD", which
+is wrong and reads plausibly enough to survive a review. The write is `recordCartTest` in
+`app/models/home.server.ts`, beside `dismissSetupGuide`, not in the route.
+
+### What §4's verification settled
+
+1. The picker: signature and options above; returns `undefined` when the merchant cancels, which
+   the screen treats as "no change" rather than an empty basket.
+2. Prices come back with the selection — no second read, no extra scope.
+3. **There is no stepper component.** `s-stepper` and `s-quantity-field` both fail validation, so
+   the quantity control is `s-button icon="minus"` + `s-number-field` + `s-button icon="plus"` —
+   which has the side benefit that the quantity is typable, not only clickable. `s-thumbnail`
+   (`src`, `alt`, `size`) is real and `src` is optional, so a variant with no image still renders.
+4. `s-modal` opened with `commandFor` + `command="--show"`, matching what Create proved.
+
+The finished markup passes `validate_component_codeblocks`.
+
+### Deviations, and one gap in the mockup
+
+- **Removing a line: an explicit Remove button**, and the quantity clamps at 1. §5 flagged the
+  mockup's missing remove control and left the choice open; a line silently vanishing when the
+  merchant clicks minus once too often is worse than a button that says what it does.
+- The "With MaxOff" panel is `s-box background="subdued"`, not brand orange — consistent with Home
+  and the list, where Polaris refuses custom CSS. Changing that changes all three screens at once.
+- The not-capped sentence reuses the create preview's locked §11 phrasing ("This cart is below
+  1,000.00 USD, so the maximum does not apply yet") rather than inventing a third variant.
+
+### Verified
+
+1. `npm run typecheck`, `npm run lint`, `npm run build` clean. **`npm test`: 82 Function tests;
+   admin now 132**, up from 114 — 18 new in `basket.test.ts`.
+2. **The §6 item 2 numbers, asserted:** the mockup basket (1 × 620.00 + 3 × 260.00) is 1,400.00;
+   without MaxOff 210.00 given and 1,190.00 to pay; with MaxOff 150.00 given and 1,250.00 to pay;
+   60.00 kept, `capped: true`. Those are the Gate 1 checkout numbers, through the same
+   `capDiscountMinor` the panel renders.
+3. **The uncapped variant, asserted:** drop the goggles to one and the basket is 880.00, under the
+   1,000.00 threshold — 132.00 given, given equals uncapped, 0.00 kept, `capped: false`, so no
+   "Capped at maximum amount" note and the "below the maximum" sentence instead.
+4. The buyer's checkout modal is the *same component instance* fed the *same* `subtotalMinor` and
+   the same discount, so its numbers cannot differ from the panel behind it. Structural rather than
+   tested — seeing it needs a browser.
+5. **The step-3 loop, verified end to end locally:** a capped test writes the fields and Home reads
+   `Tested 1,400.00 USD — capped correctly at 150.00 USD`; an uncapped test leaves the step
+   incomplete; recording twice is idempotent; a later bigger test replaces the recorded one; and
+   with a discount created and a capped test recorded, `setup.completedCount` reaches 4 — the card
+   can finally finish.
+6. With no active discounts the picker's data is an empty list, not an error, and a paused discount
+   is not offered. The page renders the empty state and the modal is not mounted at all, so there
+   is nothing to crash.
+7. **Not verified — needs the reinstall.** That the app still installs and authorises on the final
+   scope list, that Create and the list still work afterwards, and that `cap_config` survives.
+8. **Keyboard pass needs a browser.** Structurally: the steppers are real buttons with per-line
+   accessibility labels, the quantity is a labelled number field, the picker opens from a real
+   button, the select is a real select, and the modal is Polaris' own.
+
+`dev.sqlite` reset to empty afterwards — 0 discounts, 0 settings, 0 events. The verification
+harness was temporary and is deleted.
+
+### What Sophea does next
+
+The reinstall now carries **two** scope changes — `read_discounts` from the Create build and
+`read_products` from this one — so it is one reinstall, not two. Then, in order: reinstall from a
+running `shopify app dev` session → create `SUMMER15` (15%, max 150.00) through the form → the two
+checkouts (1,400.00 cart → **150.00**, 700.00 cart → **105.00**) → read the `cap_config` metafield
+back and confirm `capAmount` is the string `"150.00"` → add products in Test a cart and confirm the
+picker returns them at all, which is the one thing the docs could not confirm.
