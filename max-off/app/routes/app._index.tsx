@@ -334,16 +334,13 @@ function StatTiles({ home }: { home: HomeData }) {
 function MoneyKeptCard({ home }: { home: HomeData }) {
   return (
     <s-section accessibilityLabel="Money you kept, last eight weeks">
-      <s-grid gridTemplateColumns="1fr auto" gap="base" alignItems="center">
-        <s-stack direction="block" gap="small-500">
-          <s-heading>Money you kept</s-heading>
-          <s-text color="subdued">
-            Difference between the uncapped discount and what MaxOff actually
-            gave away.
-          </s-text>
-        </s-stack>
-        <s-link href="/app/analytics">View analytics</s-link>
-      </s-grid>
+      <s-stack direction="block" gap="small-500">
+        <s-heading>Money you kept</s-heading>
+        <s-text color="subdued">
+          Difference between the uncapped discount and what MaxOff actually
+          gave away.
+        </s-text>
+      </s-stack>
 
       {home.hasCapEvents ? (
         <WeeklyChart weeks={home.weeks} currencyCode={home.currencyCode} />
