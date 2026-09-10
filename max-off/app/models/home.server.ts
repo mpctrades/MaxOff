@@ -9,6 +9,7 @@
 
 import prisma from "../db.server";
 import { capStartsAboveMinor, displayStatus } from "../lib/cap";
+import { toPlanKey } from "../lib/plans";
 import type { DisplayStatus } from "../lib/cap";
 import { formatMoney, formatPercent } from "../lib/format";
 import { statusWhere } from "./discounts.server";
@@ -288,7 +289,8 @@ function buildSetup({
   };
 
   const plan: HomeSetupStep = {
-    done: settings.plan !== "free",
+    // Through plans.ts, so "which plans count as paid" is defined once.
+    done: toPlanKey(settings.plan) !== "free",
     result: planResult(settings.plan),
   };
 

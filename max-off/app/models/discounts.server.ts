@@ -13,6 +13,8 @@ import { capStartsAboveMinor, displayStatus, DISCOUNT_TABS } from "../lib/cap";
 import type { DiscountTab, DisplayStatus } from "../lib/cap";
 import { capConfigMetafield, DEFAULT_CHECKOUT_NOTE } from "../lib/cap-config";
 import { formatMoney } from "../lib/format";
+import { activeDiscountLimit } from "../lib/plans";
+import { getPlanForGate } from "./plan.server";
 
 /** §4 of docs/PROMPT-DISCOUNTS.md. Offset pagination is fine at this scale:
  * a shop with more capped discounts than a few pages does not exist yet, and
@@ -245,7 +247,12 @@ export async function setDiscountPaused(input: {
   const now = new Date();
 
   if (!input.paused) {
-    const refusal = await freePlanRefusal(input.shop, input.id, now);
+    const refusal = await planLimitRefusal({
+      shop: input.shop,
+      id: input.id,
+      now,
+      plan: await getPlanForGate({ shop: input.shop, admin: input.admin }),
+    });
     if (refusal) {
       return refusal;
     }
@@ -301,36 +308,44 @@ export async function setDiscountPaused(input: {
 }
 
 /**
- * Free allows one active capped discount (§3.6) — the only plan limit V1
- * enforces in code. Enforced here rather than only in the UI, so a second
- * browser tab cannot get around it.
+ * The plan's limit on active capped discounts — the only plan limit V1
+ * enforces in code (§3.6). Enforced here rather than only in the UI, so a
+ * second browser tab cannot get around it.
+ *
+ * The limit comes from `activeDiscountLimit` in `app/lib/plans.ts`, and the
+ * plan comes from Shopify rather than our cached column, because refusing a
+ * merchant who upgraded a minute ago would be a billing complaint, not a bug
+ * report.
  */
-export async function freePlanRefusal(
-  shop: string,
+export async function planLimitRefusal(input: {
+  shop: string;
   /** The discount being activated, excluded from the count. Null on create. */
-  id: string | null,
-  now: Date,
-): Promise<{ ok: false; message: string; upgradeUrl: string } | null> {
-  const settings = await prisma.shopSettings.findUnique({ where: { shop } });
-  if (settings && settings.plan !== "free") {
+  id: string | null;
+  now: Date;
+  plan: string;
+}): Promise<{ ok: false; message: string; upgradeUrl: string } | null> {
+  const limit = activeDiscountLimit(input.plan);
+  if (limit === null) {
     return null;
   }
 
   const activeElsewhere = await prisma.cappedDiscount.count({
     where: {
-      ...activeDiscountWhere(shop, now),
-      ...(id === null ? {} : { id: { not: id } }),
+      ...activeDiscountWhere(input.shop, input.now),
+      ...(input.id === null ? {} : { id: { not: input.id } }),
     },
   });
 
-  if (activeElsewhere === 0) {
+  if (activeElsewhere < limit) {
     return null;
   }
 
   return {
     ok: false,
     message:
-      "The Free plan allows one active capped discount. Pause the other one, or choose a plan.",
+      limit === 1
+        ? "The Free plan allows one active capped discount. Pause the other one, or choose a plan."
+        : `Your plan allows ${limit} active capped discounts. Pause one, or choose a plan.`,
     upgradeUrl: "/app/billing",
   };
 }
@@ -460,7 +475,12 @@ export async function createCappedDiscount(
 ): Promise<CreateDiscountResult> {
   const now = new Date();
 
-  const refusal = await freePlanRefusal(input.shop, null, now);
+  const refusal = await planLimitRefusal({
+    shop: input.shop,
+    id: null,
+    now,
+    plan: await getPlanForGate({ shop: input.shop, admin: input.admin }),
+  });
   if (refusal) {
     return refusal;
   }
