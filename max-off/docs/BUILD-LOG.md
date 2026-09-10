@@ -893,3 +893,102 @@ running `shopify app dev` session → create `SUMMER15` (15%, max 150.00) throug
 checkouts (1,400.00 cart → **150.00**, 700.00 cart → **105.00**) → read the `cap_config` metafield
 back and confirm `capAmount` is the string `"150.00"` → add products in Test a cart and confirm the
 picker returns them at all, which is the one thing the docs could not confirm.
+
+---
+
+## 10 Sep 2026 · Settings
+
+Built to `docs/PROMPT-SETTINGS.md`. Two commits: `8ed9a0f` moves the engine constant, `8d26d45`
+is the screen.
+
+**Nothing on this page is editable in V1, and that is the honest outcome** — §5 anticipated it.
+The checkout note is V2, the currency is the store's and not ours to set, and rounding is not
+implemented anywhere. So there is no save bar; a save bar that can never activate is worse than
+none. The screen still earns its place: it is the transparency panel, and it is where the
+currency stops being wrong.
+
+### The three §2 decisions, all as recommended, with Sophea's sign-off
+
+**a · Currency is read-only, read from the store.** This fixed a live bug, not a hypothetical one:
+`ShopSettings.currencyCode` defaults to `"USD"` and **nothing had ever asked Shopify what the store
+sells in**, so a EUR store saw `150.00 USD` on Home, the list, Create and the tester.
+`refreshStoreCurrency` reads `shop { currencyCode }` on every Settings load and caches it.
+
+A select was rejected for the reason §2a gives: each discount's `cap_config` carries its own
+`currencyCode`, written at create time, so changing a select would leave the list showing
+`150.00 EUR` for a discount Shopify recorded as USD, with nothing converting and nothing warning.
+The card now says plainly that MaxOff follows the store currency and that maximums relabel and are
+never converted (rule 5, §6).
+
+**b · Rounding is rendered disabled**, showing "To the cent (recommended)". Nothing reads
+`ShopSettings.rounding`, `cap_config` has no rounding field, and
+`extensions/max-off-cap/src/cap.ts` hard-codes one half-up rounding — which is what §6 locks
+anyway. Doing it properly is a four-part change and its own gate: a field in `cap_config`, a
+Function that reads it, new §8 cases, and a version decision for discounts written before it
+existed (the deployed Function refuses any `version` but `1`).
+
+**c · All three email checkboxes are disabled and unchecked.** The mockup draws two of them ticked,
+which tells a merchant a weekly summary is being sent to their address. Nothing sends anything.
+
+### What §3's verification settled
+
+1. **`shop { currencyCode }` needs no new scope.** It validates against the live 2026-10 schema and
+   — alone among every operation validated this week — reports **no** required scopes, and none is
+   documented on the `shop` query. So this was buildable with `write_discounts, read_discounts,
+   read_products`, and nothing had to stop.
+2. **The `cap_config` definition constrains nothing here.** `MetafieldAdminAccess.MERCHANT_READ` is
+   documented as *"The merchant has read-only access. No other apps have access."* — it restricts
+   the merchant and other apps, not the owning app, and Settings writes no metafields at all.
+3. **There is no description-list or key-value component.** `s-description-list`,
+   `s-description-term`, `s-description-details`, `s-key-value-list` and `s-key-value` all fail
+   validation. The transparency rows are `s-grid` + `s-text` + `s-badge` + `s-divider`, which
+   validates. The save bar question is moot — there is no save bar.
+
+### Two things fixed while in here
+
+- **`CAP_ENGINE_DEPLOYED` now lives in `app/lib/cap.ts`** and both Home's banner and the Settings
+  Active pill import it. Two hard-coded truths in two files was exactly the drift this codebase has
+  been avoiding, and §4 asked for it explicitly.
+- **`ensureShopSettings` replaces four copies of the same upsert.** Home, Create and Test a cart had
+  each grown their own `shopSettings.upsert`, which is how the default for a new column ends up
+  disagreeing between screens. One function now, in `app/models/settings.server.ts`.
+- The same client-vs-server import trap as the list screen bit once more: the component read
+  `EDITABLE_SETTINGS` from a `.server` module and the client build failed. The loader reports
+  `hasEditableFields` instead. **The rule holds: a route component may import types from a
+  `.server` module, never values.**
+
+### Verified
+
+1. `npm run typecheck`, `npm run lint`, `npm run build` clean. `npm test`: 82 Function tests, 132
+   admin tests.
+2. **The currency, verified on a non-USD store — not by looking at USD.** A fake shop returning
+   `EUR` overwrites the USD default; `JPY` and `GBP` are read just as well, so nothing hard-codes a
+   currency list; a store that changes currency later is followed on the next load; and the 15000
+   minor units are unchanged by any of it — only the code beside them moves, which is rule 5.
+   **Confirming this against the real dev store is still Sophea's** (§6 item 2): if the dev store is
+   USD, the switch has to be made in Shopify admin, because "USD looks right" proves nothing.
+3. With EUR cached, `getHomeData().currencyCode`, the list row's `currencyCode` and Home's setup
+   sentence all read EUR — `SUMMER15 — 15% off, capped at 150.00 EUR`. Create and the tester read
+   the same row through the same `ensureShopSettings`.
+4. All five controls on the page checked one by one: the checkout note, the rounding select and the
+   three checkboxes are **disabled**, and **none** carries `checked`.
+5. One definition of `CAP_ENGINE_DEPLOYED`, two importers, no second source. Flipping it to `false`
+   and rebuilding compiles both screens against the changed value; seeing both flip needs a browser.
+6. **The uninstall row matches §11 character for character** — compared programmatically against
+   the spec table rather than by eye.
+7. A crafted POST setting `rounding=down`, `plan=pro`, `currencyCode=JPY` and
+   `defaultCheckoutNote="Free money!"` changes **nothing**: `changed` comes back empty and all four
+   columns hold their previous values. The setup-guide and cart-test fields are not writable from
+   here either.
+8. **Keyboard pass needs a browser.** Every control is labelled, and the disabled ones are real
+   Polaris disabled controls rather than styled-off ones, so they announce as disabled.
+
+`dev.sqlite` reset to empty. The verification harness was temporary and is deleted.
+
+### Still queued for Sophea
+
+The reinstall, which now carries `read_discounts` and `read_products` together, and then the Gate 3
+exit: create `SUMMER15` through the form, the 1,400.00 → **150.00** and 700.00 → **105.00**
+checkouts, the `cap_config` read-back, and confirming the resource picker returns products at all.
+Plus the two open scope decisions: whether per-store rounding gets its own gate, and whether
+minimum requirements move to V2 or get the Function work `DiscountCodeAppInput` cannot do.
