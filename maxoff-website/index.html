@@ -1085,7 +1085,7 @@ footer{ background:var(--black); color:#fff; padding:56px 0 32px; }
         .then(function(data){ return { ok: res.ok, status: res.status, data: data }; });
     }).then(function(r){
       if (r.ok && r.data && r.data.ok === true) {
-        setStatus("ok", ["Thanks " + name.split(/\s+/)[0] + " — we'll email you within one business day."]);
+        setStatus("ok", ["Thanks! Your message has been sent successfully. We'll reply within one business day."]);
         form.reset();
         return;
       }
