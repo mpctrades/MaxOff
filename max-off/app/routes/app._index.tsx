@@ -87,14 +87,9 @@ export default function HomePage() {
           activeCount={home.activeCount}
           action={
             upgradeTo !== null ? (
-              <>
-                <BrandButton href="/app/billing">
-                  Upgrade to {PLAN_NAMES[upgradeTo]}
-                </BrandButton>
-                <span className="maxoff-plan-strip__note">
-                  See what each plan adds.
-                </span>
-              </>
+              <BrandButton href="/app/billing">
+                Upgrade to {PLAN_NAMES[upgradeTo]}
+              </BrandButton>
             ) : undefined
           }
         />

@@ -230,11 +230,6 @@
   justify-self: end;
 }
 
-.maxoff-plan-strip__note {
-  color: var(--maxoff-text-subdued);
-  font-size: 13px;
-}
-
 /* The meter runs the full width under both, as one row of its own. */
 .maxoff-plan-strip > .maxoff-usage {
   grid-column: 1 / -1;

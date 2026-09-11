@@ -127,23 +127,15 @@ export default function BillingPage() {
           nextChargeOn={data.currentPeriodEnd}
           action={
             data.recommended !== null && data.hostedPlanUrl !== null ? (
-              <>
-                <form method="post">
-                  <input type="hidden" name="intent" value="view-plans" />
-                  {/* The name, not the price. The price is on the plan's own
-                      card a few centimetres below, and a button that carries
-                      it runs wider than the strip it sits in. */}
-                  <BrandButton type="submit">
-                    Upgrade to {PLAN_LABELS[data.recommended]}
-                  </BrandButton>
-                </form>
-                {/* Not "takes effect immediately": the button opens Shopify's
-                    plan page, and the change lands when the merchant approves
-                    it there. Close enough to the drawing, true either way. */}
-                <span className="maxoff-plan-strip__note">
-                  Takes effect as soon as you approve it on Shopify.
-                </span>
-              </>
+              <form method="post">
+                <input type="hidden" name="intent" value="view-plans" />
+                {/* The name, not the price. The price is on the plan's own
+                    card a few centimetres below, and a button that carries it
+                    runs wider than the strip it sits in. */}
+                <BrandButton type="submit">
+                  Upgrade to {PLAN_LABELS[data.recommended]}
+                </BrandButton>
+              </form>
             ) : undefined
           }
         />
