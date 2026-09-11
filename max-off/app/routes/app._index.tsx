@@ -7,6 +7,8 @@ import { displayStatusLabel } from "../lib/cap";
 import { getHomeData } from "../models/home.server";
 import type { HomeData, HomeWeek } from "../models/home.server";
 import { BrandButton } from "../components/BrandButton";
+import { PlanStrip } from "../components/PlanStrip";
+import { nextPlan, PLAN_LABELS as PLAN_NAMES, toPlanKey } from "../lib/plans";
 import {
   formatAmount,
   formatAmountPlain,
@@ -14,12 +16,6 @@ import {
   formatMonthDay,
   formatPercent,
 } from "../lib/format";
-
-const PLAN_LABELS: Record<string, string> = {
-  free: "Free plan",
-  growth: "Growth plan",
-  pro: "Pro plan",
-};
 
 const STATUS_TONES: Record<string, "success" | "info" | "warning" | "neutral"> =
   {
@@ -59,12 +55,15 @@ export default function HomePage() {
     );
   }
 
-  const planLabel = PLAN_LABELS[home.plan] ?? "Free plan";
   const isNewInstall = home.totalCount === 0;
+
+  // Home reads the cached plan — it is a summary, not a gate, and the billing
+  // page refreshes the cache from Shopify every time it is opened.
+  const plan = toPlanKey(home.plan);
+  const upgradeTo = nextPlan(plan);
 
   return (
     <s-page heading="MaxOff">
-      <s-badge slot="accessory">{planLabel}</s-badge>
       <s-button slot="secondary-actions" href="/app/test">
         Test a cart
       </s-button>
@@ -75,6 +74,31 @@ export default function HomePage() {
       <s-paragraph color="subdued">
         Percentage discounts that stop at a maximum amount.
       </s-paragraph>
+
+      {/* Which plan, and how much of it is in use — the same strip as the top
+          of Plans & billing, so the answer is in the same shape on both
+          pages. The button is a link here: choosing a plan is billing's job,
+          and Home should not be the place a merchant accidentally leaves the
+          app frame. */}
+      <s-section>
+        <PlanStrip
+          plan={plan}
+          currencyCode={home.currencyCode}
+          activeCount={home.activeCount}
+          action={
+            upgradeTo !== null ? (
+              <>
+                <BrandButton href="/app/billing">
+                  Upgrade to {PLAN_NAMES[upgradeTo]}
+                </BrandButton>
+                <span className="maxoff-plan-strip__note">
+                  See what each plan adds.
+                </span>
+              </>
+            ) : undefined
+          }
+        />
+      </s-section>
 
       {isNewInstall ? (
         <NewInstallCard />
