@@ -155,11 +155,6 @@ export default function TestACartPage() {
 
   return (
     <s-page heading="Test a cart">
-      <s-paragraph color="subdued">
-        Build a basket and see what the cap will do before you send the code to
-        anyone.
-      </s-paragraph>
-
       {/* ---------------- Test basket ---------------- */}
       <s-section heading="Test basket">
         {lines.length === 0 ? (

@@ -110,10 +110,6 @@ export default function BillingPage() {
 
   return (
     <s-page heading="Plans &amp; billing">
-      <s-paragraph color="subdued">
-        Flat monthly price. No transaction fees, no revenue share — ever.
-      </s-paragraph>
-
       {data.unmappedSubscriptionName && (
         <s-banner tone="warning" heading="Unrecognised subscription">
           Shopify reports an active subscription called “

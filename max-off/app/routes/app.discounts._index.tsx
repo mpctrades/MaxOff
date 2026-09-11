@@ -130,10 +130,6 @@ export default function DiscountsListPage() {
         Create capped discount
       </s-button>
 
-      <s-paragraph color="subdued">
-        Every percentage discount with a maximum amount.
-      </s-paragraph>
-
       <s-section accessibilityLabel="Capped discounts" padding="none">
         <s-table
           {...(list.hasNextPage || list.hasPreviousPage
@@ -163,15 +159,28 @@ export default function DiscountsListPage() {
               ))}
             </s-button-group>
 
+            {/* The page's own line sits where the search field's label would
+                be, which puts it on the same line as the "Method" and "Cap
+                type" labels beside it. It cannot sit in the title bar under
+                the heading — that bar is the admin's, and the `subheading`
+                prop that would carry it only exists in Polaris 1.1, still a
+                release candidate. `alignItems="end"` lines the three controls
+                up along their bottom edge, which is what holds the sentence
+                level with the two labels. */}
             <s-grid gridTemplateColumns="1fr auto auto" gap="small-200" alignItems="end">
-              <s-search-field
-                label="Search by code"
-                labelAccessibilityVisibility="exclusive"
-                placeholder="Search by code"
-                name="q"
-                value={query}
-                onInput={(event) => onSearchInput(event.currentTarget.value)}
-              ></s-search-field>
+              <s-stack direction="block" gap="small-400">
+                <s-text color="subdued">
+                  Every percentage discount with a maximum amount.
+                </s-text>
+                <s-search-field
+                  label="Search by code"
+                  labelAccessibilityVisibility="exclusive"
+                  placeholder="Search by code"
+                  name="q"
+                  value={query}
+                  onInput={(event) => onSearchInput(event.currentTarget.value)}
+                ></s-search-field>
+              </s-stack>
               {/* V2, rendered as visible disabled affordances (rule 6). */}
               <s-select label="Method" name="method" value="code" disabled>
                 <s-option value="code">Discount code</s-option>
