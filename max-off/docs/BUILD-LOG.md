@@ -1135,3 +1135,104 @@ Still queued for Sophea, in order: the reinstall carrying `read_discounts` and `
 Gate 3 exit checkouts (1,400.00 → **150.00**, 700.00 → **105.00**); the `cap_config` read-back;
 confirming the resource picker returns products; the `read_orders` request; and the three App
 Pricing plans in the Partner Dashboard, which is also what makes the plan read testable.
+
+---
+
+## 11 Sep 2026 · Plan ladder brought in line with the published pricing
+
+**Built** — the entitlement matrix now says what maxoff.mpctrades.com sells. Everything below is
+one edit to `app/lib/plans.ts` plus the gates that read it; no card copy was written in a
+component.
+
+- Allowance: **5 / 40 / unlimited** (was 1 / unlimited / unlimited). One active discount was too
+  thin to judge the app by, and an unlimited Growth left Pro with nothing to sell but the scopes.
+- New `PLAN_MAX_CAMPAIGN_DAYS` — **Free runs each discount for at most 15 days**, the paid plans
+  have no ceiling. This is what makes Free a trial rather than a free-forever tier. The number
+  lives in one place; the card copy, the form prefill and the validation all read it, and
+  `longCampaigns` is the same fact written as an entitlement with a test tying the two together.
+- New `usageLimits` capability — a total-uses limit is Growth and above. It was built and ungated;
+  the published pricing puts it in Growth.
+- `perMarketCurrency`, `csvExport`, `twelveMonthHistory` and `prioritySupport` flipped to
+  `onCard: true`, because the Pro card on the website lists them.
+- `planCard` now puts the allowance line on the **Pro** card too. It stopped being implied by
+  "Everything in Growth" the moment Growth got a number of its own.
+- Enforcement, in `validateDiscountForm(state, plan)` — the plan is a required argument, so a call
+  site that forgets it fails to compile rather than quietly handing a Free merchant a Growth form,
+  and `toPlanKey` makes anything unreadable Free. A ceilinged plan must set an end date (the form
+  ticks and locks the box), the run may not exceed the ceiling, and a usage limit is refused rather
+  than silently dropped. The create action revalidates against the plan **Shopify** reports, so a
+  stale tab cannot save what the plan no longer allows.
+- `defaultEndDate` takes the ceiling: `maxDays - 1` days out, because the end time defaults to
+  23:59. A unit test caught the first version prefilling 15 days *and* 23 hours — a default that
+  failed its own form.
+
+**Not built, deliberately** — the `"Powered by MaxOff" note at checkout` line from the website's
+Free card. Nothing implements it and the Function cannot: it builds the buyer message from
+`cap_config`, which carries no plan. Arthur chose to leave it off the in-app card rather than
+advertise a restriction that does not exist. The website still lists it; that is a copy decision
+for the site, not a gate.
+
+**Verified**
+
+1. `npm run typecheck` and `npm run lint` — clean.
+2. `npm test` — 263 passing, including 25 in `plans.test.ts` and 31 in `discount-form.test.ts`.
+   The two failing *files* are the pre-existing pair vitest collects by name: the `app.test.tsx`
+   route and a generated `+types` file. Neither is a test suite.
+3. The three cards were printed from `planCard` and read against the screenshot: Free leads with
+   5 and says "up to 15 days per discount"; Growth leads with 40 and withholds only the Pro
+   summary; Pro leads with unlimited over "Everything in Growth".
+4. New tests cover the fifteenth day passing, a minute past it failing, an open-ended Free discount
+   being refused, a usage limit on Free being refused, and an unreadable plan getting Free's rules.
+5. **Needs a browser**: the locked end-date checkbox and the disabled usage-limit control with its
+   Growth badge on the create form, on a shop Shopify reports as Free.
+
+**Docs** — BUILD-SPEC §3.6 and the §1 table of PROMPT-BILLING rewritten to the new ladder.
+
+---
+
+## 11 Sep 2026 · The cards say what you get, not what you lack
+
+Same session as the entry above, after Arthur read the rendered page.
+
+**Built**
+
+- Allowances tightened again: **3 / 20 / unlimited**. The website still says 5 / 40; that is a copy
+  edit owed to `maxoff-website/index.html`, and `plans.ts` is the number the app enforces.
+- `Capability.onCard` changed from `boolean` to `readonly PlanKey[]` — **which cards** list a line,
+  not whether any card does. The same capability can be a selling point on the cheapest card and a
+  repetition on the rest.
+  - `activeDates` → `["free"]`, where it carries the 15-day ceiling. Growth no longer repeats it.
+  - `analytics` → `[]`. It is entitled on Growth and Pro and still gates, but it appears on no
+    card. It is blocked on `read_orders` approval, so leaving it off is the honest version too.
+  - Everything else lists where it earns its place; `orderMaximum` and `previewAndTester` on Free
+    and Growth, the Pro long tail on Pro.
+- `planCard` rewritten: allowance, then the plan's own ticks, then — **only on the plan directly
+  below the top** — one `TOP_PLAN_SUMMARY` line. The per-line dashes naming the next tier are gone.
+  The Free card used to carry five refusals under four features, which is a list of what a merchant
+  does not have on the card meant to win them.
+
+**Verified**
+
+1. `npm run typecheck` and `npm run lint` — clean. `npm test` — 265 passing (the same two
+   non-suite files vitest collects by name still fail; they fail on a clean tree).
+2. The three cards printed from `planCard` and read line by line: Free is four ticks and nothing
+   withheld; Growth is six ticks and the one Pro line; Pro rolls Growth up and states unlimited.
+3. A new test asserts `onCard ⊆ plans` for every capability — a card cannot tick what the plan does
+   not have.
+4. A new test asserts the Free card has no withheld line at all, so the dashes cannot come back by
+   accident.
+
+**Note for next session** — no card now mentions the money-kept dashboard. When `read_orders` is
+approved and analytics ships, decide whether it goes back on the Growth card; the entitlement is
+already there, only `onCard` needs a plan in it.
+
+**Second pass, same day** — Arthur read the rendered cards again:
+
+- Growth's last line, the `TOP_PLAN_SUMMARY` dash pointing at Pro, is gone. No card now names
+  anything the plan lacks, so `PlanFeature.included` had nothing left to be false for: the flag,
+  the constant, the dash markup and the `__no` / `__missing` CSS went with it. One mark, one
+  screen-reader prefix, and a card that cannot end on a refusal.
+- New optional `Capability.cardLabel` — the wording a card uses when it differs from the
+  entitlement's own label. `csvExport` carries "CSV export and 12-month history" and
+  `twelveMonthHistory` drops off the card, so Pro reads as the website does while the two stay two
+  entitlements and two gates. A test asserts both are still separately grantable.

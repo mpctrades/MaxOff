@@ -1,13 +1,23 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  campaignTooLongError,
   combineDateTime,
   defaultEndDate,
   discountFormStateFrom,
+  endDateRequiredError,
   initialDiscountFormState,
+  USAGE_LIMIT_NOT_ON_PLAN,
   validateDiscountForm,
 } from "./discount-form";
 import type { DiscountFormState } from "./discount-form";
+
+/**
+ * Most of these rules are about the form, not about the plan, so they run on
+ * Growth — the plan with no ceiling and no gates, where only §4.3 applies.
+ * The Free rules get their own block at the bottom.
+ */
+const OPEN_PLAN = "growth";
 
 const valid = (over: Partial<DiscountFormState> = {}): DiscountFormState => ({
   ...initialDiscountFormState(new Date("2026-09-10T00:00:00Z")),
@@ -17,14 +27,14 @@ const valid = (over: Partial<DiscountFormState> = {}): DiscountFormState => ({
   ...over,
 });
 
-const errorsOf = (state: DiscountFormState) => {
-  const result = validateDiscountForm(state);
+const errorsOf = (state: DiscountFormState, plan: string = OPEN_PLAN) => {
+  const result = validateDiscountForm(state, plan);
   return "errors" in result ? result.errors : {};
 };
 
 describe("a valid form", () => {
   test("becomes exactly what createCappedDiscount needs", () => {
-    const result = validateDiscountForm(valid());
+    const result = validateDiscountForm(valid(), OPEN_PLAN);
 
     expect(result).toEqual({
       value: {
@@ -43,7 +53,7 @@ describe("a valid form", () => {
   });
 
   test("uppercases and trims the code", () => {
-    const result = validateDiscountForm(valid({ code: "  summer15  " }));
+    const result = validateDiscountForm(valid({ code: "  summer15  " }), OPEN_PLAN);
     expect("value" in result && result.value.code).toBe("SUMMER15");
   });
 
@@ -54,7 +64,7 @@ describe("a valid form", () => {
       ["0.01", 1],
       [" 150.00 ", 15000],
     ] as const) {
-      const result = validateDiscountForm(valid({ capAmount: typed }));
+      const result = validateDiscountForm(valid({ capAmount: typed }), OPEN_PLAN);
       expect("value" in result && result.value.capMinor).toBe(minor);
     }
   });
@@ -131,6 +141,7 @@ describe("the rules from §4.3", () => {
 
     const good = validateDiscountForm(
       valid({ usageLimitOn: true, usageLimit: "500" }),
+      OPEN_PLAN,
     );
     expect("value" in good && good.value.usageLimit).toBe(500);
   });
@@ -181,12 +192,12 @@ describe("combineDateTime", () => {
  * are the cases a hand-rolled POST would hit.
  */
 describe("a submission that skipped the client", () => {
-  const submit = (fields: Record<string, string>) => {
+  const submit = (fields: Record<string, string>, plan: string = OPEN_PLAN) => {
     const form = new FormData();
     for (const [key, value] of Object.entries(fields)) {
       form.set(key, value);
     }
-    return validateDiscountForm(discountFormStateFrom(form));
+    return validateDiscountForm(discountFormStateFrom(form), plan);
   };
 
   test("an empty POST is rejected on every required field", () => {
@@ -278,5 +289,104 @@ describe("defaultEndDate", () => {
     expect(
       errorsOf(valid({ endDateOn: true, startDate: "2026-09-10", endDate: result })).endDate,
     ).toBeUndefined();
+  });
+});
+
+describe("the Free plan's limits", () => {
+  const start = { startDate: "2026-09-10", startTime: "00:00" };
+
+  test("a discount may run to the fifteenth day", () => {
+    const onTheLine = errorsOf(
+      valid({
+        ...start,
+        endDateOn: true,
+        endDate: "2026-09-25",
+        endTime: "00:00",
+      }),
+      "free",
+    );
+    expect(onTheLine.endDate).toBeUndefined();
+  });
+
+  test("a discount may not run past it", () => {
+    const overByAMinute = errorsOf(
+      valid({
+        ...start,
+        endDateOn: true,
+        endDate: "2026-09-25",
+        endTime: "00:01",
+      }),
+      "free",
+    );
+    expect(overByAMinute.endDate).toBe(campaignTooLongError(15));
+
+    const overByWeeks = errorsOf(
+      valid({ ...start, endDateOn: true, endDate: "2026-10-31" }),
+      "free",
+    );
+    expect(overByWeeks.endDate).toBe(campaignTooLongError(15));
+  });
+
+  test("an open-ended discount is refused, because the ceiling needs an end", () => {
+    expect(errorsOf(valid({ ...start, endDateOn: false }), "free").endDate).toBe(
+      endDateRequiredError(15),
+    );
+  });
+
+  test("a usage limit is refused rather than silently dropped", () => {
+    expect(
+      errorsOf(
+        valid({
+          ...start,
+          endDateOn: true,
+          endDate: "2026-09-20",
+          usageLimitOn: true,
+          usageLimit: "500",
+        }),
+        "free",
+      ).usageLimit,
+    ).toBe(USAGE_LIMIT_NOT_ON_PLAN);
+  });
+
+  test("a plan nobody can read is treated as Free, never as unlimited", () => {
+    for (const unreadable of ["", "enterprise", "GROWTH"]) {
+      expect(
+        errorsOf(valid({ ...start, endDateOn: false }), unreadable).endDate,
+      ).toBe(endDateRequiredError(15));
+    }
+  });
+
+  test("neither rule touches a plan without a ceiling", () => {
+    const growth = errorsOf(
+      valid({
+        ...start,
+        endDateOn: false,
+        usageLimitOn: true,
+        usageLimit: "500",
+      }),
+      "growth",
+    );
+    expect(growth.endDate).toBeUndefined();
+    expect(growth.usageLimit).toBeUndefined();
+  });
+
+  test("the form opens on a ceiling plan with the end date already set", () => {
+    const state = initialDiscountFormState(new Date("2026-09-10T00:00:00Z"), 15);
+    expect(state.endDateOn).toBe(true);
+    // The fifteenth day, ending at 23:59 on it — not the day after.
+    expect(state.endDate).toBe("2026-09-24");
+
+    // And what it opens with passes its own validation.
+    expect(
+      errorsOf({ ...valid(), ...state, code: "SUMMER15", capAmount: "150.00" }, "free")
+        .endDate,
+    ).toBeUndefined();
+  });
+
+  test("the prefill never exceeds the ceiling", () => {
+    expect(defaultEndDate("2026-09-10", 15)).toBe("2026-09-24");
+    // A ceiling above the thirty-day default does not extend it.
+    expect(defaultEndDate("2026-09-10", 60)).toBe("2026-10-10");
+    expect(defaultEndDate("2026-09-10", null)).toBe("2026-10-10");
   });
 });

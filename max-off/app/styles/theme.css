@@ -274,7 +274,7 @@
   font-size: 13px;
 }
 
-/* The Free plan's one-discount allowance, beside the plan it belongs to. */
+/* The plan's active-discount allowance, beside the plan it belongs to. */
 .maxoff-usage {
   display: flex;
   flex-direction: column;
@@ -384,17 +384,8 @@
   line-height: 18px;
 }
 
-/* Shape first, colour second: the tick and the dash differ without it. */
 .maxoff-plan-card__yes {
   color: var(--maxoff-orange-500);
-}
-
-.maxoff-plan-card__no {
-  color: var(--maxoff-text-subdued);
-}
-
-.maxoff-plan-card__missing {
-  color: var(--maxoff-text-subdued);
 }
 
 /* Pins every card's button to the bottom, so three lists of different lengths

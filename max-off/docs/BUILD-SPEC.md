@@ -375,15 +375,23 @@ Two consequences the rest of this spec has to respect:
 
 | Plan | Price | Limits enforced in code |
 |---|---|---|
-| Free | 0 | 1 active capped discount · order scope only · "Powered by MaxOff" note at checkout |
-| Growth | 4.99/mo | unlimited discounts · dates · analytics · custom wording |
-| Pro | 7.99/mo | + per-item / per-collection caps · per-market currency · CSV export · 12-month history |
+| Free | 0 | 3 active capped discounts · each runs at most 15 days · no usage limit · order scope only |
+| Growth | 4.99/mo | 20 active capped discounts · no run-length ceiling · usage limits · analytics · custom wording |
+| Pro | 7.99/mo | unlimited discounts · + per-item / per-collection caps · per-market currency · CSV export · 12-month history |
 
 Flat monthly. **No transaction fee, no revenue share, ever** — this is a positioning promise and
 appears on the billing page as such. Charged through Shopify with the merchant's bill.
 
-The only limit enforced in V1 code is Free = 1 active capped discount. The rest are gates on V2/PRO
-features that do not exist yet.
+Three limits are enforced in V1 code, all of them from `app/lib/plans.ts`: the active-discount
+allowance (3 / 20 / unlimited), the Free plan's 15-day run-length ceiling, and the usage limit as a
+Growth entitlement. The rest are gates on V2/PRO features that do not exist yet.
+
+Revised 11 Sep 2026. One active discount was too thin to judge the app by; the fortnight ceiling is
+what makes Free a trial rather than a free-forever tier. The allowances are **3 / 20**, tighter than
+the 5 / 40 on maxoff.mpctrades.com — the site's copy is owed an edit, and `plans.ts` is the number
+that binds. "Powered by MaxOff" is **not** in the ladder — see the note in `app/lib/plans.ts` for
+why: nothing implements it and the Function cannot, so it would be a restriction we advertise and
+do not apply.
 
 ---
 

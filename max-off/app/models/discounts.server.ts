@@ -350,10 +350,12 @@ export async function planLimitRefusal(input: {
 
   return {
     ok: false,
-    message:
-      limit === 1
-        ? "The Free plan allows one active capped discount. Pause the other one, or choose a plan."
-        : `Your plan allows ${limit} active capped discounts. Pause one, or choose a plan.`,
+    // The plan is named by the number, not by a hard-coded "Free": the limits
+    // live in plans.ts and a sentence that names a plan goes stale the moment
+    // they move.
+    message: `Your plan allows ${limit} active capped discount${
+      limit === 1 ? "" : "s"
+    }. Pause one, or choose a plan.`,
     upgradeUrl: "/app/billing",
   };
 }

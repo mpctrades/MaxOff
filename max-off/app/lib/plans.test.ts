@@ -8,7 +8,9 @@ import {
   hasNow,
   includedNow,
   isPlanKey,
+  maxCampaignDays,
   nextPlan,
+  planCard,
   PLAN_KEYS,
   toPlanKey,
   upgradeAdds,
@@ -24,6 +26,8 @@ const TABLE: Record<CapabilityKey, PlanKey[]> = {
   orderMaximum: ["free", "growth", "pro"],
   previewAndTester: ["free", "growth", "pro"],
   activeDates: ["free", "growth", "pro"],
+  usageLimits: ["growth", "pro"],
+  longCampaigns: ["growth", "pro"],
   analytics: ["growth", "pro"],
   customCheckoutWording: ["growth", "pro"],
   itemMaximums: ["pro"],
@@ -36,18 +40,37 @@ const TABLE: Record<CapabilityKey, PlanKey[]> = {
 };
 
 describe("the active discount limit", () => {
-  test("Free allows exactly one", () => {
-    expect(activeDiscountLimit("free")).toBe(1);
-  });
-
-  test("Growth and Pro are unlimited", () => {
-    expect(activeDiscountLimit("growth")).toBeNull();
+  test("the ladder is 3, 20, unlimited", () => {
+    expect(activeDiscountLimit("free")).toBe(3);
+    expect(activeDiscountLimit("growth")).toBe(20);
     expect(activeDiscountLimit("pro")).toBeNull();
   });
 
   test("an unknown plan is treated as Free, never as unlimited", () => {
     for (const value of ["", "enterprise", "PRO", "trial", null, undefined]) {
-      expect(activeDiscountLimit(value as string)).toBe(1);
+      expect(activeDiscountLimit(value as string)).toBe(3);
+    }
+  });
+});
+
+describe("the campaign length ceiling", () => {
+  test("Free runs a discount for fifteen days; the paid plans have no ceiling", () => {
+    expect(maxCampaignDays("free")).toBe(15);
+    expect(maxCampaignDays("growth")).toBeNull();
+    expect(maxCampaignDays("pro")).toBeNull();
+  });
+
+  test("an unknown plan gets the ceiling, never the absence of one", () => {
+    for (const value of ["", "enterprise", "PRO", null, undefined]) {
+      expect(maxCampaignDays(value as string)).toBe(15);
+    }
+  });
+
+  test("the number and the entitlement say the same thing", () => {
+    // PLAN_MAX_CAMPAIGN_DAYS is the number; longCampaigns is how a card says
+    // it. Two ways of writing one fact, tied together so they cannot drift.
+    for (const plan of PLAN_KEYS) {
+      expect(can(plan, "longCampaigns")).toBe(maxCampaignDays(plan) === null);
     }
   });
 });
@@ -111,6 +134,8 @@ describe("built versus entitled", () => {
       "orderMaximum",
       "previewAndTester",
       "activeDates",
+      "usageLimits",
+      "longCampaigns",
     ]);
   });
 
@@ -161,8 +186,11 @@ describe("the upsell", () => {
   });
 
   test("moving up lists only what is new to the merchant", () => {
-    // Growth adds analytics and wording; it does not re-list the order maximum.
+    // Growth adds uses, length, analytics and wording; it does not re-list the
+    // order maximum.
     expect(upgradeAdds("free").map((entry) => entry.key)).toEqual([
+      "usageLimits",
+      "longCampaigns",
       "analytics",
       "customCheckoutWording",
     ]);
@@ -196,5 +224,92 @@ describe("plan keys", () => {
     expect(toPlanKey("Growth")).toBe("free");
     expect(toPlanKey(undefined)).toBe("free");
     expect(toPlanKey("growth")).toBe("growth");
+  });
+});
+
+describe("what a card says", () => {
+  const labels = (plan: "free" | "growth" | "pro") =>
+    planCard(plan).features.map(
+      (feature) => `${feature.lead ? feature.lead + " " : ""}${feature.label}`,
+    );
+
+  test("Free leads with three, and says how long each one may run", () => {
+    expect(labels("free")).toEqual([
+      "3 capped discounts",
+      "A maximum on the whole order",
+      "Live preview and cart tester",
+      "Start and end dates, up to 15 days per discount",
+    ]);
+  });
+
+  test("Growth leads with twenty and ends on what it has", () => {
+    expect(labels("growth")).toEqual([
+      "20 capped discounts",
+      "A maximum on the whole order",
+      "Live preview and cart tester",
+      "A limit on the total number of uses",
+      "Discounts that run for as long as you like",
+      "Custom checkout wording",
+    ]);
+  });
+
+  test("no card lists a thing the plan does not have", () => {
+    // The cards used to end on a dash. They name what a merchant gets now, so
+    // "Per-item and per-collection caps" appears on Pro's card and nowhere
+    // else — as a tick.
+    for (const plan of PLAN_KEYS) {
+      for (const feature of planCard(plan).features) {
+        const match = CAPABILITIES.find((entry) =>
+          feature.label.startsWith(entry.cardLabel ?? entry.label),
+        );
+
+        // The allowance line is not a capability; everything else must be one,
+        // and must be granted to this plan.
+        if (match) {
+          expect(can(plan, match.key), `${plan}: ${feature.label}`).toBe(true);
+        } else {
+          expect(feature.label).toContain("capped discount");
+        }
+      }
+    }
+  });
+
+  test("dates are Free's line and analytics is nobody's", () => {
+    // Both are still entitlements; neither is part of Growth's pitch.
+    expect(labels("growth")).not.toContain("Start and end dates");
+    expect(can("growth", "activeDates")).toBe(true);
+
+    for (const plan of PLAN_KEYS) {
+      expect(labels(plan).join(" ")).not.toContain("Money-kept");
+    }
+    expect(can("growth", "analytics")).toBe(true);
+  });
+
+  test("Pro rolls Growth up but still states the allowance it changes", () => {
+    const card = planCard("pro");
+
+    expect(card.rollupFrom).toBe("growth");
+    // Growth now carries a limit of 20, so unlimited is something Pro adds
+    // rather than something "Everything in Growth" already covered.
+    expect(labels("pro")[0]).toBe("Unlimited capped discounts");
+  });
+
+  test("export and history are one line on Pro, and two entitlements", () => {
+    expect(labels("pro")).toContain("CSV export and 12-month history");
+    expect(labels("pro")).not.toContain("12-month history");
+
+    // Still two gates: the Export button and the analytics range chips are
+    // refused separately.
+    expect(can("pro", "csvExport")).toBe(true);
+    expect(can("pro", "twelveMonthHistory")).toBe(true);
+    expect(can("growth", "twelveMonthHistory")).toBe(false);
+  });
+
+  test("no card ticks a line its plan is not entitled to", () => {
+    for (const entry of CAPABILITIES) {
+      for (const plan of entry.onCard) {
+        expect(entry.plans, entry.key).toContain(plan);
+      }
+    }
   });
 });

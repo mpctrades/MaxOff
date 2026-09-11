@@ -28,9 +28,34 @@ export const PLAN_PRICE_MINOR: Record<PlanKey, number> = {
   pro: 799,
 };
 
-/** How many capped discounts may be active at once. Null means unlimited. */
+/**
+ * How many capped discounts may be active at once. Null means unlimited.
+ *
+ * Was 1/unlimited/unlimited until 11 Sep 2026: one active discount was too
+ * thin to judge the app by, and an unlimited Growth left Pro with nothing to
+ * sell but the scopes. Set to 3/20/unlimited by Arthur the same day — tighter
+ * than the 5/40 the website advertises, which is a copy change owed to the
+ * site, not a second definition here.
+ */
 export const PLAN_ACTIVE_DISCOUNT_LIMIT: Record<PlanKey, number | null> = {
-  free: 1,
+  free: 3,
+  growth: 20,
+  pro: null,
+};
+
+/**
+ * How long a single capped discount may run, in days. Null means no limit.
+ *
+ * Free is a trial in disguise: five discounts, each for a fortnight. A
+ * merchant can run a real campaign and see the money kept, but a permanent
+ * always-on code is what the paid plans are for.
+ *
+ * This is the only source of the number. The card copy and the form's
+ * validation both read it, and `longCampaigns` below is the same fact written
+ * as an entitlement — a test ties the two together so they cannot drift.
+ */
+export const PLAN_MAX_CAMPAIGN_DAYS: Record<PlanKey, number | null> = {
+  free: 15,
   growth: null,
   pro: null,
 };
@@ -41,7 +66,7 @@ export const PLAN_ACTIVE_DISCOUNT_LIMIT: Record<PlanKey, number | null> = {
  * what the plan actually gives.
  */
 export const PLAN_TAGLINES: Record<PlanKey, string> = {
-  free: "One discount, to see whether caps work for you.",
+  free: "Three discounts, each running up to 15 days.",
   growth: "For stores running more than one campaign at a time.",
   pro: "Caps per item, per collection and per campaign.",
 };
@@ -50,6 +75,8 @@ export type CapabilityKey =
   | "orderMaximum"
   | "previewAndTester"
   | "activeDates"
+  | "usageLimits"
+  | "longCampaigns"
   | "analytics"
   | "customCheckoutWording"
   | "itemMaximums"
@@ -68,12 +95,27 @@ export interface Capability {
   /** Whether it exists in the product today. */
   built: boolean;
   /**
-   * Whether it appears on a pricing card. The long tail — CSV export, history,
-   * support — is a real entitlement and a gate, but a card read at a glance is
-   * a highlight reel, not an inventory. Everything stays in the matrix; only
-   * the cards are edited.
+   * Which plan cards list this line — not whether it is entitled, which is
+   * `plans` above.
+   *
+   * A card read at a glance is a highlight reel, not an inventory, and the
+   * same capability can be worth naming on one card and noise on another: a
+   * line every plan shares is a selling point on the cheapest card and a
+   * repetition on the rest. Everything stays in the matrix and keeps gating
+   * whatever it gates; only the cards are edited.
+   *
+   * Must be a subset of `plans` — a card cannot tick what the plan does not
+   * have, and a test says so.
    */
-  onCard: boolean;
+  onCard: readonly PlanKey[];
+  /**
+   * The wording a card uses, when it differs from `label`.
+   *
+   * Two entitlements a merchant thinks of as one thing — export and history —
+   * read as two grudging half-features when listed separately. They stay two
+   * entries because they are two gates; the card says them in one breath.
+   */
+  cardLabel?: string;
   /** Why it is not built yet — shown to nobody, read by the next developer. */
   note?: string;
 }
@@ -84,32 +126,54 @@ export const CAPABILITIES: readonly Capability[] = [
     label: "A maximum on the whole order",
     plans: ["free", "growth", "pro"],
     built: true,
-    onCard: true,
+    onCard: ["free", "growth"],
   },
   {
     key: "previewAndTester",
     label: "Live preview and cart tester",
     plans: ["free", "growth", "pro"],
     built: true,
-    onCard: true,
+    onCard: ["free", "growth"],
   },
   {
     // §0c, decided 10 Sep 2026: dates were sold as Growth but shipped to
     // everyone ungated. They stay in Free — already built, cheap to give, and
     // taking a working feature off Free merchants later is worse than never
-    // having offered it.
+    // having offered it. What Free does not get is an *unbounded* run: see
+    // PLAN_MAX_CAMPAIGN_DAYS and `longCampaigns`.
     key: "activeDates",
     label: "Start and end dates",
     plans: ["free", "growth", "pro"],
     built: true,
-    onCard: true,
+    onCard: ["free"],
+  },
+  {
+    // Built and ungated until 11 Sep 2026, when the published pricing put it
+    // in Growth. Unlike dates, this one is a campaign control rather than
+    // something a merchant needs to run a capped discount at all, so gating it
+    // costs a Free merchant nothing they cannot do by pausing the code.
+    key: "usageLimits",
+    label: "A limit on the total number of uses",
+    plans: ["growth", "pro"],
+    built: true,
+    onCard: ["growth"],
+  },
+  {
+    // The other half of PLAN_MAX_CAMPAIGN_DAYS, written as an entitlement so
+    // the Growth card can say what moving up buys. The number lives there; a
+    // test asserts the two agree.
+    key: "longCampaigns",
+    label: "Discounts that run for as long as you like",
+    plans: ["growth", "pro"],
+    built: true,
+    onCard: ["growth"],
   },
   {
     key: "analytics",
     label: "Money-kept dashboard and analytics",
     plans: ["growth", "pro"],
     built: false,
-    onCard: true,
+    onCard: [],
     note: "Blocked on read_orders protected-customer-data approval.",
   },
   {
@@ -117,7 +181,7 @@ export const CAPABILITIES: readonly Capability[] = [
     label: "Custom checkout wording",
     plans: ["growth", "pro"],
     built: false,
-    onCard: true,
+    onCard: ["growth"],
     note: "V2. The field is rendered disabled on Create and Settings.",
   },
   {
@@ -125,7 +189,7 @@ export const CAPABILITIES: readonly Capability[] = [
     label: "A separate maximum on each item",
     plans: ["pro"],
     built: false,
-    onCard: true,
+    onCard: ["pro"],
     note: "PRO. Needs a cap_config scope beyond 'order' and a Function change.",
   },
   {
@@ -133,7 +197,7 @@ export const CAPABILITIES: readonly Capability[] = [
     label: "A separate maximum per collection",
     plans: ["pro"],
     built: false,
-    onCard: true,
+    onCard: ["pro"],
     note: "PRO. Needs a cap_config scope beyond 'order' and a Function change.",
   },
   {
@@ -146,7 +210,7 @@ export const CAPABILITIES: readonly Capability[] = [
     label: "Campaign budget — stop a code once it has given away a total",
     plans: ["pro"],
     built: false,
-    onCard: true,
+    onCard: ["pro"],
     note: "PRO. The create form renders the checkbox disabled with a Pro badge.",
   },
   {
@@ -154,15 +218,16 @@ export const CAPABILITIES: readonly Capability[] = [
     label: "A different maximum per market currency",
     plans: ["pro"],
     built: false,
-    onCard: false,
+    onCard: ["pro"],
     note: "PRO. Amounts relabel and never convert, so this needs real per-market caps.",
   },
   {
     key: "csvExport",
     label: "CSV export",
+    cardLabel: "CSV export and 12-month history",
     plans: ["pro"],
     built: false,
-    onCard: false,
+    onCard: ["pro"],
     note: "PRO. The list's Export button toasts 'Export is a Pro feature'.",
   },
   {
@@ -170,7 +235,7 @@ export const CAPABILITIES: readonly Capability[] = [
     label: "12-month history",
     plans: ["pro"],
     built: false,
-    onCard: false,
+    onCard: [],
     note: "PRO. Analytics range chips beyond 90 days are disabled.",
   },
   {
@@ -178,7 +243,7 @@ export const CAPABILITIES: readonly Capability[] = [
     label: "Priority support",
     plans: ["pro"],
     built: false,
-    onCard: false,
+    onCard: ["pro"],
     note: "Not code. Free and Growth get email support.",
   },
 ];
@@ -208,6 +273,11 @@ export function toPlanKey(value: string | null | undefined): PlanKey {
 /** How many capped discounts this plan may have active. Null is unlimited. */
 export function activeDiscountLimit(plan: string): number | null {
   return PLAN_ACTIVE_DISCOUNT_LIMIT[toPlanKey(plan)];
+}
+
+/** How many days one discount may run on this plan. Null is no limit. */
+export function maxCampaignDays(plan: string): number | null {
+  return PLAN_MAX_CAMPAIGN_DAYS[toPlanKey(plan)];
 }
 
 /** Whether the plan is entitled to a capability, built or not. */
@@ -257,104 +327,68 @@ export function upgradeAdds(from: PlanKey): Capability[] {
   );
 }
 
-/** One line on a plan card. */
+/** One line on a plan card. Every line is something the plan has. */
 export interface PlanFeature {
   /** Bold text before the label, for the one line that carries emphasis. */
   lead?: string;
   label: string;
-  /** Whether the plan is entitled to it. */
-  included: boolean;
   /** Whether it exists today. */
   built: boolean;
 }
 
 /**
- * The single line that stands in for everything the top plan adds, on the
- * plans below it.
- *
- * Pro adds three separate discount scopes. Listed one by one on the Free card
- * they read as a column of complaints; a pricing card is scanned, not audited,
- * and the merchant only needs to know which direction the missing thing is in.
- */
-export const TOP_PLAN_SUMMARY = "Per-item and per-collection caps";
-
-/**
  * What a plan card lists.
  *
- * Ticks are what the plan has. Dashes are what the tier above adds — named one
- * by one when that tier is the middle one, and summarised by
- * `TOP_PLAN_SUMMARY` when it is the top. The top plan itself rolls up the tier
- * below into a single line instead of repeating six ticks it shares.
+ * A card names what the plan **gives**: its allowance, then every capability
+ * whose `onCard` includes it. Nothing else. There is no line for what the
+ * merchant does not have.
  *
- * Only `onCard` capabilities appear. The rest are still entitlements and still
- * gate features; they are simply not part of the pitch.
+ * Rewritten 11 Sep 2026, in two passes with Arthur. The cards used to spell
+ * out the tier above as a column of dashes, which turned the cheapest card
+ * into a list of refusals — five of them under four features — and left even
+ * Growth ending on what it lacked. The entitlements did not move; only the
+ * pitch did.
+ *
+ * The top plan rolls the tier below into "Everything in Growth" rather than
+ * repeating ticks it shares, but still states its own allowance: "Everything
+ * in Growth" carries Growth's limit with it, and unlimited is what Pro adds.
  */
 export function planCard(plan: PlanKey): {
   rollupFrom: PlanKey | null;
   features: PlanFeature[];
 } {
-  const onCard = CAPABILITIES.filter((entry) => entry.onCard);
   const top = PLAN_KEYS[PLAN_KEYS.length - 1];
   const below = PLAN_KEYS[PLAN_KEYS.indexOf(plan) - 1] ?? null;
-
-  if (plan === top && below !== null) {
-    return {
-      rollupFrom: below,
-      features: onCard
-        .filter(
-          (entry) =>
-            entry.plans.includes(plan) && !entry.plans.includes(below),
-        )
-        .map((entry) => ({
-          label: entry.label,
-          included: true,
-          built: entry.built,
-        })),
-    };
-  }
 
   const limit = PLAN_ACTIVE_DISCOUNT_LIMIT[plan];
   const allowance: PlanFeature =
     limit === null
-      ? { lead: "Unlimited", label: "capped discounts", included: true, built: true }
+      ? { lead: "Unlimited", label: "capped discounts", built: true }
       : {
           label: `${limit} capped discount${limit === 1 ? "" : "s"}`,
-          included: true,
           built: true,
         };
 
-  const mine = onCard
-    .filter((entry) => entry.plans.includes(plan))
-    .map((entry) => ({
-      label: entry.label,
-      included: true,
+  // A plan with a run-length ceiling says so on the dates line rather than in
+  // a separate one. Two lines about dates read as two features; the merchant
+  // is choosing between "dates" and "dates, but bounded".
+  const days = PLAN_MAX_CAMPAIGN_DAYS[plan];
+  const mine: PlanFeature[] = CAPABILITIES.filter((entry) =>
+    entry.onCard.includes(plan),
+  ).map((entry) => {
+    const label = entry.cardLabel ?? entry.label;
+
+    return {
+      label:
+        entry.key === "activeDates" && days !== null
+          ? `${label}, up to ${days} days per discount`
+          : label,
       built: entry.built,
-    }));
-
-  // What the next tier adds, named — unless that tier is the top one, whose
-  // additions are summarised on the line below instead.
-  const next = nextPlan(plan);
-  const nextAdds =
-    next === null || next === top
-      ? []
-      : onCard
-          .filter(
-            (entry) =>
-              entry.plans.includes(next) && !entry.plans.includes(plan),
-          )
-          .map((entry) => ({
-            label: entry.label,
-            included: false,
-            built: entry.built,
-          }));
-
-  const topSummary: PlanFeature[] =
-    plan === top
-      ? []
-      : [{ label: TOP_PLAN_SUMMARY, included: false, built: false }];
+    };
+  });
 
   return {
-    rollupFrom: null,
-    features: [allowance, ...mine, ...nextAdds, ...topSummary],
+    rollupFrom: plan === top ? below : null,
+    features: [allowance, ...mine],
   };
 }

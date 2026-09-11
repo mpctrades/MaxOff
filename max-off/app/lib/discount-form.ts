@@ -11,6 +11,7 @@
  */
 
 import { parseDecimalToMinor } from "./cap";
+import { can, maxCampaignDays } from "./plans";
 
 export interface DiscountFormState {
   code: string;
@@ -51,7 +52,20 @@ export type DiscountFormResult =
   | { value: DiscountFormValue }
   | { errors: DiscountFieldErrors };
 
-export function initialDiscountFormState(today = new Date()): DiscountFormState {
+/**
+ * The form as it opens.
+ *
+ * `maxDays` is the plan's run-length ceiling. A plan that has one opens with
+ * the end date already on and filled to that ceiling — the date is not
+ * optional on those plans, and a checkbox the merchant must tick before the
+ * form can be saved is a puzzle, not a choice.
+ */
+export function initialDiscountFormState(
+  today = new Date(),
+  maxDays: number | null = null,
+): DiscountFormState {
+  const startDate = today.toISOString().slice(0, 10);
+
   return {
     code: "",
     percentage: "15",
@@ -62,10 +76,10 @@ export function initialDiscountFormState(today = new Date()): DiscountFormState 
     combinesProduct: false,
     combinesOrder: false,
     combinesShipping: true,
-    startDate: today.toISOString().slice(0, 10),
+    startDate,
     startTime: "00:00",
-    endDateOn: false,
-    endDate: "",
+    endDateOn: maxDays !== null,
+    endDate: maxDays === null ? "" : defaultEndDate(startDate, maxDays),
     endTime: "23:59",
   };
 }
@@ -94,15 +108,29 @@ const DEFAULT_END_DATE_DAYS = 30;
  *
  * Thirty days rather than "one month", because adding a calendar month to
  * 31 January rolls over to 3 March in JavaScript, and a default nobody can
- * predict is worse than one that is slightly arbitrary.
+ * predict is worse than one that is slightly arbitrary. A plan with a shorter
+ * ceiling gets its own ceiling instead — prefilling a date the same form is
+ * about to reject is the one default worse than an empty field.
  */
-export function defaultEndDate(startDate: string): string {
+export function defaultEndDate(
+  startDate: string,
+  maxDays: number | null = null,
+): string {
   const parsed = new Date(`${startDate}T00:00:00Z`);
   if (Number.isNaN(parsed.getTime())) {
     return "";
   }
 
-  parsed.setUTCDate(parsed.getUTCDate() + DEFAULT_END_DATE_DAYS);
+  // `maxDays - 1`, because the end time defaults to 23:59: the fifteenth day
+  // is the last day the discount runs, not the day after it stops. A prefill
+  // of start + 15 days at 23:59 is 15 days and 23 hours, which the ceiling
+  // then rejects — a default that fails its own form.
+  const days =
+    maxDays === null
+      ? DEFAULT_END_DATE_DAYS
+      : Math.max(Math.min(DEFAULT_END_DATE_DAYS, maxDays - 1), 0);
+
+  parsed.setUTCDate(parsed.getUTCDate() + days);
   return parsed.toISOString().slice(0, 10);
 }
 
@@ -119,8 +147,37 @@ export function defaultEndDate(startDate: string): string {
 export const END_BEFORE_START_ERROR =
   "The end date must be after the start date.";
 
+/**
+ * The two plan rules the date and usage sections carry, as one sentence each.
+ *
+ * Functions rather than constants because the number comes from
+ * `PLAN_MAX_CAMPAIGN_DAYS` — a hard-coded "15" here is a second definition of
+ * the Free limit, which is the drift `plans.ts` exists to prevent.
+ */
+export function endDateRequiredError(days: number): string {
+  return `Your plan runs a discount for up to ${days} days, so it needs an end date.`;
+}
+
+export function campaignTooLongError(days: number): string {
+  return `Your plan runs a discount for up to ${days} days. Move the end date in, or choose a plan.`;
+}
+
+export const USAGE_LIMIT_NOT_ON_PLAN =
+  "A limit on the total number of uses is part of the Growth plan.";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The rules, for one plan.
+ *
+ * The plan is a required argument rather than an option with a permissive
+ * default: a call site that forgets it should fail to compile, not quietly
+ * hand a Free merchant a Growth form. Anything unreadable is treated as Free
+ * by `toPlanKey`, so the fallback is the strictest plan, never the loosest.
+ */
 export function validateDiscountForm(
   state: DiscountFormState,
+  plan: string,
 ): DiscountFormResult {
   const errors: DiscountFieldErrors = {};
 
@@ -151,6 +208,8 @@ export function validateDiscountForm(
     errors.startDate = "Enter a start date and a time as HH:MM.";
   }
 
+  const maxDays = maxCampaignDays(plan);
+
   let endsAt: Date | null = null;
   if (state.endDateOn) {
     endsAt = combineDateTime(state.endDate, state.endTime);
@@ -158,17 +217,32 @@ export function validateDiscountForm(
       errors.endDate = "Enter an end date, or turn the end date off.";
     } else if (startsAt !== null && endsAt.getTime() <= startsAt.getTime()) {
       errors.endDate = END_BEFORE_START_ERROR;
+    } else if (
+      maxDays !== null &&
+      startsAt !== null &&
+      endsAt.getTime() - startsAt.getTime() > maxDays * DAY_MS
+    ) {
+      errors.endDate = campaignTooLongError(maxDays);
     }
+  } else if (maxDays !== null) {
+    // A plan with a ceiling cannot run an open-ended code: with no end date
+    // there is nothing for the ceiling to bound. The form checks the box and
+    // disables it, so this is the backstop for a submission that did not.
+    errors.endDate = endDateRequiredError(maxDays);
   }
 
   let usageLimit: number | null = null;
   if (state.usageLimitOn) {
-    const raw = state.usageLimit.trim();
-    const parsed = Number(raw);
-    if (raw === "" || !/^\d+$/.test(raw) || !Number.isInteger(parsed) || parsed < 1) {
-      errors.usageLimit = "Enter a whole number of uses, or turn the limit off.";
+    if (!can(plan, "usageLimits")) {
+      errors.usageLimit = USAGE_LIMIT_NOT_ON_PLAN;
     } else {
-      usageLimit = parsed;
+      const raw = state.usageLimit.trim();
+      const parsed = Number(raw);
+      if (raw === "" || !/^\d+$/.test(raw) || !Number.isInteger(parsed) || parsed < 1) {
+        errors.usageLimit = "Enter a whole number of uses, or turn the limit off.";
+      } else {
+        usageLimit = parsed;
+      }
     }
   }
 

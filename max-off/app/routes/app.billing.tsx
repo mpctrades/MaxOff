@@ -144,9 +144,11 @@ export default function BillingPage() {
             <div className="maxoff-plan-strip__action">
               <form method="post">
                 <input type="hidden" name="intent" value="view-plans" />
+                {/* The name, not the price. The price is on the plan's own
+                    card a few centimetres below, and a button that carries it
+                    runs wider than the strip it sits in. */}
                 <BrandButton type="submit">
-                  Upgrade to {PLAN_LABELS[data.recommended]} —{" "}
-                  {money(PLAN_PRICE_MINOR[data.recommended])}/mo
+                  Upgrade to {PLAN_LABELS[data.recommended]}
                 </BrandButton>
               </form>
               {/* Not "takes effect immediately": the button opens Shopify's
@@ -200,10 +202,9 @@ export default function BillingPage() {
  * One plan, as a card.
  *
  * Every line comes from `planCard`, so the card cannot list a feature the
- * matrix does not grant — the bug `plans.ts` exists to prevent. An entitlement
- * that is not built yet is still ticked, because the merchant is paying for
- * it, but it carries a "Soon" badge: `plans.ts` keeps entitlement and reality
- * apart precisely so a card can say which is which.
+ * matrix does not grant — the bug `plans.ts` exists to prevent. Every line is
+ * also something the plan **has**: a card names what a merchant gets, never
+ * what they are missing, so there is one mark and one screen-reader prefix.
  */
 function PlanCard({
   plan,
@@ -254,24 +255,12 @@ function PlanCard({
           </li>
         )}
         {features.map((feature) => (
-          <li
-            key={feature.label}
-            className={feature.included ? "" : "maxoff-plan-card__missing"}
-          >
-            <span
-              className={
-                feature.included
-                  ? "maxoff-plan-card__yes"
-                  : "maxoff-plan-card__no"
-              }
-              aria-hidden="true"
-            >
-              {feature.included ? "✓" : "–"}
+          <li key={feature.label}>
+            <span className="maxoff-plan-card__yes" aria-hidden="true">
+              ✓
             </span>
             <span>
-              <span className="maxoff-visually-hidden">
-                {feature.included ? "Included: " : "Not included: "}
-              </span>
+              <span className="maxoff-visually-hidden">Included: </span>
               {feature.lead && <strong>{feature.lead} </strong>}
               {feature.label}
             </span>

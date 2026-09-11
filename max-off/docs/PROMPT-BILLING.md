@@ -57,12 +57,20 @@ One module, `app/lib/plans.ts`, is the single source of truth. The billing cards
 and every gate in the app reads from it. A feature list that is hand-written in the component is
 how the page ends up promising something the code does not do.
 
+Revised 11 Sep 2026: the allowance ladder is 3 / 20 / unlimited, Free runs each discount for at
+most 15 days, and a usage limit is a Growth entitlement. `onCard` says **which cards** list a line,
+per plan — dates are Free's line, analytics is on no card at all, and **no card names anything it
+lacks**. `cardLabel` lets one line stand for two entitlements: CSV export and 12-month history are
+two gates and one sentence on the Pro card.
+
 | Capability | Free | Growth | Pro | State today |
 |---|---|---|---|---|
-| Active capped discounts | **1** | unlimited | unlimited | **enforced** |
+| Active capped discounts | **3** | **20** | unlimited | **enforced** |
 | Maximum on the whole order | ✓ | ✓ | ✓ | built |
 | Live preview and cart tester | ✓ | ✓ | ✓ | built |
-| Start and end dates | ✓ | ✓ | ✓ | built, ungated — §0c |
+| Start and end dates | ✓ | ✓ | ✓ | built — §0c |
+| Discount run length | **15 days** | any | any | **enforced** |
+| A limit on the total number of uses | — | ✓ | ✓ | built, **enforced** |
 | Money-kept dashboard and analytics | — | ✓ | ✓ | blocked on `read_orders` |
 | Custom checkout wording | — | ✓ | ✓ | V2, unbuilt |
 | A separate maximum on each item | — | — | ✓ | PRO, unbuilt |
@@ -151,7 +159,8 @@ list use brand. Do not repaint the Polaris cards.
 ## 4 · Verification — report each in one line
 
 1. `npm run typecheck`, `npm run lint`, `npm run build`, `npm test` all clean.
-2. Unit-test `app/lib/plans.ts`: the Free limit is 1, Growth and Pro are unlimited, and `can()`
+2. Unit-test `app/lib/plans.ts`: the allowance ladder is 3 / 20 / unlimited, Free's run-length
+   ceiling is 15 days, and `can()`
    agrees with the §1 table for every key on every plan.
 3. On the dev store, confirm the plan shown comes from Shopify — not from `ShopSettings`. Prove it
    by setting `ShopSettings.plan` to `"pro"` by hand and confirming the page still shows the truth.

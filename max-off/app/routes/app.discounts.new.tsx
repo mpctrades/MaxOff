@@ -11,6 +11,7 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import { createCappedDiscount, isCodeTaken } from "../models/discounts.server";
 import { ensureShopSettings } from "../models/settings.server";
+import { getPlanForGate } from "../models/plan.server";
 import { CheckoutPreviewModal } from "../components/CheckoutPreviewModal";
 import { CheckoutReceipt } from "../components/CheckoutReceipt";
 import {
@@ -20,13 +21,16 @@ import {
 } from "../lib/cap";
 import { DEFAULT_CHECKOUT_NOTE } from "../lib/cap-config";
 import {
+  campaignTooLongError,
   combineDateTime,
   discountFormStateFrom,
   initialDiscountFormState,
   defaultEndDate,
   END_BEFORE_START_ERROR,
+  USAGE_LIMIT_NOT_ON_PLAN,
   validateDiscountForm,
 } from "../lib/discount-form";
+import { can, maxCampaignDays, toPlanKey } from "../lib/plans";
 import type {
   DiscountFieldErrors,
   DiscountFormState,
@@ -65,6 +69,20 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return {
     currencyCode: settings.currencyCode,
     checkoutNote: settings.defaultCheckoutNote || DEFAULT_CHECKOUT_NOTE,
+    /**
+     * The plan decides what this form may offer: how long a discount may run,
+     * and whether it may carry a usage limit.
+     *
+     * Read from the **cached** column, which `getCurrentPlan` refreshes every
+     * time the billing page is opened, rather than from Shopify. Asking
+     * Shopify costs a round trip — measured at ~1.9s on the dev tunnel — on a
+     * page the merchant opens to type in, and all it buys is the difference
+     * between two plans for a merchant who upgraded seconds ago. The action
+     * checks the live plan before anything is written, so a stale cache can
+     * only ever show the wrong affordance, never save a discount the plan does
+     * not allow.
+     */
+    plan: toPlanKey(settings.plan),
   };
 };
 
@@ -88,8 +106,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   // Revalidated with the same function the component uses, so a client that
-  // skipped its checks cannot write a cap_config the Function would refuse (§6).
-  const parsed = validateDiscountForm(discountFormStateFrom(form));
+  // skipped its checks cannot write a cap_config the Function would refuse (§6)
+  // — and against the plan Shopify reports, not the one the form was rendered
+  // with, so a stale tab cannot save what the plan no longer allows.
+  const plan = await getPlanForGate({ shop: session.shop, admin });
+  const parsed = validateDiscountForm(discountFormStateFrom(form), plan);
   if ("errors" in parsed) {
     return {
       intent: "create" as const,
@@ -127,7 +148,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 export default function CreateDiscountPage() {
 
-  const { currencyCode, checkoutNote } = useLoaderData<typeof loader>();
+  const { currencyCode, checkoutNote, plan } = useLoaderData<typeof loader>();
+
+  /** The plan's run-length ceiling in days, and whether it may cap uses. */
+  const maxDays = maxCampaignDays(plan);
+  const mayLimitUses = can(plan, "usageLimits");
   const shopify = useAppBridge();
   const navigate = useNavigate();
 
@@ -135,7 +160,7 @@ export default function CreateDiscountPage() {
   const codeFetcher = useFetcher<typeof action>();
 
   const [state, setState] = useState<DiscountFormState>(() =>
-    initialDiscountFormState(),
+    initialDiscountFormState(new Date(), maxDays),
   );
   const [dirty, setDirty] = useState(false);
   const [errors, setErrors] = useState<DiscountFieldErrors>({});
@@ -181,7 +206,20 @@ export default function CreateDiscountPage() {
       ? END_BEFORE_START_ERROR
       : undefined;
 
-  const endDateError = errors.endDate ?? endDateRangeError;
+  /**
+   * The plan's ceiling, live under the field for the same reason the range
+   * error is: a merchant who picks a date three months out should be told
+   * before saving, not after.
+   */
+  const campaignLengthError =
+    maxDays !== null &&
+    startsAt !== null &&
+    endsAt !== null &&
+    endsAt.getTime() - startsAt.getTime() > maxDays * 24 * 60 * 60 * 1000
+      ? campaignTooLongError(maxDays)
+      : undefined;
+
+  const endDateError = errors.endDate ?? endDateRangeError ?? campaignLengthError;
 
   /** `11 Sep 2026, 00:00` for the summary, or a dash when it does not parse. */
   const summaryMoment = (at: Date | null, time: string) =>
@@ -308,7 +346,7 @@ export default function CreateDiscountPage() {
       endDateOn: on,
       endDate:
         on && current.endDate === ""
-          ? defaultEndDate(current.startDate)
+          ? defaultEndDate(current.startDate, maxDays)
           : current.endDate,
     }));
     setDirty(true);
@@ -320,7 +358,7 @@ export default function CreateDiscountPage() {
   });
 
   const validate = (): boolean => {
-    const result = validateDiscountForm(state);
+    const result = validateDiscountForm(state, plan);
 
     if ("errors" in result) {
       setErrors(result.errors);
@@ -718,23 +756,45 @@ export default function CreateDiscountPage() {
 
           <s-divider direction="inline"></s-divider>
 
-          <s-checkbox
-            label="Limit the total number of uses"
-            name="usageLimitOn"
-            checked={state.usageLimitOn}
-            ref={onUsageLimitOnChange}
-          ></s-checkbox>
+          {/* A usage limit is a Growth entitlement. On Free the control is
+              shown disabled with the badge rather than hidden: a merchant
+              cannot ask for a plan whose features they never saw. Same grid as
+              the campaign budget below, for the same reason. */}
+          {mayLimitUses ? (
+            <>
+              <s-checkbox
+                label="Limit the total number of uses"
+                name="usageLimitOn"
+                checked={state.usageLimitOn}
+                ref={onUsageLimitOnChange}
+              ></s-checkbox>
 
-          {state.usageLimitOn && (
-            <s-number-field
-              label="Total uses"
-              name="usageLimit"
-              min={1}
-              step={1}
-              value={state.usageLimit}
-              onInput={(event) => set("usageLimit", event.currentTarget.value)}
-              {...(errors.usageLimit ? { error: errors.usageLimit } : {})}
-            ></s-number-field>
+              {state.usageLimitOn && (
+                <s-number-field
+                  label="Total uses"
+                  name="usageLimit"
+                  min={1}
+                  step={1}
+                  value={state.usageLimit}
+                  onInput={(event) => set("usageLimit", event.currentTarget.value)}
+                  {...(errors.usageLimit ? { error: errors.usageLimit } : {})}
+                ></s-number-field>
+              )}
+            </>
+          ) : (
+            <s-grid
+              gridTemplateColumns="max-content auto"
+              gap="small-300"
+              alignItems="baseline"
+            >
+              <s-checkbox
+                label="Limit the total number of uses"
+                name="usageLimitOn"
+                details={USAGE_LIMIT_NOT_ON_PLAN}
+                disabled
+              ></s-checkbox>
+              <s-badge>Growth</s-badge>
+            </s-grid>
           )}
 
           <s-checkbox
@@ -872,10 +932,19 @@ export default function CreateDiscountPage() {
           ></s-text-field>
         </s-grid>
 
+        {/* On a plan with a run-length ceiling the end date is not optional,
+            so the box is ticked and locked rather than left for the merchant
+            to discover on save. */}
         <s-checkbox
           label="Set an end date"
           name="endDateOn"
           checked={state.endDateOn}
+          {...(maxDays === null
+            ? {}
+            : {
+                disabled: true,
+                details: `Your plan runs a discount for up to ${maxDays} days.`,
+              })}
           ref={onEndDateOnChange}
         ></s-checkbox>
 
