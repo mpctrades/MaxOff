@@ -29,7 +29,7 @@ import { capDiscountMinor } from "../lib/cap";
 import { DEFAULT_CHECKOUT_NOTE } from "../lib/cap-config";
 import { formatMoney, formatPercent } from "../lib/format";
 import { useNativeChange } from "../lib/polaris-events";
-import type { ValueElement } from "../lib/polaris-events";
+import type { ValuesElement } from "../lib/polaris-events";
 
 const CHECKOUT_PREVIEW_ID = "test-checkout-preview";
 
@@ -112,10 +112,15 @@ export default function TestACartPage() {
 
   const money = (minor: number) => formatMoney(minor, currencyCode);
 
-  // React's onChange never fires for <s-select>; see app/lib/polaris-events.ts.
-  const onDiscountChange = useNativeChange<ValueElement>((element) =>
-    setSelectedId(element.value),
-  );
+  // React's onChange never fires for Polaris controls; see polaris-events.ts.
+  // A choice list reports its selection as a list even when only one choice
+  // can be picked, so the first entry is the answer.
+  const onDiscountChange = useNativeChange<ValuesElement>((element) => {
+    const picked = element.values?.[0];
+    if (picked) {
+      setSelectedId(picked);
+    }
+  });
 
   /**
    * §2c: the first capped result in this visit completes setup step 3. Not on
@@ -211,20 +216,30 @@ export default function TestACartPage() {
           </s-stack>
         ) : (
           <s-stack direction="block" gap="base">
-            <s-select
+            {/* A choice list, not a select.
+                `s-select` is a native <select>, and a native select's menu is
+                drawn by the operating system on top of the field — it lands
+                over the discount's own description, which is the mess Arthur
+                photographed. Nothing in the component or in our CSS can move
+                it: the <select> lives in Polaris' shadow DOM. Shopify's own
+                Select page names the choice list as the alternative "for more
+                visual selection layouts", and the create form already uses one
+                for the same kind of single choice. Nothing overlays anything,
+                and every discount is readable without a click. */}
+            <s-choice-list
               label="Capped discount"
               name="discount"
-              value={discount?.id ?? ""}
+              values={[discount?.id ?? ""]}
               ref={onDiscountChange}
             >
               {discounts.map((row) => (
-                <s-option key={row.id} value={row.id}>
+                <s-choice key={row.id} value={row.id}>
                   {`${row.code ?? "No code"} — ${formatPercent(
                     row.percentage,
                   )} max ${money(row.capMinor)}`}
-                </s-option>
+                </s-choice>
               ))}
-            </s-select>
+            </s-choice-list>
 
             {discount && (
               <s-paragraph color="subdued">
