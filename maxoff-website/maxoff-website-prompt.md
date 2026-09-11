@@ -2,7 +2,7 @@
 
 Build the MaxOff early-access website as a single self-contained HTML file.
 
-**Output:** `maxoff-website/index.html` (create the folder if it does not exist). One file. No build step, no framework, no npm packages. Inline all CSS in one `<style>` block and all JS in one `<script>` block at the end of `<body>`. The only external request allowed is Google Fonts.
+**Output:** `maxoff-website/index.html` (create the folder if it does not exist). One file. No build step, no framework, no npm packages. Inline all CSS in one `<style>` block and all JS in one `<script>` block at the end of `<body>`. The only external requests allowed are Google Fonts and the form endpoint in §6.
 
 ---
 
@@ -13,6 +13,8 @@ A Shopify app that adds a **maximum amount** to a percentage discount. "15% off,
 Working title. Not on the Shopify App Store yet. Early access is free. An MPC Trades app, sister product to Shuffly (shuffly.mpctrades.com) — the page structure deliberately mirrors that site.
 
 Audience: Shopify merchants who are scared to run generous promo codes because one big basket destroys their margin.
+
+**Contact email, used everywhere on the page:** `team@mpctrades.com`. No other email address appears anywhere in the file.
 
 ---
 
@@ -206,7 +208,7 @@ Three cards. The middle one has a 2px orange border, an orange shadow, and a "Mo
 
 - **Free — $0 forever:** 1 active capped discount · maximum on the whole order · live preview and cart tester · "Powered by MaxOff" note at checkout.
 - **Growth — $4.99/month:** unlimited capped discounts · start and end dates, usage limits · money-kept dashboard and analytics · custom checkout wording · email support.
-- **Pro — $9.99/month:** everything in Growth · maximum per item and per collection · a different maximum per market currency · CSV export and 12-month history · priority support.
+- **Pro — $7.99/month:** everything in Growth · maximum per item and per collection · a different maximum per market currency · CSV export and 12-month history · priority support.
 
 Below, a centred row with orange ✓ marks: Cancel any time · Change plan instantly · Billed through Shopify · Free while we are in early access.
 
@@ -228,11 +230,11 @@ Nine native `<details>` / `<summary>` accordions separated by hairlines, first o
 Closing line: *Still not sure? **Ask us directly** — a real person on the MPC Trades team answers.* (link to `#contact`)
 
 ### 08 — Get in touch  *(background `--paper-2`, top border)*
-Two columns. Left: eyebrow `08 GET IN TOUCH`, heading **Try MaxOff on your store before anyone else**, lede *Early access is free while we build. Tell us your store and what you sell, and we will set you up.*, then three orange ✓ points — *No card, no commitment, no sales call* · *We install it with you on a test order* · *Your feedback shapes what we build next* — and `Or email team@mapetitecoree.com` (mono, orange, `mailto:`).
+Two columns. Left: eyebrow `08 GET IN TOUCH`, heading **Try MaxOff on your store before anyone else**, lede *Early access is free while we build. Tell us your store and what you sell, and we will set you up.*, then three orange ✓ points — *No card, no commitment, no sales call* · *We install it with you on a test order* · *Your feedback shapes what we build next* — and `Or email team@mpctrades.com` (mono, orange, `mailto:team@mpctrades.com`).
 
 Right: a bordered white form card. Row one: Name, Email. Row two: Store URL (placeholder `yourstore.myshopify.com`), and a select — Early access / General question / Custom pricing / Other. Then a Message textarea with the placeholder *What are you running promo codes on, and what has gone wrong so far?*. A full-width orange submit button reading "Request early access". Note underneath: *We reply within one business day. We never share your store details.*
 
-The form has no backend. On submit: `preventDefault()`, check the name is not empty and the email matches a simple pattern; on failure show *Add your name and a valid email so we can reply.* in a tinted box; on success show *Thanks NAME — we'll email you within one business day.* and reset the form. Leave a clearly marked `// TODO: POST to the real endpoint` comment.
+**The form must actually send. Build it exactly as specified in §6 below.**
 
 ### Footer
 Black. Logo mark and wordmark on the left, links right: How it works · Features · Pricing · FAQ · Contact. Then a hairline and this disclaimer in small muted text:
@@ -241,13 +243,83 @@ Black. Logo mark and wordmark on the left, links right: How it works · Features
 
 ---
 
-## 6. Head
+## 6. The contact form must really send — Web3Forms
+
+The page is a static file with no backend, so the form submits to **Web3Forms**, which forwards each submission by email to `team@mpctrades.com`. Free tier, 250 submissions a month, no server to run.
+
+### Setup (do this once, before writing the code)
+
+1. Go to `https://web3forms.com`, enter `team@mpctrades.com`, and submit.
+2. An access key (a UUID) arrives at that inbox. Copy it.
+3. Put it in the HTML as a single named constant near the top of the script:
+   ```js
+   const WEB3FORMS_ACCESS_KEY = "PASTE-KEY-HERE"; // delivers to team@mpctrades.com
+   ```
+   The key is designed to be public and is safe in client-side code — it only ever delivers to the address it was registered for. Do not obfuscate it, and do not add any other key or endpoint.
+4. If the key is not available yet, ship the constant with the literal placeholder `PASTE-KEY-HERE`. In that case the submit handler must detect the placeholder and show the error state with the message *Form not connected yet — email team@mpctrades.com directly.* rather than firing a doomed request.
+
+### Markup
+
+Standard `<form id="contactForm">` with real `<label>` elements tied to every field by `for` / `id`, and these exact `name` attributes so the email is readable:
+
+| Field | `name` | Type | Required |
+|---|---|---|---|
+| Name | `name` | text, `autocomplete="name"` | yes |
+| Email | `email` | email, `autocomplete="email"` | yes |
+| Store URL | `store_url` | text, placeholder `yourstore.myshopify.com` | no |
+| Topic | `topic` | select — Early access / General question / Custom pricing / Other | no |
+| Message | `message` | textarea, 4 rows | no |
+
+Plus two hidden inputs and one honeypot:
+
+```html
+<input type="hidden" name="access_key">          <!-- filled from the constant in JS -->
+<input type="hidden" name="subject" value="MaxOff early access — new request from the website">
+<input type="hidden" name="from_name" value="MaxOff website">
+<!-- honeypot: real people never fill this -->
+<input type="checkbox" name="botcheck" tabindex="-1" autocomplete="off"
+       style="display:none !important" aria-hidden="true">
+```
+
+### Submit behaviour
+
+```js
+// on submit: preventDefault(), then
+// 1. validate
+// 2. disable the button, label it "Sending…", set aria-busy
+// 3. POST, then show success or error
+```
+
+1. **Validate first, client-side.** Name must be non-empty after trimming; email must match a simple pattern such as `/^[^\s@]+@[^\s@]+\.[^\s@]+$/`. On failure show the tinted error box reading *Add your name and a valid email so we can reply.*, move focus to the first bad field, and send nothing.
+2. **Send** with `fetch`:
+   ```js
+   const res = await fetch("https://api.web3forms.com/submit", {
+     method: "POST",
+     headers: { "Content-Type": "application/json", "Accept": "application/json" },
+     body: JSON.stringify(payload)   // access_key + every field above
+   });
+   const data = await res.json();
+   ```
+   Build `payload` from `new FormData(form)` so no field is ever forgotten, then set `payload.access_key = WEB3FORMS_ACCESS_KEY`.
+3. **Success** — `res.ok && data.success === true`: show a tinted success box reading *Thanks NAME — we'll email you within one business day.* with the submitted first name interpolated (escape it; never use `innerHTML` with user input), call `form.reset()`, and leave the success box visible.
+4. **Failure** — a non-ok response, `data.success === false`, or a thrown network error: show the error box reading *Something went wrong sending that. Please email team@mpctrades.com and we'll pick it up from there.* with the address as a `mailto:` link. Do **not** reset the form, so nothing the visitor typed is lost. Log the real error with `console.error` only — never show a raw error string to the visitor.
+5. **Always** re-enable the submit button and restore its label in a `finally` block, whichever way it ended.
+6. **Accessibility:** one status element, `<div id="formStatus" role="status" aria-live="polite">`, holds both the success and the error message. It is empty and hidden until there is something to say. The submit button gets `disabled` and `aria-busy="true"` while the request is in flight.
+7. **Never** leave a `mailto:` form action, an `alert()`, or a "this is a demo" comment anywhere in the file. The form is real.
+
+### One warning about hosting
+
+The `fetch` to `api.web3forms.com` works on any normal host — a VPS, Netlify, Vercel, Cloudflare Pages, GitHub Pages. It will be **silently blocked** inside a Claude Artifact preview, whose content-security policy forbids outbound requests. Test the form on the real host, not in a preview pane.
+
+---
+
+## 7. Head
 
 `<title>MaxOff — Cap your percentage discounts</title>`, charset, viewport, and a meta description: *MaxOff caps percentage discounts at a maximum amount inside Shopify checkout. 15% off, never more than 150.*
 
 ---
 
-## 7. Before you say you are done, verify
+## 8. Before you say you are done, verify
 
 1. Open the file in a browser. Drag the cart slider from 50 to 3000 and confirm the "With MaxOff" bar stops growing exactly when the discount reaches the maximum.
 2. Set the discount to 10 and the maximum to 25 — the verdict must say the ceiling starts above 250.00.
@@ -256,3 +328,7 @@ Black. Logo mark and wordmark on the left, links right: How it works · Features
 5. Narrow the window to 360px — no horizontal scrollbar on the body, the comparison table scrolls inside its own box, the nav links are hidden.
 6. Tab through the page — every link, input, accordion and button shows a visible focus ring.
 7. Check the browser console — zero errors.
+8. **Submit the form empty** — the error box appears, nothing is sent, focus lands on the Name field.
+9. **Submit the form with a real name and email** — the button says "Sending…" and goes disabled, then the success box names the person and the fields clear. Confirm the email actually arrives at `team@mpctrades.com`, with the store URL, topic and message all present and readable.
+10. **Search the finished file for `mapetitecoree`** — there must be zero matches. The only email address in the file is `team@mpctrades.com`.
+11. **Search the finished file for `9.99`** — there must be zero matches. Pro is `$7.99/month`.

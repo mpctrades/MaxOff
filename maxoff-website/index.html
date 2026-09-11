@@ -446,6 +446,8 @@ input[type="range"]::-moz-range-thumb:hover{ transform:scale(1.12); }
 .form-field textarea{ resize:vertical; min-height:110px; }
 .form-note{ margin-top:14px; font-size:12.5px; color:var(--ink-3); text-align:center; }
 .form-msg{ margin-top:14px; padding:12px 14px; border-radius:9px; font-size:14px; background:var(--orange-soft); border:1px solid var(--orange-line); color:var(--ink); }
+.form-msg a{ color:var(--orange); font-weight:600; }
+.form-msg.is-ok{ border-color:var(--orange-bright); }
 .form-msg[hidden]{ display:none; }
 
 /* footer */
@@ -810,7 +812,7 @@ footer{ background:var(--black); color:#fff; padding:56px 0 32px; }
 
       <div class="price-card reveal reveal-d3">
         <div class="price-name">Pro</div>
-        <div class="price-amount">$9.99 <span class="unit">/month</span></div>
+        <div class="price-amount">$7.99 <span class="unit">/month</span></div>
         <ul class="price-list">
           <li>everything in Growth</li>
           <li>maximum per item and per collection</li>
@@ -893,7 +895,7 @@ footer{ background:var(--black); color:#fff; padding:56px 0 32px; }
           <li><span class="tick">✓</span> Your feedback shapes what we build next</li>
         </ul>
 
-        <p>Or email <a class="contact-email" href="mailto:team@mapetitecoree.com">team@mapetitecoree.com</a></p>
+        <p>Or email <a class="contact-email" href="mailto:team@mpctrades.com">team@mpctrades.com</a></p>
       </div>
 
       <div class="form-card reveal reveal-d2">
@@ -911,11 +913,11 @@ footer{ background:var(--black); color:#fff; padding:56px 0 32px; }
           <div class="form-row">
             <div class="form-field">
               <label for="cf-store">Store URL</label>
-              <input type="text" id="cf-store" name="store" placeholder="yourstore.myshopify.com" autocomplete="url">
+              <input type="text" id="cf-store" name="store_url" placeholder="yourstore.myshopify.com" autocomplete="url">
             </div>
             <div class="form-field">
               <label for="cf-reason">What is this about</label>
-              <select id="cf-reason" name="reason">
+              <select id="cf-reason" name="topic">
                 <option>Early access</option>
                 <option>General question</option>
                 <option>Custom pricing</option>
@@ -927,9 +929,15 @@ footer{ background:var(--black); color:#fff; padding:56px 0 32px; }
             <label for="cf-message">Message</label>
             <textarea id="cf-message" name="message" placeholder="What are you running promo codes on, and what has gone wrong so far?"></textarea>
           </div>
+          <input type="hidden" name="access_key">
+          <input type="hidden" name="subject" value="MaxOff early access — new request from the website">
+          <input type="hidden" name="from_name" value="MaxOff website">
+          <!-- honeypot: real people never fill this -->
+          <input type="checkbox" name="botcheck" tabindex="-1" autocomplete="off" style="display:none !important" aria-hidden="true">
+
           <button type="submit" class="btn btn-orange btn-block">Request early access</button>
           <p class="form-note">We reply within one business day. We never share your store details.</p>
-          <div class="form-msg" id="formMsg" hidden></div>
+          <div class="form-msg" id="formMsg" role="status" aria-live="polite" hidden></div>
         </form>
       </div>
     </div>
@@ -996,12 +1004,14 @@ footer{ background:var(--black); color:#fff; padding:56px 0 32px; }
     noCapBarEl.style.width = Math.min(100, (full / scale) * 100) + "%";
     withCapBarEl.style.width = Math.min(100, (given / scale) * 100) + "%";
 
+    withCapBarEl.classList.toggle("at-cap", kept > 0.004);
+
     if (kept > 0.004) {
       verdictEl.innerHTML = "You keep <b>" + money(kept) + " USD</b> on this single order.";
-      withCapBarEl.classList.add("at-cap");
+    } else if (pct <= 0 || cap <= 0) {
+      verdictEl.textContent = "Set a discount and a maximum to see the ceiling.";
     } else {
       verdictEl.innerHTML = "Under your maximum — the customer gets the full " + pct + "%. The ceiling starts above <b>" + money(breakEven) + " USD</b>.";
-      withCapBarEl.classList.remove("at-cap");
     }
   }
 
@@ -1011,27 +1021,94 @@ footer{ background:var(--black); color:#fff; padding:56px 0 32px; }
 
   recalc();
 
-  // Contact form — no backend yet.
+  // Contact form — submits to Web3Forms, which forwards to CONTACT_EMAIL.
+  // The access key is meant to be public: it only ever delivers to the address
+  // it was registered for. Register at https://web3forms.com with that address.
+  var WEB3FORMS_ACCESS_KEY = "PASTE-KEY-HERE"; // delivers to team@mpctrades.com
+  var CONTACT_EMAIL = "team@mpctrades.com";
+
   var form = document.getElementById("contactForm");
   var msg = document.getElementById("formMsg");
+  var nameEl = document.getElementById("cf-name");
+  var emailEl = document.getElementById("cf-email");
+  var submitBtn = form.querySelector('button[type="submit"]');
+  var keyEl = form.querySelector('input[name="access_key"]');
+  if (keyEl) keyEl.value = WEB3FORMS_ACCESS_KEY;
+
+  // parts: strings, or { email: "..." } for a mailto link. No innerHTML, so
+  // nothing the visitor typed is ever parsed as markup.
+  function setStatus(state, parts){
+    msg.className = "form-msg is-" + state;
+    msg.textContent = "";
+    parts.forEach(function(part){
+      if (typeof part === "string") {
+        msg.appendChild(document.createTextNode(part));
+        return;
+      }
+      var a = document.createElement("a");
+      a.href = "mailto:" + part.email;
+      a.textContent = part.email;
+      msg.appendChild(a);
+    });
+    msg.hidden = false;
+  }
 
   form.addEventListener("submit", function(e){
     e.preventDefault();
 
-    var name = document.getElementById("cf-name").value.trim();
-    var email = document.getElementById("cf-email").value.trim();
+    var name = nameEl.value.trim();
+    var email = emailEl.value.trim();
     var emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
     if (!name || !emailPattern.test(email)) {
-      msg.textContent = "Add your name and a valid email so we can reply.";
-      msg.hidden = false;
+      setStatus("error", ["Add your name and a valid email so we can reply."]);
+      (name ? emailEl : nameEl).focus();
       return;
     }
 
-    // TODO: POST to the real endpoint
-    msg.textContent = "Thanks " + name + " — we'll email you within one business day.";
-    msg.hidden = false;
-    form.reset();
+    // Shape check rather than a literal compare, so pasting the key over the
+    // placeholder cannot accidentally rewrite the guard itself. Web3Forms keys
+    // are UUIDs; anything else (placeholder, blank, typo) counts as unwired.
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(WEB3FORMS_ACCESS_KEY)) {
+      setStatus("error", ["Form not connected yet — email ", { email: CONTACT_EMAIL }, " directly."]);
+      return;
+    }
+
+    var payload = {};
+    new FormData(form).forEach(function(value, key){ payload[key] = value; });
+    payload.access_key = WEB3FORMS_ACCESS_KEY;
+
+    var label = submitBtn.textContent;
+    submitBtn.disabled = true;
+    submitBtn.setAttribute("aria-busy", "true");
+    submitBtn.textContent = "Sending…";
+    msg.hidden = true;
+
+    fetch("https://api.web3forms.com/submit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      body: JSON.stringify(payload)
+    }).then(function(res){
+      return res.json().then(function(data){ return { ok: res.ok, data: data }; });
+    }).then(function(r){
+      if (!r.ok || !r.data || r.data.success !== true) {
+        throw new Error((r.data && r.data.message) || "Web3Forms rejected the submission");
+      }
+      setStatus("ok", ["Thanks " + name.split(/\s+/)[0] + " — we'll email you within one business day."]);
+      form.reset();
+    }).catch(function(err){
+      // Keep what the visitor typed; never show them a raw error string.
+      console.error("MaxOff contact form:", err);
+      setStatus("error", [
+        "Something went wrong sending that. Please email ",
+        { email: CONTACT_EMAIL },
+        " and we'll pick it up from there."
+      ]);
+    }).then(function(){
+      submitBtn.disabled = false;
+      submitBtn.removeAttribute("aria-busy");
+      submitBtn.textContent = label;
+    });
   });
 })();
 
