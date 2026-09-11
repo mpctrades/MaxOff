@@ -914,7 +914,7 @@ footer{ background:var(--black); color:#fff; padding:56px 0 32px; }
           <div class="form-row">
             <div class="form-field">
               <label for="cf-store">Store URL</label>
-              <input type="text" id="cf-store" name="store_url" placeholder="yourstore.myshopify.com" autocomplete="url">
+              <input type="text" id="cf-store" name="store" placeholder="yourstore.myshopify.com" autocomplete="url">
             </div>
             <div class="form-field">
               <label for="cf-reason">What is this about</label>
@@ -928,11 +928,8 @@ footer{ background:var(--black); color:#fff; padding:56px 0 32px; }
           </div>
           <div class="form-field">
             <label for="cf-message">Message</label>
-            <textarea id="cf-message" name="message" placeholder="What are you running promo codes on, and what has gone wrong so far?"></textarea>
+            <textarea id="cf-message" name="message" required placeholder="What are you running promo codes on, and what has gone wrong so far?"></textarea>
           </div>
-          <input type="hidden" name="access_key">
-          <input type="hidden" name="subject" value="MaxOff early access — new request from the website">
-          <input type="hidden" name="from_name" value="MaxOff website">
           <!-- honeypot: real people never fill this -->
           <input type="checkbox" name="botcheck" tabindex="-1" autocomplete="off" style="display:none !important" aria-hidden="true">
 
@@ -1022,19 +1019,19 @@ footer{ background:var(--black); color:#fff; padding:56px 0 32px; }
 
   recalc();
 
-  // Contact form — submits to Web3Forms, which forwards to CONTACT_EMAIL.
-  // The access key is meant to be public: it only ever delivers to the address
-  // it was registered for. Register at https://web3forms.com with that address.
-  var WEB3FORMS_ACCESS_KEY = "PASTE-KEY-HERE"; // delivers to team@mpctrades.com
+  // Contact form — posts to /api/contact on this same host, which nginx
+  // proxies to the shared contact-relay service. The relay sends via the
+  // Gmail API to team@mpctrades.com, branded per host from its sites.json.
+  // Same-origin, so no CORS and no third-party key in the page.
+  var CONTACT_ENDPOINT = "/api/contact";
   var CONTACT_EMAIL = "team@mpctrades.com";
 
   var form = document.getElementById("contactForm");
   var msg = document.getElementById("formMsg");
   var nameEl = document.getElementById("cf-name");
   var emailEl = document.getElementById("cf-email");
+  var messageEl = document.getElementById("cf-message");
   var submitBtn = form.querySelector('button[type="submit"]');
-  var keyEl = form.querySelector('input[name="access_key"]');
-  if (keyEl) keyEl.value = WEB3FORMS_ACCESS_KEY;
 
   // parts: strings, or { email: "..." } for a mailto link. No innerHTML, so
   // nothing the visitor typed is ever parsed as markup.
@@ -1061,23 +1058,17 @@ footer{ background:var(--black); color:#fff; padding:56px 0 32px; }
     var email = emailEl.value.trim();
     var emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-    if (!name || !emailPattern.test(email)) {
-      setStatus("error", ["Add your name and a valid email so we can reply."]);
-      (name ? emailEl : nameEl).focus();
-      return;
-    }
-
-    // Shape check rather than a literal compare, so pasting the key over the
-    // placeholder cannot accidentally rewrite the guard itself. Web3Forms keys
-    // are UUIDs; anything else (placeholder, blank, typo) counts as unwired.
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(WEB3FORMS_ACCESS_KEY)) {
-      setStatus("error", ["Form not connected yet — email ", { email: CONTACT_EMAIL }, " directly."]);
+    // The relay requires name, a valid email and a message; mirror that here
+    // so a visitor gets an inline hint instead of a rejected request.
+    var message = messageEl.value.trim();
+    if (!name || !emailPattern.test(email) || !message) {
+      setStatus("error", ["Add your name, a valid email and a short message so we can reply."]);
+      (!name ? nameEl : (!emailPattern.test(email) ? emailEl : messageEl)).focus();
       return;
     }
 
     var payload = {};
     new FormData(form).forEach(function(value, key){ payload[key] = value; });
-    payload.access_key = WEB3FORMS_ACCESS_KEY;
 
     var label = submitBtn.textContent;
     submitBtn.disabled = true;
@@ -1085,18 +1076,24 @@ footer{ background:var(--black); color:#fff; padding:56px 0 32px; }
     submitBtn.textContent = "Sending…";
     msg.hidden = true;
 
-    fetch("https://api.web3forms.com/submit", {
+    fetch(CONTACT_ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json", "Accept": "application/json" },
       body: JSON.stringify(payload)
     }).then(function(res){
-      return res.json().then(function(data){ return { ok: res.ok, data: data }; });
+      return res.json().catch(function(){ return {}; })
+        .then(function(data){ return { ok: res.ok, status: res.status, data: data }; });
     }).then(function(r){
-      if (!r.ok || !r.data || r.data.success !== true) {
-        throw new Error((r.data && r.data.message) || "Web3Forms rejected the submission");
+      if (r.ok && r.data && r.data.ok === true) {
+        setStatus("ok", ["Thanks " + name.split(/\s+/)[0] + " — we'll email you within one business day."]);
+        form.reset();
+        return;
       }
-      setStatus("ok", ["Thanks " + name.split(/\s+/)[0] + " — we'll email you within one business day."]);
-      form.reset();
+      if (r.status === 429) {
+        setStatus("error", ["That is a few requests in a row — give it an hour, or email ", { email: CONTACT_EMAIL }, " directly."]);
+        return;
+      }
+      throw new Error((r.data && r.data.error) || ("relay responded " + r.status));
     }).catch(function(err){
       // Keep what the visitor typed; never show them a raw error string.
       console.error("MaxOff contact form:", err);
