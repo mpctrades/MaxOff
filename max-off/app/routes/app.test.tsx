@@ -255,7 +255,7 @@ export default function TestACartPage() {
               </s-paragraph>
             ) : (
               <s-stack direction="block" gap="base">
-                <s-box padding="base" borderWidth="base" borderRadius="base">
+                <div className="maxoff-result">
                   <s-stack direction="block" gap="small-300">
                     <s-text color="subdued">Without MaxOff</s-text>
                     <ResultLine
@@ -268,14 +268,14 @@ export default function TestACartPage() {
                       strong
                     />
                   </s-stack>
-                </s-box>
+                </div>
 
-                <s-box
-                  padding="base"
-                  background="subdued"
-                  borderWidth="base"
-                  borderRadius="base"
-                >
+                {/* The branded one is the answer the merchant came for, so it
+                    is the one that is tinted. The tint is emphasis only — the
+                    box says "With MaxOff" and every number is labelled, which
+                    is the rule in theme.css: orange is never the only signal
+                    for meaning. */}
+                <div className="maxoff-result maxoff-result--branded">
                   <s-stack direction="block" gap="small-300">
                     <s-text color="subdued">With MaxOff</s-text>
                     <ResultLine
@@ -291,7 +291,7 @@ export default function TestACartPage() {
                       strong
                     />
                   </s-stack>
-                </s-box>
+                </div>
 
                 <s-text type="strong">
                   {result.capped

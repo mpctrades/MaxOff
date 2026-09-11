@@ -513,6 +513,22 @@
   box-sizing: border-box;
 }
 
+/* Test a cart's two result boxes. Identical geometry, so the only difference
+   the eye has to explain is the colour — and only the MaxOff box is branded,
+   because it is the answer the merchant came for. Same soft-orange pair as the
+   hero tile, so the two branded surfaces in the app are one surface. */
+.maxoff-result {
+  padding: 14px 16px;
+  border: 1px solid var(--maxoff-chart-grid);
+  border-radius: 12px;
+  background: var(--maxoff-card);
+}
+
+.maxoff-result--branded {
+  border-color: var(--maxoff-hero-line);
+  background: var(--maxoff-hero);
+}
+
 .maxoff-tile--hero {
   border-color: var(--maxoff-hero-line);
   background: var(--maxoff-hero);
