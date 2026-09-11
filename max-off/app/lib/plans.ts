@@ -351,9 +351,14 @@ export interface PlanFeature {
  *
  * The top plan rolls the tier below into "Everything in Growth" rather than
  * repeating ticks it shares, but still states its own allowance: "Everything
- * in Growth" carries Growth's limit with it, and unlimited is what Pro adds.
+ * in Growth" carries Growth's limit with it, and unlimited is what Pro adds —
+ * which is why the allowance comes back on its own rather than as
+ * `features[0]`. It leads every card, above the roll-up line, and a card that
+ * has to know the headline number is the first element is one edit away from
+ * printing it in the middle of the list.
  */
 export function planCard(plan: PlanKey): {
+  allowance: PlanFeature;
   rollupFrom: PlanKey | null;
   features: PlanFeature[];
 } {
@@ -388,7 +393,8 @@ export function planCard(plan: PlanKey): {
   });
 
   return {
+    allowance,
     rollupFrom: plan === top ? below : null,
-    features: [allowance, ...mine],
+    features: mine,
   };
 }

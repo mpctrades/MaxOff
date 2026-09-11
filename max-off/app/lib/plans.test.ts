@@ -228,10 +228,14 @@ describe("plan keys", () => {
 });
 
 describe("what a card says", () => {
-  const labels = (plan: "free" | "growth" | "pro") =>
-    planCard(plan).features.map(
-      (feature) => `${feature.lead ? feature.lead + " " : ""}${feature.label}`,
-    );
+  const line = (feature: { lead?: string; label: string }) =>
+    `${feature.lead ? feature.lead + " " : ""}${feature.label}`;
+
+  /** The card as a merchant reads it, allowance first. */
+  const labels = (plan: "free" | "growth" | "pro") => {
+    const card = planCard(plan);
+    return [card.allowance, ...card.features].map(line);
+  };
 
   test("Free leads with three, and says how long each one may run", () => {
     expect(labels("free")).toEqual([

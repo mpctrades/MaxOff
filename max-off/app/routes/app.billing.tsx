@@ -24,8 +24,9 @@ import {
   PLAN_TAGLINES,
 } from "../lib/plans";
 import type { PlanKey } from "../lib/plans";
-import { formatAmount, formatMoney } from "../lib/format";
+import { formatAmount } from "../lib/format";
 import { BrandButton } from "../components/BrandButton";
+import { PlanStrip } from "../components/PlanStrip";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
@@ -105,8 +106,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 export default function BillingPage() {
   const data = useLoaderData<typeof loader>();
-  const money = (minor: number) => formatMoney(minor, data.currencyCode);
-  const planLabel = PLAN_LABELS[data.plan];
 
   return (
     <s-page heading="Plans &amp; billing">
@@ -120,51 +119,34 @@ export default function BillingPage() {
 
       {/* ---------------- What you are on, and the one step up ------------- */}
       <s-section>
-        <div className="maxoff-plan-strip">
-          <div className="maxoff-plan-strip__plan">
-            <div className="maxoff-plan-strip__name">
-              <strong>{planLabel}</strong>
-              <s-badge tone="success">In use</s-badge>
-              {data.planSource === "cache" && (
-                <s-badge tone="warning">Last known</s-badge>
-              )}
-            </div>
-            <span className="maxoff-plan-strip__price maxoff-tabular">
-              {money(PLAN_PRICE_MINOR[data.plan])} per month
-            </span>
-            {/* Omitted rather than guessed when Shopify does not tell us. */}
-            {data.currentPeriodEnd && (
-              <span className="maxoff-plan-strip__next">
-                Next charge {data.currentPeriodEnd.slice(0, 10)}
-              </span>
-            )}
-          </div>
-
-          {data.recommended !== null && data.hostedPlanUrl !== null && (
-            <div className="maxoff-plan-strip__action">
-              <form method="post">
-                <input type="hidden" name="intent" value="view-plans" />
-                {/* The name, not the price. The price is on the plan's own
-                    card a few centimetres below, and a button that carries it
-                    runs wider than the strip it sits in. */}
-                <BrandButton type="submit">
-                  Upgrade to {PLAN_LABELS[data.recommended]}
-                </BrandButton>
-              </form>
-              {/* Not "takes effect immediately": the button opens Shopify's
-                  plan page, and the change lands when the merchant approves it
-                  there. Close enough to the drawing, true either way. */}
-              <span className="maxoff-plan-strip__note">
-                Takes effect as soon as you approve it on Shopify.
-              </span>
-            </div>
-          )}
-
-          <UsageMeter
-            activeCount={data.activeCount}
-            activeLimit={data.activeLimit}
-          />
-        </div>
+        <PlanStrip
+          plan={data.plan}
+          currencyCode={data.currencyCode}
+          activeCount={data.activeCount}
+          lastKnown={data.planSource === "cache"}
+          nextChargeOn={data.currentPeriodEnd}
+          action={
+            data.recommended !== null && data.hostedPlanUrl !== null ? (
+              <>
+                <form method="post">
+                  <input type="hidden" name="intent" value="view-plans" />
+                  {/* The name, not the price. The price is on the plan's own
+                      card a few centimetres below, and a button that carries
+                      it runs wider than the strip it sits in. */}
+                  <BrandButton type="submit">
+                    Upgrade to {PLAN_LABELS[data.recommended]}
+                  </BrandButton>
+                </form>
+                {/* Not "takes effect immediately": the button opens Shopify's
+                    plan page, and the change lands when the merchant approves
+                    it there. Close enough to the drawing, true either way. */}
+                <span className="maxoff-plan-strip__note">
+                  Takes effect as soon as you approve it on Shopify.
+                </span>
+              </>
+            ) : undefined
+          }
+        />
       </s-section>
 
       {/* ---------------- Compare plans ---------------- */}
@@ -219,7 +201,7 @@ function PlanCard({
   currencyCode: string;
   hostedPlanUrl: string | null;
 }) {
-  const { rollupFrom, features } = planCard(plan);
+  const { allowance, rollupFrom, features } = planCard(plan);
   const isRecommended = plan === recommended;
 
   return (
@@ -238,12 +220,28 @@ function PlanCard({
         <span className="maxoff-plan-card__amount maxoff-tabular">
           {formatAmount(PLAN_PRICE_MINOR[plan])}
         </span>{" "}
-        <span className="maxoff-plan-card__per">{currencyCode} / month</span>
+        <span className="maxoff-plan-card__per">
+          {currencyCode}
+          {PLAN_PRICE_MINOR[plan] > 0 && " / month"}
+        </span>
       </div>
 
       <p className="maxoff-plan-card__tagline">{PLAN_TAGLINES[plan]}</p>
 
       <ul className="maxoff-plan-card__features">
+        {/* The allowance leads, above the roll-up: "Everything in Growth"
+            carries Growth's limit of 20 with it, so unlimited has to be read
+            first or it reads as a correction. */}
+        <li key={allowance.label}>
+          <span className="maxoff-plan-card__yes" aria-hidden="true">
+            ✓
+          </span>
+          <span>
+            <span className="maxoff-visually-hidden">Included: </span>
+            {allowance.lead && <strong>{allowance.lead} </strong>}
+            {allowance.label}
+          </span>
+        </li>
         {rollupFrom !== null && (
           <li>
             <span className="maxoff-plan-card__yes" aria-hidden="true">
@@ -331,63 +329,6 @@ function PlanAction({
           : `Upgrade to ${PLAN_LABELS[plan]}`}
       </BrandButton>
     </form>
-  );
-}
-
-/**
- * `Capped discounts … 0 of 1 used`, from the same count the limit itself uses.
- *
- * Polaris has no meter in this version, so the bar is our own markup — and it
- * is decoration: the sentence beside it carries the number, so nothing is lost
- * when the bar cannot be seen. Unlimited plans get the sentence and no bar,
- * because a bar pinned at 100% reads as a limit that is not there.
- */
-function UsageMeter({
-  activeCount,
-  activeLimit,
-}: {
-  activeCount: number;
-  activeLimit: number | null;
-}) {
-  if (activeLimit === null) {
-    return (
-      <div className="maxoff-usage">
-        <div className="maxoff-usage__head">
-          <span>Capped discounts</span>
-          <span className="maxoff-usage__count">
-            {activeCount} active · unlimited on your plan
-          </span>
-        </div>
-      </div>
-    );
-  }
-
-  const percent = Math.min(
-    Math.round((activeCount / Math.max(activeLimit, 1)) * 100),
-    100,
-  );
-
-  return (
-    <div className="maxoff-usage">
-      <div className="maxoff-usage__head">
-        <span>Capped discounts</span>
-        <span className="maxoff-usage__count maxoff-tabular">
-          {activeCount} of {activeLimit} used
-        </span>
-      </div>
-      <div className="maxoff-usage__track" aria-hidden="true">
-        <div
-          className="maxoff-usage__fill"
-          style={{ inlineSize: `${percent}%` }}
-        ></div>
-      </div>
-      {activeCount >= activeLimit && (
-        <span className="maxoff-usage__note">
-          You are at your plan&apos;s limit. Pause one to activate another, or
-          move up a plan.
-        </span>
-      )}
-    </div>
   );
 }
 
