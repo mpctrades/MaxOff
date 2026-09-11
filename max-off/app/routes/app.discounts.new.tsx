@@ -372,10 +372,6 @@ export default function CreateDiscountPage() {
 
   return (
     <s-page heading="Create capped discount">
-      <s-button slot="breadcrumb-actions" href="/app/discounts">
-        Capped discounts
-      </s-button>
-
       <ui-save-bar id={SAVE_BAR_ID}>
         <button variant="primary" onClick={save} disabled={saving}>
           Save &amp; activate

@@ -127,9 +127,14 @@ function StatTiles({ home }: { home: HomeData }) {
       : null;
 
   return (
+    /* `s-page` puts no gap around a bare grid the way it does around a
+       section, so the row would sit hard against the subtitle above it and the
+       chart card below. The grid has no surface of its own, so padding here
+       reads as the margin that is missing. */
     <s-grid
       gridTemplateColumns="@container (inline-size <= 720px) 1fr 1fr, 1fr 1fr 1fr 1fr"
       gap="base"
+      paddingBlock="base"
     >
       <div className="maxoff-tile maxoff-tile--hero">
         <span className="maxoff-tile__label">
