@@ -1086,7 +1086,7 @@ export default function CreateDiscountPage() {
                     }
                     style={{
                       width: "100%",
-                      accentColor: "var(--maxoff-orange-700)",
+                      accentColor: "var(--maxoff-orange-500)",
                     }}
                   />
 
@@ -1110,7 +1110,7 @@ export default function CreateDiscountPage() {
                       fontSize: "26px",
                       fontWeight: 650,
                       letterSpacing: "-0.5px",
-                      color: "var(--maxoff-orange-700)",
+                      color: "var(--maxoff-orange-500)",
                     }}
                   >
                     {money(preview.givenMinor)}

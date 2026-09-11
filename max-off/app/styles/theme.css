@@ -20,7 +20,23 @@
   --maxoff-orange-300: #fdba74; /* tint backgrounds and progress tracks only */
   --maxoff-orange-200: #f8c39a; /* 1px border on branded surfaces (§5 orange-line) */
   --maxoff-orange-050: #fff2e8; /* branded card and banner backgrounds (§5 orange-soft) */
-  --maxoff-orange-700: #c2410c; /* text-safe orange on white (4.5:1 on #fff) */
+  --maxoff-orange-600: #d93f0c; /* 4.5:1 on white — the brightest orange small text may use */
+  --maxoff-orange-700: #c2410c; /* 5.2:1 on white */
+  --maxoff-orange-800: #9a3412; /* 7.3:1 — pressed fills and the focus ring */
+
+  /*
+   * Which orange a number takes, decided by its size and settled 11 Sep 2026
+   * after Arthur read the create form as "a bit dark". The ramp is the same
+   * one app/lib/brand-theme.ts documents with its measured contrasts:
+   *
+   *   fills and big figures (22px and up, bold)  orange-500  3.6:1 — clears
+   *                                              the 3:1 large-text floor and
+   *                                              is the button's own orange
+   *   figures at text size (13–16px)             orange-600  4.5:1
+   *
+   * Going brighter than that on small text is the one change this palette
+   * cannot make: #ea580c under 18px reads at 3.6:1 and fails AA.
+   */
   --maxoff-ink: #141210; /* primary text */
 
   /* Neutrals for our own drawings, matched to the Polaris admin surface. */
@@ -56,7 +72,9 @@
  */
 @media (prefers-color-scheme: dark) {
   :root {
-    --maxoff-orange-700: #fb923c; /* orange-700 fails contrast on dark */
+    --maxoff-orange-600: #fb923c; /* the text oranges fail contrast on dark */
+    --maxoff-orange-700: #fb923c;
+    --maxoff-orange-800: #fb923c; /* the focus ring has to be seen on dark too */
     --maxoff-text: #e3e3e3;
     --maxoff-text-subdued: #b5b5b5;
     --maxoff-chart-grid: #4a4a4a;
@@ -106,7 +124,7 @@
 
 .maxoff-cap-callout__value {
   font-weight: 600;
-  color: var(--maxoff-orange-700);
+  color: var(--maxoff-orange-600);
 }
 
 /**
@@ -192,7 +210,7 @@
 
 .maxoff-summary-headline__figure {
   font-weight: 600;
-  color: var(--maxoff-orange-700);
+  color: var(--maxoff-orange-600);
 }
 
 /* Before there is an offer to state, the strip drops its tint rather than
@@ -550,7 +568,7 @@
 }
 
 .maxoff-tile--hero .maxoff-tile__value {
-  color: var(--maxoff-orange-700);
+  color: var(--maxoff-orange-500);
 }
 
 /* The currency code, one step down. It stays on the figure — rule 5: an
@@ -578,5 +596,5 @@
    brand — the same orange, and the same reason, as the hero tile. */
 .maxoff-kept {
   font-weight: 600;
-  color: var(--maxoff-orange-700);
+  color: var(--maxoff-orange-600);
 }
