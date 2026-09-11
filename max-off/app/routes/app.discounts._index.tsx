@@ -17,6 +17,7 @@ import {
   displayStatusLabel,
   isDiscountTab,
 } from "../lib/cap";
+import { BrandButton } from "../components/BrandButton";
 import type { DisplayStatus } from "../lib/cap";
 import { formatMoney, formatPercent } from "../lib/format";
 
@@ -387,9 +388,9 @@ function EmptyState({ storeIsEmpty }: { storeIsEmpty: boolean }) {
         </s-stack>
 
         {storeIsEmpty ? (
-          <s-button variant="primary" href="/app/discounts/new">
+          <BrandButton href="/app/discounts/new">
             Create capped discount
-          </s-button>
+          </BrandButton>
         ) : (
           <s-button href="/app/discounts">Clear filters</s-button>
         )}

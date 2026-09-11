@@ -342,7 +342,10 @@ Keep `app/uninstalled` and `app/scopes_update` from the template. Add `orders/pa
 
 1. Find our discount among the order's discount applications, **matching by discount code**.
 2. `uncapped = round(subtotal × pct/100)`; `given` = what Shopify actually applied.
-3. If `uncapped > given`, write a `CapEvent` with `kept = uncapped − given`.
+3. Write a `CapEvent` with `kept = max(uncapped − given, 0)` for **every** order that used one of
+   our discounts, not only the ones the cap bit. An order that stayed under the break-even point
+   kept nothing and stores `kept = 0`; it is still a discounted order, and it is the only place
+   the `M` in §4.1's "N of M discounted orders" can come from. "Capped" means `kept > 0`.
 4. Update the `CappedDiscount` totals.
 
 **Read `pct` from our own `CappedDiscount` row, never from the order.** Because the Function emits
@@ -374,7 +377,7 @@ Two consequences the rest of this spec has to respect:
 |---|---|---|
 | Free | 0 | 1 active capped discount · order scope only · "Powered by MaxOff" note at checkout |
 | Growth | 4.99/mo | unlimited discounts · dates · analytics · custom wording |
-| Pro | 9.99/mo | + per-item / per-collection caps · per-market currency · CSV export · 12-month history |
+| Pro | 7.99/mo | + per-item / per-collection caps · per-market currency · CSV export · 12-month history |
 
 Flat monthly. **No transaction fee, no revenue share, ever** — this is a positioning promise and
 appears on the billing page as such. Charged through Shopify with the merchant's bill.
@@ -421,7 +424,8 @@ reached from a row in the list. Do not add an eighth link trying to make the num
   (e.g. "SUMMER15 — 15% off, capped at 150.00 USD"). Hide the whole card once all four are done.
 - **Four stat tiles**, the first one branded:
   1. "Over-discounting avoided · this month" + delta vs last month
-  2. "Orders capped" — `N of M discounted orders`
+  2. "Orders capped" — `N of M discounted orders`, where `N` counts this month's `CapEvent`s with
+     `kept > 0` and `M` counts all of them (§3.5)
   3. "Active capped discounts" — with "1 scheduled, 1 paused" underneath
   4. "Biggest single save" — with the order number and code
 - **Money you kept** card: 8-week bar chart, tallest bar highlighted and labelled, tooltip on hover.
@@ -430,6 +434,13 @@ reached from a row in the list. Do not add an eighth link trying to make the num
   Code · Discount · Maximum · Cap starts above · Used · Kept · Status. "View all" links to the list.
 - Empty state for a brand-new install: no tiles, no chart — one card that explains the product and
   a single primary button "Create capped discount".
+
+**Removed from Home on 11 Sep 2026, on Arthur’s instruction:** the "Cap engine is running"
+banner and the four-step setup guide. Both were built and both worked; between them they took the
+top half of the screen before a merchant reached a single number, which is the opposite of what
+Home is for. The setup guide’s server side (`dismissSetupGuide`, the `setup` block on
+`HomeData`, the `lastCartTest*` columns) is untouched, so bringing the card back is a UI change
+only. The engine’s state is still visible on Settings, which is where §4.7 already reports it.
 
 ### 4.2 Capped discounts (list)
 

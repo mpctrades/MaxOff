@@ -65,7 +65,9 @@ how the page ends up promising something the code does not do.
 | Start and end dates | ✓ | ✓ | ✓ | built, ungated — §0c |
 | Money-kept dashboard and analytics | — | ✓ | ✓ | blocked on `read_orders` |
 | Custom checkout wording | — | ✓ | ✓ | V2, unbuilt |
-| Maximum per item and per collection | — | — | ✓ | PRO, unbuilt |
+| A separate maximum on each item | — | — | ✓ | PRO, unbuilt |
+| A separate maximum per collection | — | — | ✓ | PRO, unbuilt |
+| Campaign budget — stop a code once it has given away a total | — | — | ✓ | PRO, unbuilt |
 | A different maximum per market currency | — | — | ✓ | PRO, unbuilt |
 | CSV export | — | — | ✓ | PRO, unbuilt (toast) |
 | 12-month history | — | — | ✓ | PRO, unbuilt |

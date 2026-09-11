@@ -16,14 +16,16 @@ import {
 import { activeDiscountWhere } from "../models/discounts.server";
 import {
   activeDiscountLimit,
-  comingSoon,
-  includedNow,
   nextPlan,
+  planCard,
+  PLAN_KEYS,
   PLAN_LABELS,
   PLAN_PRICE_MINOR,
-  upgradeAdds,
+  PLAN_TAGLINES,
 } from "../lib/plans";
-import { formatMoney } from "../lib/format";
+import type { PlanKey } from "../lib/plans";
+import { formatAmount, formatMoney } from "../lib/format";
+import { BrandButton } from "../components/BrandButton";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
@@ -42,23 +44,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     prisma.shopSettings.findUnique({ where: { shop: session.shop } }),
   ]);
 
-  const [activeCount, capEventCount, keptThisMonth] = await Promise.all([
-    prisma.cappedDiscount.count({
-      where: activeDiscountWhere(session.shop, new Date()),
-    }),
-    prisma.capEvent.count({ where: { shop: session.shop } }),
-    prisma.capEvent.aggregate({
-      where: {
-        shop: session.shop,
-        occurredAt: {
-          gte: new Date(
-            Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1),
-          ),
-        },
-      },
-      _sum: { keptMinor: true },
-    }),
-  ]);
+  // Only the active count is needed now. The money-kept figure and its
+  // CapEvent aggregate went with the "Keep more of every large order" card
+  // that this layout replaced — two queries on every load for something
+  // nothing renders.
+  const activeCount = await prisma.cappedDiscount.count({
+    where: activeDiscountWhere(session.shop, new Date()),
+  });
 
   return {
     plan: current.plan,
@@ -72,13 +64,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     currencyCode: settings?.currencyCode ?? "USD",
     activeCount,
     activeLimit: activeDiscountLimit(current.plan),
-    /** False until the orders/paid webhook has written a row. */
-    hasCapEvents: capEventCount > 0,
-    keptThisMonthMinor: keptThisMonth._sum.keptMinor ?? 0,
-    includedNow: includedNow(current.plan).map((entry) => entry.label),
-    comingSoon: comingSoon(current.plan).map((entry) => entry.label),
-    nextPlan: nextPlan(current.plan),
-    upgradeAdds: upgradeAdds(current.plan).map((entry) => entry.label),
+    /** The column the page recommends: whatever is one step up, nothing on
+     *  Pro. A statically "recommended" plan is the tell that a pricing table
+     *  was hard-coded, and it reads as nonsense to a merchant who is already
+     *  above it. */
+    recommended: nextPlan(current.plan),
   };
 };
 
@@ -124,146 +114,82 @@ export default function BillingPage() {
         Flat monthly price. No transaction fees, no revenue share — ever.
       </s-paragraph>
 
-      {/* ---------------- The value line ---------------- */}
-      <s-section heading="Keep more of every large order">
-        <s-stack direction="block" gap="base">
-          {data.hasCapEvents ? (
-            <s-stack direction="block" gap="small-300">
-              <s-heading>
-                MaxOff kept {money(data.keptThisMonthMinor)} for you this month.
-              </s-heading>
-              {PLAN_PRICE_MINOR[data.plan] > 0 && (
-                <s-text color="subdued">
-                  That is{" "}
-                  {Math.floor(
-                    data.keptThisMonthMinor / PLAN_PRICE_MINOR[data.plan],
-                  )}
-                  × the subscription.
-                </s-text>
+      {data.unmappedSubscriptionName && (
+        <s-banner tone="warning" heading="Unrecognised subscription">
+          Shopify reports an active subscription called “
+          {data.unmappedSubscriptionName}”, which does not match a MaxOff plan.
+          You have been given Growth features while this is sorted out.
+        </s-banner>
+      )}
+
+      {/* ---------------- What you are on, and the one step up ------------- */}
+      <s-section>
+        <div className="maxoff-plan-strip">
+          <div className="maxoff-plan-strip__plan">
+            <div className="maxoff-plan-strip__name">
+              <strong>{planLabel}</strong>
+              <s-badge tone="success">In use</s-badge>
+              {data.planSource === "cache" && (
+                <s-badge tone="warning">Last known</s-badge>
               )}
-            </s-stack>
-          ) : (
-            // No CapEvent rows yet, so there is no money-kept figure. §4 of the
-            // Home prompt applies here too: lead with what is true.
-            <s-text>
-              {data.activeCount === 0
-                ? "No capped discounts are active yet."
-                : `${data.activeCount} capped ${
-                    data.activeCount === 1 ? "discount is" : "discounts are"
-                  } active and capping at checkout.`}
-            </s-text>
-          )}
-
-          <s-stack direction="block" gap="small-500">
-            <s-text color="subdued">✓ Cancel any time</s-text>
-            <s-text color="subdued">✓ Change plan instantly</s-text>
-            <s-text color="subdued">✓ Billed through Shopify</s-text>
-          </s-stack>
-        </s-stack>
-      </s-section>
-
-      {/* ---------------- Your plan ---------------- */}
-      <s-section heading="Your plan">
-        <s-stack direction="block" gap="base">
-          <s-stack direction="inline" gap="small-300" alignItems="center">
-            <s-heading>{planLabel}</s-heading>
-            <s-badge tone="success">In use</s-badge>
-            {data.planSource === "cache" && (
-              <s-badge tone="warning">Last known</s-badge>
+            </div>
+            <span className="maxoff-plan-strip__price maxoff-tabular">
+              {money(PLAN_PRICE_MINOR[data.plan])} per month
+            </span>
+            {/* Omitted rather than guessed when Shopify does not tell us. */}
+            {data.currentPeriodEnd && (
+              <span className="maxoff-plan-strip__next">
+                Next charge {data.currentPeriodEnd.slice(0, 10)}
+              </span>
             )}
-          </s-stack>
+          </div>
 
-          {data.unmappedSubscriptionName && (
-            <s-banner tone="warning" heading="Unrecognised subscription">
-              Shopify reports an active subscription called “
-              {data.unmappedSubscriptionName}”, which does not match a MaxOff
-              plan. You have been given Growth features while this is sorted
-              out.
-            </s-banner>
+          {data.recommended !== null && data.hostedPlanUrl !== null && (
+            <div className="maxoff-plan-strip__action">
+              <form method="post">
+                <input type="hidden" name="intent" value="view-plans" />
+                <BrandButton type="submit">
+                  Upgrade to {PLAN_LABELS[data.recommended]} —{" "}
+                  {money(PLAN_PRICE_MINOR[data.recommended])}/mo
+                </BrandButton>
+              </form>
+              {/* Not "takes effect immediately": the button opens Shopify's
+                  plan page, and the change lands when the merchant approves it
+                  there. Close enough to the drawing, true either way. */}
+              <span className="maxoff-plan-strip__note">
+                Takes effect as soon as you approve it on Shopify.
+              </span>
+            </div>
           )}
 
           <UsageMeter
             activeCount={data.activeCount}
             activeLimit={data.activeLimit}
           />
-
-          <s-divider direction="inline"></s-divider>
-
-          <s-grid gridTemplateColumns="1fr auto" gap="base">
-            <s-text color="subdued">Charged through</s-text>
-            <s-text>Shopify</s-text>
-          </s-grid>
-
-          {/* Omitted rather than guessed when Shopify does not tell us. */}
-          {data.currentPeriodEnd && (
-            <s-grid gridTemplateColumns="1fr auto" gap="base">
-              <s-text color="subdued">Next charge</s-text>
-              <s-text>{data.currentPeriodEnd.slice(0, 10)}</s-text>
-            </s-grid>
-          )}
-
-          <s-divider direction="inline"></s-divider>
-
-          <s-heading>Included now</s-heading>
-          <s-unordered-list>
-            {data.includedNow.map((label) => (
-              <s-list-item key={label}>{label}</s-list-item>
-            ))}
-          </s-unordered-list>
-
-          {data.comingSoon.length > 0 && (
-            <s-stack direction="block" gap="small-300">
-              <s-text color="subdued">
-                On your plan, not built yet — you will not be charged extra when
-                it arrives:
-              </s-text>
-              <s-unordered-list>
-                {data.comingSoon.map((label) => (
-                  <s-list-item key={label}>{label}</s-list-item>
-                ))}
-              </s-unordered-list>
-            </s-stack>
-          )}
-        </s-stack>
+        </div>
       </s-section>
 
-      {/* ---------------- The upsell, contextual ----------------
-          Nothing at all on Pro: a card selling a plan the merchant already has
-          is the tell that it was hard-coded. */}
-      {data.nextPlan !== null && (
-        <s-section heading={`Move to ${PLAN_LABELS[data.nextPlan]}`}>
-          <s-stack direction="block" gap="base">
-            <s-text>
-              {PLAN_LABELS[data.nextPlan]} is{" "}
-              {money(PLAN_PRICE_MINOR[data.nextPlan])} a month and adds:
-            </s-text>
-            <s-unordered-list>
-              {data.upgradeAdds.map((label) => (
-                <s-list-item key={label}>{label}</s-list-item>
-              ))}
-            </s-unordered-list>
+      {/* ---------------- Compare plans ---------------- */}
+      <s-section heading="Compare plans">
+        <div className="maxoff-plan-cards">
+          {PLAN_KEYS.map((plan) => (
+            <PlanCard
+              key={plan}
+              plan={plan}
+              currentPlan={data.plan}
+              recommended={data.recommended}
+              currencyCode={data.currencyCode}
+              hostedPlanUrl={data.hostedPlanUrl}
+            />
+          ))}
+        </div>
+      </s-section>
 
-            {data.hostedPlanUrl !== null ? (
-              <form method="post">
-                <input type="hidden" name="intent" value="view-plans" />
-                <s-button variant="primary" type="submit">
-                  View plans &amp; pricing →
-                </s-button>
-              </form>
-            ) : (
-              <s-banner tone="warning" heading="Plan page unavailable">
-                MaxOff could not work out where your plan page is. Open the
-                app&apos;s listing from your Shopify admin to change plan.
-              </s-banner>
-            )}
-
-            <s-text color="subdued">
-              Prices, free trials and yearly billing are shown and handled by
-              Shopify. Upgrades, downgrades and cancellations all take effect
-              there.
-            </s-text>
-          </s-stack>
-        </s-section>
+      {data.hostedPlanUrl === null && (
+        <s-banner tone="warning" heading="Plan page unavailable">
+          MaxOff could not work out where your plan page is. Open the app&apos;s
+          listing from your Shopify admin to change plan.
+        </s-banner>
       )}
 
       <s-paragraph color="subdued">
@@ -275,13 +201,161 @@ export default function BillingPage() {
 }
 
 /**
- * `1 of 1 capped discounts used`, from the same count the limit itself uses.
+ * One plan, as a card.
  *
- * Polaris has no meter or progress component in this version, so the bar is
- * two nested boxes — the same composition Home's setup progress uses — and the
- * sentence above it is the text alternative rather than an afterthought.
- * Unlimited plans get the sentence and no bar, because a bar pinned at 100%
- * would read as a limit that is not there.
+ * Every line comes from `planCard`, so the card cannot list a feature the
+ * matrix does not grant — the bug `plans.ts` exists to prevent. An entitlement
+ * that is not built yet is still ticked, because the merchant is paying for
+ * it, but it carries a "Soon" badge: `plans.ts` keeps entitlement and reality
+ * apart precisely so a card can say which is which.
+ */
+function PlanCard({
+  plan,
+  currentPlan,
+  recommended,
+  currencyCode,
+  hostedPlanUrl,
+}: {
+  plan: PlanKey;
+  currentPlan: PlanKey;
+  recommended: PlanKey | null;
+  currencyCode: string;
+  hostedPlanUrl: string | null;
+}) {
+  const { rollupFrom, features } = planCard(plan);
+  const isRecommended = plan === recommended;
+
+  return (
+    <div
+      className={`maxoff-plan-card${
+        isRecommended ? " maxoff-plan-card--recommended" : ""
+      }`}
+    >
+      <div className="maxoff-plan-card__name">
+        <strong>{PLAN_LABELS[plan]}</strong>
+        {plan === currentPlan && <s-badge tone="success">Current</s-badge>}
+        {isRecommended && <s-badge>Recommended</s-badge>}
+      </div>
+
+      <div className="maxoff-plan-card__price">
+        <span className="maxoff-plan-card__amount maxoff-tabular">
+          {formatAmount(PLAN_PRICE_MINOR[plan])}
+        </span>{" "}
+        <span className="maxoff-plan-card__per">{currencyCode} / month</span>
+      </div>
+
+      <p className="maxoff-plan-card__tagline">{PLAN_TAGLINES[plan]}</p>
+
+      <ul className="maxoff-plan-card__features">
+        {rollupFrom !== null && (
+          <li>
+            <span className="maxoff-plan-card__yes" aria-hidden="true">
+              ✓
+            </span>
+            <span>
+              Everything in <strong>{PLAN_LABELS[rollupFrom]}</strong>
+            </span>
+          </li>
+        )}
+        {features.map((feature) => (
+          <li
+            key={feature.label}
+            className={feature.included ? "" : "maxoff-plan-card__missing"}
+          >
+            <span
+              className={
+                feature.included
+                  ? "maxoff-plan-card__yes"
+                  : "maxoff-plan-card__no"
+              }
+              aria-hidden="true"
+            >
+              {feature.included ? "✓" : "–"}
+            </span>
+            <span>
+              <span className="maxoff-visually-hidden">
+                {feature.included ? "Included: " : "Not included: "}
+              </span>
+              {feature.lead && <strong>{feature.lead} </strong>}
+              {feature.label}
+            </span>
+          </li>
+        ))}
+      </ul>
+
+      <div className="maxoff-plan-card__action">
+        <PlanAction
+          plan={plan}
+          currentPlan={currentPlan}
+          recommended={recommended}
+          hostedPlanUrl={hostedPlanUrl}
+        />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The button under a plan.
+ *
+ * Every upgrade goes to the same place — Shopify hosts plan selection and we
+ * cannot charge directly — so these are calls to action, not three different
+ * destinations. The label still names the plan, because that is what the
+ * merchant is going there to pick.
+ */
+function PlanAction({
+  plan,
+  currentPlan,
+  recommended,
+  hostedPlanUrl,
+}: {
+  plan: PlanKey;
+  currentPlan: PlanKey;
+  recommended: PlanKey | null;
+  hostedPlanUrl: string | null;
+}) {
+  if (plan === currentPlan) {
+    return (
+      <BrandButton
+        fill
+        disabled
+        variant="secondary"
+        accessibilityLabel="This is your current plan"
+      >
+        Current plan
+      </BrandButton>
+    );
+  }
+
+  if (hostedPlanUrl === null) {
+    return null;
+  }
+
+  const below = PLAN_KEYS.indexOf(plan) < PLAN_KEYS.indexOf(currentPlan);
+
+  return (
+    <form method="post">
+      <input type="hidden" name="intent" value="view-plans" />
+      <BrandButton
+        fill
+        type="submit"
+        variant={plan === recommended ? "primary" : "secondary"}
+      >
+        {below
+          ? `Move to ${PLAN_LABELS[plan]}`
+          : `Upgrade to ${PLAN_LABELS[plan]}`}
+      </BrandButton>
+    </form>
+  );
+}
+
+/**
+ * `Capped discounts … 0 of 1 used`, from the same count the limit itself uses.
+ *
+ * Polaris has no meter in this version, so the bar is our own markup — and it
+ * is decoration: the sentence beside it carries the number, so nothing is lost
+ * when the bar cannot be seen. Unlimited plans get the sentence and no bar,
+ * because a bar pinned at 100% reads as a limit that is not there.
  */
 function UsageMeter({
   activeCount,
@@ -292,10 +366,14 @@ function UsageMeter({
 }) {
   if (activeLimit === null) {
     return (
-      <s-text>
-        {activeCount} capped {activeCount === 1 ? "discount" : "discounts"}{" "}
-        active · unlimited on your plan
-      </s-text>
+      <div className="maxoff-usage">
+        <div className="maxoff-usage__head">
+          <span>Capped discounts</span>
+          <span className="maxoff-usage__count">
+            {activeCount} active · unlimited on your plan
+          </span>
+        </div>
+      </div>
     );
   }
 
@@ -305,33 +383,26 @@ function UsageMeter({
   );
 
   return (
-    <s-stack direction="block" gap="small-300">
-      <s-text>
-        {activeCount} of {activeLimit} capped{" "}
-        {activeLimit === 1 ? "discount" : "discounts"} used
-      </s-text>
-      <s-box
-        background="subdued"
-        borderRadius="small"
-        blockSize="6px"
-        inlineSize="100%"
-        overflow="hidden"
-        accessibilityLabel={`${activeCount} of ${activeLimit} capped discounts used`}
-      >
-        <s-box
-          background="strong"
-          borderRadius="small"
-          blockSize="6px"
-          inlineSize={`${percent}%`}
-        ></s-box>
-      </s-box>
+    <div className="maxoff-usage">
+      <div className="maxoff-usage__head">
+        <span>Capped discounts</span>
+        <span className="maxoff-usage__count maxoff-tabular">
+          {activeCount} of {activeLimit} used
+        </span>
+      </div>
+      <div className="maxoff-usage__track" aria-hidden="true">
+        <div
+          className="maxoff-usage__fill"
+          style={{ inlineSize: `${percent}%` }}
+        ></div>
+      </div>
       {activeCount >= activeLimit && (
-        <s-text color="subdued">
+        <span className="maxoff-usage__note">
           You are at your plan&apos;s limit. Pause one to activate another, or
           move up a plan.
-        </s-text>
+        </span>
       )}
-    </s-stack>
+    </div>
   );
 }
 

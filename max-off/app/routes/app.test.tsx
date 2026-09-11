@@ -17,10 +17,13 @@ import {
   addPickedVariants,
   basketSubtotalMinor,
   clampQuantity,
+  MAX_QUANTITY,
+  MIN_QUANTITY,
   lineTotalMinor,
   removeLine,
   setLineQuantity,
 } from "../lib/basket";
+import { BrandButton } from "../components/BrandButton";
 import type { BasketLine, PickedVariant } from "../lib/basket";
 import { capDiscountMinor } from "../lib/cap";
 import { DEFAULT_CHECKOUT_NOTE } from "../lib/cap-config";
@@ -87,6 +90,7 @@ export default function TestACartPage() {
   const shopify = useAppBridge();
   const recordFetcher = useFetcher<typeof action>();
 
+
   const [lines, setLines] = useState<BasketLine[]>([]);
   const [selectedId, setSelectedId] = useState(discounts[0]?.id ?? "");
   const recorded = useRef(false);
@@ -151,10 +155,6 @@ export default function TestACartPage() {
 
   return (
     <s-page heading="Test a cart">
-      <s-button slot="primary-action" variant="primary" onClick={addProducts}>
-        Add product
-      </s-button>
-
       <s-paragraph color="subdued">
         Build a basket and see what the cap will do before you send the code to
         anyone.
@@ -168,9 +168,9 @@ export default function TestACartPage() {
               Add a product from your store to start. Prices come from your own
               catalogue, so the test matches what a customer would really pay.
             </s-paragraph>
-            <s-button variant="primary" onClick={addProducts}>
+            <BrandButton onClick={addProducts}>
               Add product
-            </s-button>
+            </BrandButton>
           </s-stack>
         ) : (
           <s-stack direction="block" gap="base">
@@ -197,7 +197,7 @@ export default function TestACartPage() {
               <s-text type="strong">{money(subtotalMinor)}</s-text>
             </s-grid>
 
-            <s-button onClick={addProducts}>Add product</s-button>
+            <BrandButton onClick={addProducts}>Add product</BrandButton>
           </s-stack>
         )}
       </s-section>
@@ -210,9 +210,9 @@ export default function TestACartPage() {
               You have no active capped discounts, so there is nothing to test
               yet.
             </s-paragraph>
-            <s-button variant="primary" href="/app/discounts/new">
+            <BrandButton href="/app/discounts/new">
               Create capped discount
-            </s-button>
+            </BrandButton>
           </s-stack>
         ) : (
           <s-stack direction="block" gap="base">
@@ -312,9 +312,14 @@ export default function TestACartPage() {
                   shipping and other discounts are not included.
                 </s-text>
 
-                <s-button commandFor={CHECKOUT_PREVIEW_ID} command="--show">
+                {/* `commandFor` is carried only by `s-button`; this is the
+                    documented equivalent. See `BrandButton` for why the
+                    Polaris button cannot wear the brand style. */}
+                <BrandButton
+                  onClick={() => shopify.modal.show(CHECKOUT_PREVIEW_ID)}
+                >
                   See the buyer&apos;s checkout
-                </s-button>
+                </BrandButton>
               </s-stack>
             )}
           </s-section>
@@ -378,31 +383,25 @@ function BasketRow({
         </s-text>
       </s-stack>
 
-      <s-stack direction="inline" gap="small-300" alignItems="center">
-        <s-button
-          variant="tertiary"
-          icon="minus"
-          accessibilityLabel={`Decrease the quantity of ${line.title}`}
-          onClick={() => onQuantity(line.quantity - 1)}
-        ></s-button>
+      {/* Just the field. It carries its own increment and decrement arrows,
+          so the separate minus and plus buttons that used to flank it were
+          the same two actions offered twice — and squeezing all three into a
+          basket row is what left the number cramped against the arrows.
+          `s-number-field` fills its container, so the width is set here. */}
+      <div className="maxoff-quantity">
         <s-number-field
           label={`Quantity of ${line.title}`}
           labelAccessibilityVisibility="exclusive"
           name={`quantity-${line.variantId}`}
-          min={1}
+          min={MIN_QUANTITY}
+          max={MAX_QUANTITY}
           step={1}
           value={String(line.quantity)}
           onInput={(event) =>
             onQuantity(clampQuantity(Number(event.currentTarget.value)))
           }
         ></s-number-field>
-        <s-button
-          variant="tertiary"
-          icon="plus"
-          accessibilityLabel={`Increase the quantity of ${line.title}`}
-          onClick={() => onQuantity(line.quantity + 1)}
-        ></s-button>
-      </s-stack>
+      </div>
 
       <s-text>{formatMoney(lineTotalMinor(line), currencyCode)}</s-text>
 

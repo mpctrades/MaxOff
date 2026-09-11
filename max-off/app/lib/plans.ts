@@ -25,7 +25,7 @@ export const PLAN_LABELS: Record<PlanKey, string> = {
 export const PLAN_PRICE_MINOR: Record<PlanKey, number> = {
   free: 0,
   growth: 499,
-  pro: 999,
+  pro: 799,
 };
 
 /** How many capped discounts may be active at once. Null means unlimited. */
@@ -35,13 +35,26 @@ export const PLAN_ACTIVE_DISCOUNT_LIMIT: Record<PlanKey, number | null> = {
   pro: null,
 };
 
+/**
+ * One line per plan, for the top of its column. Here for the same reason the
+ * labels are: plan copy written in a component is plan copy that drifts from
+ * what the plan actually gives.
+ */
+export const PLAN_TAGLINES: Record<PlanKey, string> = {
+  free: "One discount, to see whether caps work for you.",
+  growth: "For stores running more than one campaign at a time.",
+  pro: "Caps per item, per collection and per campaign.",
+};
+
 export type CapabilityKey =
   | "orderMaximum"
   | "previewAndTester"
   | "activeDates"
   | "analytics"
   | "customCheckoutWording"
-  | "itemAndCollectionMaximums"
+  | "itemMaximums"
+  | "collectionMaximums"
+  | "campaignBudget"
   | "perMarketCurrency"
   | "csvExport"
   | "twelveMonthHistory"
@@ -54,6 +67,13 @@ export interface Capability {
   plans: readonly PlanKey[];
   /** Whether it exists in the product today. */
   built: boolean;
+  /**
+   * Whether it appears on a pricing card. The long tail — CSV export, history,
+   * support — is a real entitlement and a gate, but a card read at a glance is
+   * a highlight reel, not an inventory. Everything stays in the matrix; only
+   * the cards are edited.
+   */
+  onCard: boolean;
   /** Why it is not built yet — shown to nobody, read by the next developer. */
   note?: string;
 }
@@ -64,12 +84,14 @@ export const CAPABILITIES: readonly Capability[] = [
     label: "A maximum on the whole order",
     plans: ["free", "growth", "pro"],
     built: true,
+    onCard: true,
   },
   {
     key: "previewAndTester",
     label: "Live preview and cart tester",
     plans: ["free", "growth", "pro"],
     built: true,
+    onCard: true,
   },
   {
     // §0c, decided 10 Sep 2026: dates were sold as Growth but shipped to
@@ -80,12 +102,14 @@ export const CAPABILITIES: readonly Capability[] = [
     label: "Start and end dates",
     plans: ["free", "growth", "pro"],
     built: true,
+    onCard: true,
   },
   {
     key: "analytics",
     label: "Money-kept dashboard and analytics",
     plans: ["growth", "pro"],
     built: false,
+    onCard: true,
     note: "Blocked on read_orders protected-customer-data approval.",
   },
   {
@@ -93,20 +117,44 @@ export const CAPABILITIES: readonly Capability[] = [
     label: "Custom checkout wording",
     plans: ["growth", "pro"],
     built: false,
+    onCard: true,
     note: "V2. The field is rendered disabled on Create and Settings.",
   },
   {
-    key: "itemAndCollectionMaximums",
-    label: "A maximum per item and per collection",
+    key: "itemMaximums",
+    label: "A separate maximum on each item",
     plans: ["pro"],
     built: false,
+    onCard: true,
     note: "PRO. Needs a cap_config scope beyond 'order' and a Function change.",
+  },
+  {
+    key: "collectionMaximums",
+    label: "A separate maximum per collection",
+    plans: ["pro"],
+    built: false,
+    onCard: true,
+    note: "PRO. Needs a cap_config scope beyond 'order' and a Function change.",
+  },
+  {
+    // The create form has shown a Pro badge on "Stop the code once it has
+    // given away a total amount" since 11 Sep 2026 without a matching
+    // entitlement here — the UI selling something the matrix did not know
+    // about, which is the drift this module exists to prevent. Added with
+    // Arthur's plan cards on 11 Sep 2026.
+    key: "campaignBudget",
+    label: "Campaign budget — stop a code once it has given away a total",
+    plans: ["pro"],
+    built: false,
+    onCard: true,
+    note: "PRO. The create form renders the checkbox disabled with a Pro badge.",
   },
   {
     key: "perMarketCurrency",
     label: "A different maximum per market currency",
     plans: ["pro"],
     built: false,
+    onCard: false,
     note: "PRO. Amounts relabel and never convert, so this needs real per-market caps.",
   },
   {
@@ -114,6 +162,7 @@ export const CAPABILITIES: readonly Capability[] = [
     label: "CSV export",
     plans: ["pro"],
     built: false,
+    onCard: false,
     note: "PRO. The list's Export button toasts 'Export is a Pro feature'.",
   },
   {
@@ -121,6 +170,7 @@ export const CAPABILITIES: readonly Capability[] = [
     label: "12-month history",
     plans: ["pro"],
     built: false,
+    onCard: false,
     note: "PRO. Analytics range chips beyond 90 days are disabled.",
   },
   {
@@ -128,6 +178,7 @@ export const CAPABILITIES: readonly Capability[] = [
     label: "Priority support",
     plans: ["pro"],
     built: false,
+    onCard: false,
     note: "Not code. Free and Growth get email support.",
   },
 ];
@@ -204,4 +255,106 @@ export function upgradeAdds(from: PlanKey): Capability[] {
   return CAPABILITIES.filter(
     (entry) => entry.plans.includes(to) && !entry.plans.includes(from),
   );
+}
+
+/** One line on a plan card. */
+export interface PlanFeature {
+  /** Bold text before the label, for the one line that carries emphasis. */
+  lead?: string;
+  label: string;
+  /** Whether the plan is entitled to it. */
+  included: boolean;
+  /** Whether it exists today. */
+  built: boolean;
+}
+
+/**
+ * The single line that stands in for everything the top plan adds, on the
+ * plans below it.
+ *
+ * Pro adds three separate discount scopes. Listed one by one on the Free card
+ * they read as a column of complaints; a pricing card is scanned, not audited,
+ * and the merchant only needs to know which direction the missing thing is in.
+ */
+export const TOP_PLAN_SUMMARY = "Per-item and per-collection caps";
+
+/**
+ * What a plan card lists.
+ *
+ * Ticks are what the plan has. Dashes are what the tier above adds — named one
+ * by one when that tier is the middle one, and summarised by
+ * `TOP_PLAN_SUMMARY` when it is the top. The top plan itself rolls up the tier
+ * below into a single line instead of repeating six ticks it shares.
+ *
+ * Only `onCard` capabilities appear. The rest are still entitlements and still
+ * gate features; they are simply not part of the pitch.
+ */
+export function planCard(plan: PlanKey): {
+  rollupFrom: PlanKey | null;
+  features: PlanFeature[];
+} {
+  const onCard = CAPABILITIES.filter((entry) => entry.onCard);
+  const top = PLAN_KEYS[PLAN_KEYS.length - 1];
+  const below = PLAN_KEYS[PLAN_KEYS.indexOf(plan) - 1] ?? null;
+
+  if (plan === top && below !== null) {
+    return {
+      rollupFrom: below,
+      features: onCard
+        .filter(
+          (entry) =>
+            entry.plans.includes(plan) && !entry.plans.includes(below),
+        )
+        .map((entry) => ({
+          label: entry.label,
+          included: true,
+          built: entry.built,
+        })),
+    };
+  }
+
+  const limit = PLAN_ACTIVE_DISCOUNT_LIMIT[plan];
+  const allowance: PlanFeature =
+    limit === null
+      ? { lead: "Unlimited", label: "capped discounts", included: true, built: true }
+      : {
+          label: `${limit} capped discount${limit === 1 ? "" : "s"}`,
+          included: true,
+          built: true,
+        };
+
+  const mine = onCard
+    .filter((entry) => entry.plans.includes(plan))
+    .map((entry) => ({
+      label: entry.label,
+      included: true,
+      built: entry.built,
+    }));
+
+  // What the next tier adds, named — unless that tier is the top one, whose
+  // additions are summarised on the line below instead.
+  const next = nextPlan(plan);
+  const nextAdds =
+    next === null || next === top
+      ? []
+      : onCard
+          .filter(
+            (entry) =>
+              entry.plans.includes(next) && !entry.plans.includes(plan),
+          )
+          .map((entry) => ({
+            label: entry.label,
+            included: false,
+            built: entry.built,
+          }));
+
+  const topSummary: PlanFeature[] =
+    plan === top
+      ? []
+      : [{ label: TOP_PLAN_SUMMARY, included: false, built: false }];
+
+  return {
+    rollupFrom: null,
+    features: [allowance, ...mine, ...nextAdds, ...topSummary],
+  };
 }

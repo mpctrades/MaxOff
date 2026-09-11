@@ -1,16 +1,19 @@
-import type {
-  ActionFunctionArgs,
-  HeadersFunction,
-  LoaderFunctionArgs,
-} from "react-router";
-import { useFetcher, useLoaderData } from "react-router";
+import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
+import { useLoaderData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 
 import { authenticate } from "../shopify.server";
-import { dismissSetupGuide, getHomeData } from "../models/home.server";
-import type { HomeData, HomeSetupStep, HomeWeek } from "../models/home.server";
-import { CAP_ENGINE_DEPLOYED } from "../lib/cap";
-import { formatMoney, formatPercent } from "../lib/format";
+import { displayStatusLabel } from "../lib/cap";
+import { getHomeData } from "../models/home.server";
+import type { HomeData, HomeWeek } from "../models/home.server";
+import { BrandButton } from "../components/BrandButton";
+import {
+  formatAmount,
+  formatAmountPlain,
+  formatMoney,
+  formatMonthDay,
+  formatPercent,
+} from "../lib/format";
 
 const PLAN_LABELS: Record<string, string> = {
   free: "Free plan",
@@ -43,17 +46,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   }
 };
 
-export const action = async ({ request }: ActionFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
-
-  const form = await request.formData();
-  if (form.get("intent") === "dismiss-setup-guide") {
-    await dismissSetupGuide(session.shop);
-  }
-
-  return { ok: true };
-};
-
 export default function HomePage() {
   const { home, error } = useLoaderData<typeof loader>();
 
@@ -69,9 +61,6 @@ export default function HomePage() {
 
   const planLabel = PLAN_LABELS[home.plan] ?? "Free plan";
   const isNewInstall = home.totalCount === 0;
-  const showSetupGuide =
-    !home.setup.dismissed &&
-    home.setup.completedCount < home.setup.stepCount;
 
   return (
     <s-page heading="MaxOff">
@@ -87,10 +76,6 @@ export default function HomePage() {
         Percentage discounts that stop at a maximum amount.
       </s-paragraph>
 
-      <CapEngineBanner activeCount={home.activeCount} />
-
-      {showSetupGuide && <SetupGuide home={home} />}
-
       {isNewInstall ? (
         <NewInstallCard />
       ) : (
@@ -101,31 +86,6 @@ export default function HomePage() {
         </>
       )}
     </s-page>
-  );
-}
-
-function CapEngineBanner({ activeCount }: { activeCount: number }) {
-  if (!CAP_ENGINE_DEPLOYED || activeCount === 0) {
-    return (
-      <s-banner heading="Cap engine is not capping anything yet" tone="warning">
-        No capped discount is active, so nothing is being capped at checkout.
-        No theme code was added to your store.
-        <s-button slot="secondary-actions" href="/app/discounts/new">
-          Create capped discount
-        </s-button>
-      </s-banner>
-    );
-  }
-
-  return (
-    <s-banner heading="Cap engine is running" tone="success">
-      Your cap is applied by Shopify at checkout on {activeCount} active{" "}
-      {activeCount === 1 ? "discount" : "discounts"}. No theme code was added to
-      your store.
-      <s-button slot="secondary-actions" href="/app/test">
-        Run a test cart
-      </s-button>
-    </s-banner>
   );
 }
 
@@ -140,117 +100,24 @@ function NewInstallCard() {
       <s-paragraph color="subdued">
         MaxOff adds nothing to your theme.
       </s-paragraph>
-      <s-button variant="primary" href="/app/discounts/new">
+      <BrandButton href="/app/discounts/new">
         Create capped discount
-      </s-button>
+      </BrandButton>
     </s-section>
   );
 }
 
-function SetupGuide({ home }: { home: HomeData }) {
-  const fetcher = useFetcher();
-  const { setup } = home;
-  const percentComplete = Math.round(
-    (setup.completedCount / setup.stepCount) * 100,
-  );
-  const hiding = fetcher.state !== "idle";
-
-  return (
-    <s-section
-      heading="Set up MaxOff"
-      accessibilityLabel={`Set up MaxOff — ${setup.completedCount} of ${setup.stepCount} steps done`}
-    >
-      <s-grid gridTemplateColumns="1fr auto" gap="base" alignItems="center">
-        <s-stack direction="block" gap="small-200">
-          <s-text color="subdued">
-            {setup.completedCount} of {setup.stepCount} done
-          </s-text>
-          <s-box
-            background="subdued"
-            borderRadius="small"
-            blockSize="6px"
-            inlineSize="100%"
-            overflow="hidden"
-            accessibilityLabel={`${percentComplete}% complete`}
-          >
-            <s-box
-              background="strong"
-              borderRadius="small"
-              blockSize="6px"
-              inlineSize={`${percentComplete}%`}
-            ></s-box>
-          </s-box>
-        </s-stack>
-        <s-button
-          variant="tertiary"
-          onClick={() =>
-            fetcher.submit({ intent: "dismiss-setup-guide" }, { method: "post" })
-          }
-          {...(hiding ? { loading: true } : {})}
-        >
-          Hide
-        </s-button>
-      </s-grid>
-
-      <s-stack direction="block" gap="base">
-        <SetupStep step={setup.install} title="Install MaxOff" />
-        <SetupStep
-          step={setup.create}
-          title="Create your first capped discount"
-          action={
-            setup.create.done ? null : (
-              <s-button href="/app/discounts/new">Create</s-button>
-            )
-          }
-        />
-        <SetupStep
-          step={setup.test}
-          title="Test it on a big cart"
-          action={
-            setup.test.done ? null : (
-              <s-button href="/app/test">Test a cart</s-button>
-            )
-          }
-        />
-        <SetupStep
-          step={setup.plan}
-          title="Choose a plan"
-          action={<s-button href="/app/billing">View plans</s-button>}
-        />
-      </s-stack>
-    </s-section>
-  );
-}
-
-function SetupStep({
-  step,
-  title,
-  action = null,
-}: {
-  step: HomeSetupStep;
-  title: string;
-  action?: React.ReactNode;
-}) {
-  return (
-    <s-grid gridTemplateColumns="auto 1fr auto" gap="base" alignItems="start">
-      {/* A badge, not a coloured tick: the state has to survive being read
-          aloud and being seen without colour (§5). */}
-      {step.done ? (
-        <s-badge tone="success" icon="check-circle">
-          Done
-        </s-badge>
-      ) : (
-        <s-badge>To do</s-badge>
-      )}
-      <s-stack direction="block" gap="small-500">
-        <s-text>{title}</s-text>
-        {step.result && <s-text color="subdued">{step.result}</s-text>}
-      </s-stack>
-      {action}
-    </s-grid>
-  );
-}
-
+/**
+ * The four figures at the top of Home, per §4.1.
+ *
+ * Four cards, not Polaris' metrics card: the approved UX gives the first one
+ * the brand tint, because "money you kept" is the number the product exists to
+ * produce. The tint never carries the meaning on its own — the label says what
+ * the figure is, and the same total is drawn again in the chart below.
+ *
+ * Every tile has something honest to say before a single order has been
+ * capped: "No capped orders yet" rather than a zero that reads as a loss.
+ */
 function StatTiles({ home }: { home: HomeData }) {
   const { currencyCode } = home;
   const delta = home.keptThisMonthMinor - home.keptLastMonthMinor;
@@ -260,87 +127,101 @@ function StatTiles({ home }: { home: HomeData }) {
       : null;
 
   return (
-    <s-section accessibilityLabel="This month at a glance">
-      <s-grid
-        gridTemplateColumns="@container (inline-size <= 600px) 1fr, 1fr 1fr 1fr 1fr"
-        gap="base"
-      >
-        <s-box background="subdued" padding="base" borderRadius="base">
-          <s-stack direction="block" gap="small-300">
-            <s-text color="subdued">Over-discounting avoided · this month</s-text>
-            {home.hasCapEvents ? (
-              <>
-                <s-heading>
-                  {formatMoney(home.keptThisMonthMinor, currencyCode)}
-                </s-heading>
-                <s-text color="subdued">
-                  {deltaPercent === null
-                    ? "No comparison for last month yet"
-                    : `${deltaPercent >= 0 ? "▲" : "▼"} ${Math.abs(
-                        deltaPercent,
-                      )}% vs last month`}
-                </s-text>
-              </>
-            ) : (
-              <s-text color="subdued">No capped orders yet</s-text>
-            )}
-          </s-stack>
-        </s-box>
+    <s-grid
+      gridTemplateColumns="@container (inline-size <= 720px) 1fr 1fr, 1fr 1fr 1fr 1fr"
+      gap="base"
+    >
+      <div className="maxoff-tile maxoff-tile--hero">
+        <span className="maxoff-tile__label">
+          Over-discounting avoided · this month
+        </span>
+        {home.hasCapEvents ? (
+          <>
+            <span className="maxoff-tile__value">
+              {formatAmount(home.keptThisMonthMinor)}{" "}
+              <small className="maxoff-tile__currency">{currencyCode}</small>
+            </span>
+            <span className="maxoff-tile__note">
+              {deltaPercent === null ? (
+                "No comparison for last month yet"
+              ) : (
+                <>
+                  <span
+                    className={
+                      deltaPercent >= 0 ? "maxoff-tile__delta" : undefined
+                    }
+                  >
+                    {deltaPercent >= 0 ? "▲" : "▼"} {Math.abs(deltaPercent)}%
+                  </span>{" "}
+                  vs last month
+                </>
+              )}
+            </span>
+          </>
+        ) : (
+          <span className="maxoff-tile__note">No capped orders yet</span>
+        )}
+      </div>
 
-        <s-box padding="base">
-          <s-stack direction="block" gap="small-300">
-            <s-text color="subdued">Orders capped</s-text>
-            {home.hasCapEvents ? (
-              <s-heading>{home.ordersCapped}</s-heading>
-            ) : (
-              <s-text color="subdued">No capped orders yet</s-text>
-            )}
-          </s-stack>
-        </s-box>
+      <div className="maxoff-tile">
+        <span className="maxoff-tile__label">Orders capped</span>
+        {home.hasCapEvents ? (
+          <>
+            <span className="maxoff-tile__value">{home.ordersCapped}</span>
+            <span className="maxoff-tile__note">
+              of {home.discountedOrders}{" "}
+              {home.discountedOrders === 1
+                ? "discounted order"
+                : "discounted orders"}
+            </span>
+          </>
+        ) : (
+          <span className="maxoff-tile__note">No capped orders yet</span>
+        )}
+      </div>
 
-        <s-box padding="base">
-          <s-stack direction="block" gap="small-300">
-            <s-text color="subdued">Active capped discounts</s-text>
-            <s-heading>{home.activeCount}</s-heading>
-            <s-text color="subdued">
-              {home.scheduledCount} scheduled, {home.pausedCount} paused
-            </s-text>
-          </s-stack>
-        </s-box>
+      <div className="maxoff-tile">
+        <span className="maxoff-tile__label">Active capped discounts</span>
+        <span className="maxoff-tile__value">{home.activeCount}</span>
+        <span className="maxoff-tile__note">
+          {home.scheduledCount} scheduled, {home.pausedCount} paused
+        </span>
+      </div>
 
-        <s-box padding="base">
-          <s-stack direction="block" gap="small-300">
-            <s-text color="subdued">Biggest single save</s-text>
-            {home.biggestSave ? (
-              <>
-                <s-heading>
-                  {formatMoney(home.biggestSave.keptMinor, currencyCode)}
-                </s-heading>
-                <s-text color="subdued">
-                  Order {home.biggestSave.orderName}
-                  {home.biggestSave.code ? ` · ${home.biggestSave.code}` : ""}
-                </s-text>
-              </>
-            ) : (
-              <s-text color="subdued">No capped orders yet</s-text>
-            )}
-          </s-stack>
-        </s-box>
-      </s-grid>
-    </s-section>
+      <div className="maxoff-tile">
+        <span className="maxoff-tile__label">Biggest single save</span>
+        {home.biggestSave ? (
+          <>
+            <span className="maxoff-tile__value">
+              {formatAmount(home.biggestSave.keptMinor)}{" "}
+              <small className="maxoff-tile__currency">{currencyCode}</small>
+            </span>
+            <span className="maxoff-tile__note">
+              Order {home.biggestSave.orderName}
+              {home.biggestSave.code ? ` · ${home.biggestSave.code}` : ""}
+            </span>
+          </>
+        ) : (
+          <span className="maxoff-tile__note">No capped orders yet</span>
+        )}
+      </div>
+    </s-grid>
   );
 }
 
 function MoneyKeptCard({ home }: { home: HomeData }) {
   return (
-    <s-section accessibilityLabel="Money you kept, last eight weeks">
-      <s-stack direction="block" gap="small-500">
-        <s-heading>Money you kept</s-heading>
-        <s-text color="subdued">
-          Difference between the uncapped discount and what MaxOff actually
-          gave away.
-        </s-text>
-      </s-stack>
+    /* `s-section` grows a `subheading` prop in Polaris 1.1; the version
+       installed here has only `heading`, so the line under it is a subdued
+       paragraph of our own. */
+    <s-section
+      heading="Money you kept"
+      accessibilityLabel="Money you kept, last eight weeks"
+    >
+      <s-text color="subdued">
+        Difference between the uncapped discount and what MaxOff actually gave
+        away.
+      </s-text>
 
       {home.hasCapEvents ? (
         <WeeklyChart weeks={home.weeks} currencyCode={home.currencyCode} />
@@ -385,10 +266,8 @@ function WeeklyChart({
   const band = innerWidth / weeks.length;
   const barWidth = Math.min(band - 10, 46);
 
-  const label = (week: HomeWeek) => {
-    const date = new Date(`${week.weekStartISO}T00:00:00Z`);
-    return `${date.getUTCDate()}/${date.getUTCMonth() + 1}`;
-  };
+  const label = (week: HomeWeek) =>
+    formatMonthDay(new Date(`${week.weekStartISO}T00:00:00Z`));
 
   const textAlternative = weeks
     .map((week) => `${label(week)}: ${formatMoney(week.keptMinor, currencyCode)}`)
@@ -470,7 +349,7 @@ function WeeklyChart({
                 fontWeight="600"
                 fill="var(--maxoff-chart-value)"
               >
-                {formatMoney(week.keptMinor, currencyCode)}
+                {`${formatAmountPlain(week.keptMinor)} ${currencyCode}`}
               </text>
             )}
           </g>
@@ -484,11 +363,10 @@ function DiscountsCard({ home }: { home: HomeData }) {
   const { currencyCode } = home;
 
   return (
-    <s-section accessibilityLabel="Your capped discounts">
-      <s-grid gridTemplateColumns="1fr auto" gap="base" alignItems="center">
-        <s-heading>Your capped discounts</s-heading>
-        <s-link href="/app/discounts">View all</s-link>
-      </s-grid>
+    <s-section heading="Your capped discounts">
+      <s-button slot="secondary-actions" href="/app/discounts">
+        View all
+      </s-button>
 
       {home.discounts.length === 0 ? (
         <s-paragraph color="subdued">
@@ -529,19 +407,27 @@ function DiscountsCard({ home }: { home: HomeData }) {
                   {formatMoney(discount.capMinor, currencyCode)}
                 </s-table-cell>
                 <s-table-cell>
-                  {discount.capStartsAboveMinor === null
-                    ? "—"
-                    : formatMoney(discount.capStartsAboveMinor, currencyCode)}
+                  {/* "Cap starts above" is context for the maximum beside it,
+                      not a figure of its own — subdued, as in §4.1. */}
+                  <s-text color="subdued">
+                    {discount.capStartsAboveMinor === null
+                      ? "—"
+                      : formatMoney(discount.capStartsAboveMinor, currencyCode)}
+                  </s-text>
                 </s-table-cell>
                 <s-table-cell>{discount.timesUsed}</s-table-cell>
                 <s-table-cell>
-                  {discount.keptMinor === 0
-                    ? "—"
-                    : formatMoney(discount.keptMinor, currencyCode)}
+                  {discount.keptMinor === 0 ? (
+                    "—"
+                  ) : (
+                    <span className="maxoff-kept maxoff-tabular">
+                      {formatMoney(discount.keptMinor, currencyCode)}
+                    </span>
+                  )}
                 </s-table-cell>
                 <s-table-cell>
                   <s-badge tone={STATUS_TONES[discount.status] ?? "neutral"}>
-                    {discount.status}
+                    {displayStatusLabel(discount.status)}
                   </s-badge>
                 </s-table-cell>
               </s-table-row>

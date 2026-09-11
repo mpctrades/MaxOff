@@ -111,6 +111,14 @@ export function defaultEndDate(startDate: string): string {
  * start, code present. Field-level messages, because §4.3 wants the error on
  * the field and not in a banner.
  */
+/**
+ * Shown both live, under the End date field as the merchant picks, and again
+ * on save. One constant so the two can never drift into two different
+ * sentences for the same problem.
+ */
+export const END_BEFORE_START_ERROR =
+  "The end date must be after the start date.";
+
 export function validateDiscountForm(
   state: DiscountFormState,
 ): DiscountFormResult {
@@ -149,7 +157,7 @@ export function validateDiscountForm(
     if (endsAt === null) {
       errors.endDate = "Enter an end date, or turn the end date off.";
     } else if (startsAt !== null && endsAt.getTime() <= startsAt.getTime()) {
-      errors.endDate = "The end date must be after the start date.";
+      errors.endDate = END_BEFORE_START_ERROR;
     }
   }
 

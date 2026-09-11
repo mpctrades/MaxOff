@@ -26,7 +26,9 @@ const TABLE: Record<CapabilityKey, PlanKey[]> = {
   activeDates: ["free", "growth", "pro"],
   analytics: ["growth", "pro"],
   customCheckoutWording: ["growth", "pro"],
-  itemAndCollectionMaximums: ["pro"],
+  itemMaximums: ["pro"],
+  collectionMaximums: ["pro"],
+  campaignBudget: ["pro"],
   perMarketCurrency: ["pro"],
   csvExport: ["pro"],
   twelveMonthHistory: ["pro"],
@@ -165,9 +167,11 @@ describe("the upsell", () => {
       "customCheckoutWording",
     ]);
 
-    // Pro adds the four PRO features plus support; it does not re-list analytics.
+    // Pro adds the PRO features plus support; it does not re-list analytics.
     expect(upgradeAdds("growth").map((entry) => entry.key)).toEqual([
-      "itemAndCollectionMaximums",
+      "itemMaximums",
+      "collectionMaximums",
+      "campaignBudget",
       "perMarketCurrency",
       "csvExport",
       "twelveMonthHistory",

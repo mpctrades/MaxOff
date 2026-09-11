@@ -33,6 +33,20 @@
 
   /* The "would have been given away" bar: a muted loss, never a brighter win. */
   --maxoff-loss: #e0b4ab;
+
+  /* Card surface for the tiles we draw ourselves. Polaris cards are white and
+     stay white (see brand-theme.ts) — this follows them rather than guessing. */
+  --maxoff-card: #ffffff;
+
+  /* A month-on-month rise. Polaris' own success green, so a MaxOff delta and
+     a Polaris success badge do not disagree by a shade. */
+  --maxoff-up: #0c5132;
+
+  /* The branded surface under the hero tile. A token rather than the orange
+     ramp directly, because the tint has to flip with the theme while the
+     orange it is tinted with does not. */
+  --maxoff-hero: var(--maxoff-orange-050);
+  --maxoff-hero-line: var(--maxoff-orange-200);
 }
 
 /**
@@ -48,6 +62,12 @@
     --maxoff-chart-grid: #4a4a4a;
     --maxoff-track: #303030;
     --maxoff-loss: #8e5b52;
+    --maxoff-card: #1a1a1a;
+    --maxoff-up: #8fe0b8;
+    /* A dark tint, not the light one: #fff2e8 under a dark theme's text is a
+       peach card nobody can read. */
+    --maxoff-hero: #2b1409;
+    --maxoff-hero-line: #7c2d12;
   }
 }
 
@@ -113,4 +133,448 @@
   clip-path: inset(50%);
   white-space: nowrap;
   border: 0;
+}
+
+/**
+ * Discount codes are monospace (§5). Used on the simulated checkout line,
+ * where the code and the maximum beside it should read as the one
+ * machine-written string the buyer actually sees.
+ */
+.maxoff-mono {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+}
+
+/**
+ * One line of the simulated checkout receipt: label on the left, amount hard
+ * right. Drawn by us rather than composed from `s-text` — see the note in
+ * `CheckoutReceipt`.
+ */
+.maxoff-receipt-line {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 16px;
+  align-items: baseline;
+}
+
+.maxoff-receipt-line--total {
+  font-weight: 600;
+}
+
+/**
+ * Room below the last card so a date field can scroll clear of the bottom of
+ * the app frame before its calendar opens. Kept in step with `PICKER_HEIGHT`
+ * in `app/lib/polaris-events.ts`, which is the measured height of the
+ * one-month grid. See the note beside its use in the create form.
+ */
+.maxoff-picker-scroll-room {
+  block-size: 280px;
+}
+
+/**
+ * The Summary card's headline — the whole offer in one sentence, on the one
+ * branded surface that card gets.
+ *
+ * §5 permits orange as a card tint with a 1px line, and as text on the figures
+ * themselves. Nothing else in the card is orange, so the tint still reads as
+ * "this is the offer" rather than as decoration. The sentence says the same
+ * thing in greyscale: the colour is emphasis, never the meaning.
+ */
+.maxoff-summary-headline {
+  padding: 10px 12px;
+  border: 1px solid var(--maxoff-orange-200);
+  border-radius: 10px;
+  background: var(--maxoff-orange-050);
+  color: var(--maxoff-text);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.maxoff-summary-headline__figure {
+  font-weight: 600;
+  color: var(--maxoff-orange-700);
+}
+
+/* Before there is an offer to state, the strip drops its tint rather than
+   sitting there as an empty orange box. */
+.maxoff-summary-headline:has(.maxoff-summary-headline__pending) {
+  border-color: var(--maxoff-chart-grid);
+  background: var(--maxoff-track);
+  color: var(--maxoff-text-subdued);
+}
+
+/**
+ * Plans & billing — the plan strip and the comparison table.
+ *
+ * Both are our own markup. Polaris has no comparison table and no meter, and
+ * §5 allows brand colour on our own surfaces, which is where the orange in the
+ * recommended column comes from.
+ */
+
+/**
+ * The current-plan strip: what you are on at the left, the one step up at the
+ * right, and the allowance meter spanning underneath both.
+ */
+.maxoff-plan-strip {
+  display: grid;
+  grid-template-columns: minmax(180px, max-content) 1fr;
+  gap: 12px 32px;
+  align-items: start;
+}
+
+.maxoff-plan-strip__action {
+  display: flex;
+  flex-direction: column;
+  align-items: end;
+  gap: 4px;
+  justify-self: end;
+}
+
+.maxoff-plan-strip__note {
+  color: var(--maxoff-text-subdued);
+  font-size: 13px;
+}
+
+/* The meter runs the full width under both, as one row of its own. */
+.maxoff-plan-strip > .maxoff-usage {
+  grid-column: 1 / -1;
+}
+
+@container (inline-size <= 640px) {
+  .maxoff-plan-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .maxoff-plan-strip__action {
+    align-items: start;
+    justify-self: start;
+  }
+}
+
+.maxoff-plan-strip__plan {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.maxoff-plan-strip__name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+}
+
+.maxoff-plan-strip__price {
+  color: var(--maxoff-text-subdued);
+  font-size: 13px;
+}
+
+.maxoff-plan-strip__next {
+  color: var(--maxoff-text-subdued);
+  font-size: 13px;
+}
+
+/* The Free plan's one-discount allowance, beside the plan it belongs to. */
+.maxoff-usage {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.maxoff-usage__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 13px;
+}
+
+.maxoff-usage__count {
+  color: var(--maxoff-text-subdued);
+}
+
+.maxoff-usage__track {
+  block-size: 6px;
+  border-radius: 3px;
+  background: var(--maxoff-track);
+  overflow: hidden;
+}
+
+.maxoff-usage__fill {
+  block-size: 6px;
+  border-radius: 3px;
+  background: var(--maxoff-orange-500);
+}
+
+.maxoff-usage__note {
+  color: var(--maxoff-text-subdued);
+  font-size: 13px;
+}
+
+/**
+ * The three plan cards.
+ *
+ * Our own markup: Polaris has no pricing card, and §5 allows brand colour on
+ * surfaces we draw. Only the recommended card wears it — a border and its
+ * button — so the orange still means "this one" rather than decorating three
+ * cards equally.
+ */
+.maxoff-plan-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+@container (inline-size <= 760px) {
+  .maxoff-plan-cards {
+    grid-template-columns: 1fr;
+  }
+}
+
+.maxoff-plan-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid var(--maxoff-chart-grid);
+  border-radius: 12px;
+  font-size: 13px;
+}
+
+.maxoff-plan-card--recommended {
+  border: 2px solid var(--maxoff-orange-500);
+}
+
+.maxoff-plan-card__name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+}
+
+.maxoff-plan-card__amount {
+  font-size: 24px;
+  font-weight: 650;
+}
+
+.maxoff-plan-card__per {
+  color: var(--maxoff-text-subdued);
+  font-size: 12px;
+}
+
+.maxoff-plan-card__tagline {
+  margin: 0;
+  color: var(--maxoff-text-subdued);
+}
+
+.maxoff-plan-card__features {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.maxoff-plan-card__features li {
+  display: grid;
+  grid-template-columns: 16px 1fr;
+  gap: 8px;
+  align-items: start;
+  line-height: 18px;
+}
+
+/* Shape first, colour second: the tick and the dash differ without it. */
+.maxoff-plan-card__yes {
+  color: var(--maxoff-orange-500);
+}
+
+.maxoff-plan-card__no {
+  color: var(--maxoff-text-subdued);
+}
+
+.maxoff-plan-card__missing {
+  color: var(--maxoff-text-subdued);
+}
+
+/* Pins every card's button to the bottom, so three lists of different lengths
+   still line their actions up. */
+.maxoff-plan-card__action {
+  margin-block-start: auto;
+  padding-block-start: 12px;
+}
+
+
+/**
+ * The MaxOff button — see `app/components/BrandButton.tsx` for why this is not
+ * `s-button`.
+ *
+ * Flat: no bevel, no ring, no gradient. The whole reason it exists is that
+ * Polaris hard-codes all three for a near-black fill, and on orange they read
+ * as a dirty outline.
+ *
+ * The fill is orange-500 #ea580c, Arthur's swatch. White on it is 3.6:1 —
+ * under the 4.5:1 floor for label text, and a deliberate, twice-confirmed
+ * decision rather than an oversight. #d93f0c is the brightest orange that
+ * clears AA if this is ever revisited; the only change needed is the two
+ * `background` values below.
+ */
+.maxoff-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  /* Sized to its label, never to its container. `s-stack` and `s-section` lay
+     their children out as a flex column, whose default `align-items: stretch`
+     was pulling the button across the whole card. */
+  align-self: start;
+  inline-size: fit-content;
+  /* Sized against the Polaris buttons it sits beside — "Test a cart" and
+     "View plans" on Home are 28px with a 12px label. A primary can carry a
+     little more weight than its neighbours without becoming a slab. */
+  min-block-size: 30px;
+  padding: 5px 14px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--maxoff-orange-500);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+/* The plan cards do want the full width — three cards read as one row only if
+   their actions line up edge to edge. */
+.maxoff-button--fill {
+  display: flex;
+  align-self: stretch;
+  inline-size: 100%;
+}
+
+.maxoff-button:hover {
+  background: var(--maxoff-orange-700);
+}
+
+.maxoff-button:active {
+  background: var(--maxoff-orange-800);
+}
+
+/* Never only a colour change: the ring is offset so it reads on the orange
+   fill and on the white secondary alike. */
+.maxoff-button:focus-visible {
+  outline: 2px solid var(--maxoff-orange-800);
+  outline-offset: 2px;
+}
+
+.maxoff-button--secondary {
+  border: 1px solid var(--maxoff-chart-grid);
+  background: #fff;
+  color: var(--maxoff-text);
+}
+
+.maxoff-button--secondary:hover {
+  background: var(--maxoff-track);
+}
+
+.maxoff-button--secondary:active {
+  background: var(--maxoff-orange-050);
+}
+
+.maxoff-button:disabled {
+  background: var(--maxoff-track);
+  border-color: var(--maxoff-chart-grid);
+  color: var(--maxoff-text-subdued);
+  cursor: default;
+}
+
+/* A modal's action, at the foot of its body. See `CheckoutPreviewModal`. */
+.maxoff-modal-actions {
+  display: flex;
+  justify-content: end;
+  padding-block-start: 4px;
+}
+
+/* The basket row's quantity field, held to the width of a quantity —
+   `s-number-field` has no width of its own and would fill the row. */
+.maxoff-quantity {
+  inline-size: 5.5rem;
+}
+
+/**
+ * Home's four figures, as four cards — the tiles from §4.1.
+ *
+ * Polaris has a metrics card (one section, dividers between the numbers). The
+ * approved UX is four separate cards with the first one branded, and the brand
+ * tint is the whole point of the first one: "money you kept" is the number
+ * MaxOff exists to produce, so it is the number that gets the orange. That
+ * tint is not the only signal — the label says what it is, and the figure is
+ * spelled out again in the chart underneath.
+ */
+.maxoff-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 16px;
+  border: 1px solid var(--maxoff-chart-grid);
+  border-radius: 12px;
+  background: var(--maxoff-card);
+  block-size: 100%;
+  box-sizing: border-box;
+}
+
+.maxoff-tile--hero {
+  border-color: var(--maxoff-hero-line);
+  background: var(--maxoff-hero);
+}
+
+.maxoff-tile__label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--maxoff-text-subdued);
+}
+
+.maxoff-tile__value {
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: -0.4px;
+  line-height: 28px;
+  color: var(--maxoff-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.maxoff-tile--hero .maxoff-tile__value {
+  color: var(--maxoff-orange-700);
+}
+
+/* The currency code, one step down. It stays on the figure — rule 5: an
+   amount with no code beside it is a number, not money — but it is not what
+   the eye should land on first. */
+.maxoff-tile__currency {
+  font-size: 14px;
+  font-weight: 550;
+}
+
+.maxoff-tile__note {
+  font-size: 12px;
+  color: var(--maxoff-text-subdued);
+}
+
+/* ▲ 18%. Green for a rise, subdued for a fall: a smaller month is not an
+   error, and red would say it was. The arrow carries the direction without
+   the colour. */
+.maxoff-tile__delta {
+  font-weight: 600;
+  color: var(--maxoff-up);
+}
+
+/* "Kept" is the money column, so it is the one table cell that takes the
+   brand — the same orange, and the same reason, as the hero tile. */
+.maxoff-kept {
+  font-weight: 600;
+  color: var(--maxoff-orange-700);
 }

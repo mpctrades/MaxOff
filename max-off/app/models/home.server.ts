@@ -70,7 +70,15 @@ export interface HomeData {
   totalCount: number;
   keptThisMonthMinor: number;
   keptLastMonthMinor: number;
+  /** Orders this month where the cap actually bit — `keptMinor > 0`. */
   ordersCapped: number;
+  /**
+   * Orders this month that used one of the shop's capped discounts, capped or
+   * not. The denominator under "Orders capped" (§4.1: "87 of 412 discounted
+   * orders"), and the reason a `CapEvent` is written for every order a capped
+   * discount touches, not only the ones that hit the maximum.
+   */
+  discountedOrders: number;
   /** False until the orders/paid webhook has written a single row. */
   hasCapEvents: boolean;
   biggestSave: HomeBiggestSave | null;
@@ -93,6 +101,7 @@ export async function getHomeData(shop: string): Promise<HomeData> {
     pausedCount,
     totalCount,
     thisMonth,
+    cappedThisMonth,
     lastMonth,
     capEventCount,
     biggestSaveRow,
@@ -118,6 +127,12 @@ export async function getHomeData(shop: string): Promise<HomeData> {
       where: { shop, occurredAt: { gte: thisMonthStart } },
       _sum: { keptMinor: true },
       _count: { _all: true },
+    }),
+    // The cap bit on this one. A discounted order that stayed under the
+    // break-even point kept nothing, and counting it as "capped" would
+    // overstate the number the tile exists to report.
+    prisma.capEvent.count({
+      where: { shop, occurredAt: { gte: thisMonthStart }, keptMinor: { gt: 0 } },
     }),
     prisma.capEvent.aggregate({
       where: {
@@ -161,7 +176,8 @@ export async function getHomeData(shop: string): Promise<HomeData> {
     totalCount,
     keptThisMonthMinor: thisMonth._sum.keptMinor ?? 0,
     keptLastMonthMinor: lastMonth._sum.keptMinor ?? 0,
-    ordersCapped: thisMonth._count._all,
+    ordersCapped: cappedThisMonth,
+    discountedOrders: thisMonth._count._all,
     hasCapEvents: capEventCount > 0,
     biggestSave: biggestSaveRow
       ? {

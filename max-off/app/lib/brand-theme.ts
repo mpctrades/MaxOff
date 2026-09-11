@@ -41,10 +41,13 @@ export const POLARIS_TOKEN_HASH = "26021";
  * Brand ramp, with the measured contrast against white — because which orange
  * goes where is decided by that number, not by taste:
  *
- *   orange500 #ea580c   3.5:1   fills only. Fine for a radio dot or a chart
+ *   orange500 #ea580c   3.6:1   fills only. Fine for a radio dot or a chart
  *                               bar (3:1 is the bar for a UI component), and
  *                               NOT enough to sit under white button text.
- *   orange700 #c2410c   5.1:1   the lightest orange that may carry text.
+ *   orange600 #d93f0c   4.5:1   the brightest orange that may carry white
+ *                               text — found by searching the ramp, not
+ *                               picked. Anything livelier fails AA.
+ *   orange700 #c2410c   5.2:1
  *   orange800 #9a3412   7.3:1
  *   orange900 #7c2d12   9.5:1
  *
@@ -55,6 +58,7 @@ const brand = {
   orange050: "#fff2e8",
   orange200: "#f8c39a",
   orange500: "#ea580c",
+  orange600: "#d93f0c",
   orange700: "#c2410c",
   orange800: "#9a3412",
   orange900: "#7c2d12",
@@ -68,13 +72,16 @@ const brand = {
  * it is appended when the CSS is generated.
  */
 export const BRAND_THEME_TOKENS: Record<string, string> = {
-  // Primary buttons and any other "brand" fill. orange700, not the brighter
-  // orange500: these carry white label text, and orange500 under white is
-  // 3.5:1 — below the 4.5:1 floor. orange700 is 5.1:1.
-  "fill-brand": brand.orange700,
-  "fill-brand-hover": brand.orange800,
-  "fill-brand-active": brand.orange900,
-  "fill-brand-disabled": "rgba(194, 65, 12, 0.32)",
+  // Primary buttons and any other "brand" fill.
+  //
+  // orange600 is as bright as a button carrying white text can be: at 4.50:1
+  // it clears the 4.5 floor with nothing to spare, and every livelier orange
+  // in the ramp fails. The livelier #ea580c is 3.6:1 — it is used elsewhere,
+  // on radio dots and chart bars, where nothing sits on top of it.
+  "fill-brand": brand.orange600,
+  "fill-brand-hover": brand.orange700,
+  "fill-brand-active": brand.orange800,
+  "fill-brand-disabled": "rgba(217, 63, 12, 0.32)",
   "text-brand-on-fill": brand.onFill,
   "text-brand-on-fill-hover": brand.onFillHover,
   "text-brand-on-fill-active": brand.onFillActive,

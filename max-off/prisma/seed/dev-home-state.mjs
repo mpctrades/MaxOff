@@ -100,13 +100,37 @@ async function seedFull() {
     });
   }
 
+  // Three orders this month that used the discount and stayed under the
+  // break-even point, so nothing was capped. They are the difference between
+  // "Orders capped" and the "of N discounted orders" under it: without them
+  // the tile reads "5 of 5", which is not a number anyone learns anything
+  // from.
+  for (const subtotalMinor of [24000, 51000, 88000]) {
+    orderNumber += 1;
+    const uncappedMinor = Math.round((subtotalMinor * 15) / 100);
+
+    await prisma.capEvent.create({
+      data: {
+        shop: SHOP,
+        cappedDiscountId: discount.id,
+        orderGid: `gid://shopify/Order/${orderNumber}`,
+        orderName: `#${orderNumber}`,
+        subtotalMinor,
+        uncappedMinor,
+        givenMinor: uncappedMinor,
+        keptMinor: 0,
+        occurredAt: new Date(Date.now() - 3 * DAY),
+      },
+    });
+  }
+
   await prisma.cappedDiscount.update({
     where: { id: discount.id },
     data: { keptMinor: totalKept, givenMinor: 15000 * keptByWeek.length },
   });
 
   console.log(
-    `state C — ${keptByWeek.length} cap events, ${totalKept} minor units kept`,
+    `state C — ${keptByWeek.length} cap events, ${totalKept} minor units kept, 3 uncapped orders`,
   );
 }
 

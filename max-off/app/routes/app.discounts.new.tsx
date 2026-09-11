@@ -12,6 +12,7 @@ import { authenticate } from "../shopify.server";
 import { createCappedDiscount, isCodeTaken } from "../models/discounts.server";
 import { ensureShopSettings } from "../models/settings.server";
 import { CheckoutPreviewModal } from "../components/CheckoutPreviewModal";
+import { CheckoutReceipt } from "../components/CheckoutReceipt";
 import {
   capDiscountMinor,
   capStartsAboveMinor,
@@ -19,17 +20,28 @@ import {
 } from "../lib/cap";
 import { DEFAULT_CHECKOUT_NOTE } from "../lib/cap-config";
 import {
+  combineDateTime,
   discountFormStateFrom,
   initialDiscountFormState,
   defaultEndDate,
+  END_BEFORE_START_ERROR,
   validateDiscountForm,
 } from "../lib/discount-form";
 import type {
   DiscountFieldErrors,
   DiscountFormState,
 } from "../lib/discount-form";
-import { formatAmountPlain, formatMoney, formatPercent } from "../lib/format";
-import { useNativeChange } from "../lib/polaris-events";
+import {
+  formatAmountPlain,
+  formatDate,
+  formatMoney,
+  formatPercent,
+} from "../lib/format";
+import {
+  useMergedRefs,
+  useNativeChange,
+  useRoomForPicker,
+} from "../lib/polaris-events";
 import type {
   CheckedElement,
   ValueElement,
@@ -68,7 +80,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   if (intent !== "create") {
-    return { intent: "unknown" as const, ok: false, message: "Unknown action." };
+    return {
+      intent: "unknown" as const,
+      ok: false,
+      message: "Unknown action.",
+    };
   }
 
   // Revalidated with the same function the component uses, so a client that
@@ -110,6 +126,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function CreateDiscountPage() {
+
   const { currencyCode, checkoutNote } = useLoaderData<typeof loader>();
   const shopify = useAppBridge();
   const navigate = useNavigate();
@@ -117,7 +134,9 @@ export default function CreateDiscountPage() {
   const saveFetcher = useFetcher<typeof action>();
   const codeFetcher = useFetcher<typeof action>();
 
-  const [state, setState] = useState<DiscountFormState>(() => initialDiscountFormState());
+  const [state, setState] = useState<DiscountFormState>(() =>
+    initialDiscountFormState(),
+  );
   const [dirty, setDirty] = useState(false);
   const [errors, setErrors] = useState<DiscountFieldErrors>({});
   const [simSubtotalMinor, setSimSubtotalMinor] = useState(140000);
@@ -144,6 +163,30 @@ export default function CreateDiscountPage() {
     [ready, capMinor, percentage],
   );
 
+  const startsAt = combineDateTime(state.startDate, state.startTime);
+  const endsAt = state.endDateOn
+    ? combineDateTime(state.endDate, state.endTime)
+    : null;
+
+  /**
+   * The range error, live under the field rather than only on save.
+   *
+   * Deliberately narrow: only the "after the start date" case, and only once
+   * both halves parse. An empty or half-typed date is not an error yet — that
+   * is what put a red "Enter an end date" under an untouched control before,
+   * and `validateDiscountForm` still catches it on save.
+   */
+  const endDateRangeError =
+    startsAt !== null && endsAt !== null && endsAt.getTime() <= startsAt.getTime()
+      ? END_BEFORE_START_ERROR
+      : undefined;
+
+  const endDateError = errors.endDate ?? endDateRangeError;
+
+  /** `11 Sep 2026, 00:00` for the summary, or a dash when it does not parse. */
+  const summaryMoment = (at: Date | null, time: string) =>
+    at === null ? "—" : `${formatDate(at)}, ${time}`;
+
   /**
    * `150 ÷ 15% = 1,000` is only an equals sign when the division comes out
    * even. `capStartsAboveMinor` rounds to the nearest cent, so anything else
@@ -154,9 +197,7 @@ export default function CreateDiscountPage() {
 
   const preview = useMemo(
     () =>
-      ready
-        ? capDiscountMinor(simSubtotalMinor, percentage, capMinor!)
-        : null,
+      ready ? capDiscountMinor(simSubtotalMinor, percentage, capMinor!) : null,
     [ready, simSubtotalMinor, percentage, capMinor],
   );
 
@@ -226,6 +267,17 @@ export default function CreateDiscountPage() {
   const onEndDateChange = useNativeChange<ValueElement>((element) =>
     set("endDate", element.value),
   );
+
+  // Both date fields can end up near the bottom of the app frame, where the
+  // calendar would open past its edge. See `useRoomForPicker`.
+  const startDateRef = useMergedRefs<ValueElement>(
+    onStartDateChange,
+    useRoomForPicker<ValueElement>(),
+  );
+  const endDateRef = useMergedRefs<ValueElement>(
+    onEndDateChange,
+    useRoomForPicker<ValueElement>(),
+  );
   const onUsageLimitOnChange = useNativeChange<CheckedElement>((element) =>
     set("usageLimitOn", element.checked),
   );
@@ -254,10 +306,17 @@ export default function CreateDiscountPage() {
     setState((current) => ({
       ...current,
       endDateOn: on,
-      endDate: on && current.endDate === "" ? defaultEndDate(current.startDate) : current.endDate,
+      endDate:
+        on && current.endDate === ""
+          ? defaultEndDate(current.startDate)
+          : current.endDate,
     }));
     setDirty(true);
-    setErrors((current) => ({ ...current, endDateOn: undefined, endDate: undefined }));
+    setErrors((current) => ({
+      ...current,
+      endDateOn: undefined,
+      endDate: undefined,
+    }));
   });
 
   const validate = (): boolean => {
@@ -329,7 +388,10 @@ export default function CreateDiscountPage() {
       </s-paragraph>
 
       {notMirrored && (
-        <s-banner tone="warning" heading="Created in Shopify, not yet in MaxOff">
+        <s-banner
+          tone="warning"
+          heading="Created in Shopify, not yet in MaxOff"
+        >
           {saveFetcher.data?.intent === "create" && saveFetcher.data.ok
             ? saveFetcher.data.code
             : "The discount"}{" "}
@@ -378,7 +440,9 @@ export default function CreateDiscountPage() {
             name="code"
             value={state.code}
             placeholder="SUMMER15"
-            onInput={(event) => set("code", event.currentTarget.value.toUpperCase())}
+            onInput={(event) =>
+              set("code", event.currentTarget.value.toUpperCase())
+            }
             onBlur={() => {
               const code = state.code.trim();
               if (code !== "") {
@@ -390,7 +454,9 @@ export default function CreateDiscountPage() {
             }}
             {...(errors.code ? { error: errors.code } : {})}
           ></s-text-field>
-          <s-button onClick={() => set("code", generateCode())}>Generate</s-button>
+          <s-button onClick={() => set("code", generateCode())}>
+            Generate
+          </s-button>
         </s-grid>
       </s-section>
 
@@ -528,17 +594,42 @@ export default function CreateDiscountPage() {
               The percentage applies to the whole cart subtotal.
             </s-text>
           </s-choice>
+          {/* A badge on its own in `secondary-content` drops onto a line of
+              its own — Polaris always renders that slot as a block under the
+              label, and there is no slot that reaches the label's line. So
+              each badge is paired with a line of description and the two sit
+              together, the same arrangement as the choices above.
+
+              The description also earns its place: "Coming in a later
+              version" only repeated what the badge already says, where this
+              tells a merchant what the option will actually do. */}
           <s-choice value="collections" disabled>
             Specific collections
-            <s-text slot="details" color="subdued">
-              Coming in a later version.
-            </s-text>
+            <s-stack
+              slot="secondary-content"
+              direction="inline"
+              gap="small-300"
+              alignItems="center"
+            >
+              <s-text color="subdued">
+                The percentage applies to chosen collections only.
+              </s-text>
+              <s-badge>Later version</s-badge>
+            </s-stack>
           </s-choice>
           <s-choice value="products" disabled>
             Specific products
-            <s-text slot="details" color="subdued">
-              Coming in a later version.
-            </s-text>
+            <s-stack
+              slot="secondary-content"
+              direction="inline"
+              gap="small-300"
+              alignItems="center"
+            >
+              <s-text color="subdued">
+                The percentage applies to chosen products only.
+              </s-text>
+              <s-badge>Later version</s-badge>
+            </s-stack>
           </s-choice>
         </s-choice-list>
       </s-section>
@@ -563,73 +654,119 @@ export default function CreateDiscountPage() {
               Every cart that uses the code gets the discount.
             </s-text>
           </s-choice>
+          {/* Badge beside description, not beside the label — see the note
+              in the "Applies to" section. The description says what the
+              option would do; the badge says why it cannot yet. */}
           <s-choice value="subtotal" disabled>
             Minimum purchase amount
-            <s-text slot="details" color="subdued">
-              Needs the cap engine to enforce it.
-            </s-text>
+            <s-stack
+              slot="secondary-content"
+              direction="inline"
+              gap="small-300"
+              alignItems="center"
+            >
+              <s-text color="subdued">
+                A minimum subtotal before the discount applies.
+              </s-text>
+              <s-badge>Needs the cap engine</s-badge>
+            </s-stack>
           </s-choice>
           <s-choice value="quantity" disabled>
             Minimum quantity of items
-            <s-text slot="details" color="subdued">
-              Needs the cap engine to enforce it.
-            </s-text>
+            <s-stack
+              slot="secondary-content"
+              direction="inline"
+              gap="small-300"
+              alignItems="center"
+            >
+              <s-text color="subdued">
+                A minimum number of items before the discount applies.
+              </s-text>
+              <s-badge>Needs the cap engine</s-badge>
+            </s-stack>
           </s-choice>
         </s-choice-list>
       </s-section>
 
       {/* ---------------- 5 · Customers and usage limits ---------------- */}
       <s-section heading="Customers and usage limits">
-        <s-choice-list
-          label="Who can use this discount"
-          name="eligibility"
-          values={["all"]}
-        >
-          <s-choice value="all">
-            All customers
-            <s-text slot="details" color="subdued">
-              Anyone who enters the code.
-            </s-text>
-          </s-choice>
-          <s-choice value="segments" disabled>
-            Specific customer segments
-            <s-text slot="details" color="subdued">
-              Coming in a later version.
-            </s-text>
-          </s-choice>
-        </s-choice-list>
+        {/* One block stack, so the divider below stretches the full
+            width — as a direct child of `s-section` it collapses. */}
+        <s-stack direction="block" gap="base">
+          <s-choice-list
+            label="Who can use this discount"
+            name="eligibility"
+            values={["all"]}
+          >
+            <s-choice value="all">
+              All customers
+              <s-text slot="details" color="subdued">
+                Anyone who enters the code.
+              </s-text>
+            </s-choice>
+            <s-choice value="segments" disabled>
+              Specific customer segments
+              <s-stack
+                slot="secondary-content"
+                direction="inline"
+                gap="small-300"
+                alignItems="center"
+              >
+                <s-text color="subdued">
+                  Limit the code to chosen customer segments.
+                </s-text>
+                <s-badge>Later version</s-badge>
+              </s-stack>
+            </s-choice>
+          </s-choice-list>
 
-        <s-checkbox
-          label="Limit the total number of uses"
-          name="usageLimitOn"
-          checked={state.usageLimitOn}
-          ref={onUsageLimitOnChange}
-        ></s-checkbox>
+          <s-divider direction="inline"></s-divider>
 
-        {state.usageLimitOn && (
-          <s-number-field
-            label="Total uses"
-            name="usageLimit"
-            min={1}
-            step={1}
-            value={state.usageLimit}
-            onInput={(event) => set("usageLimit", event.currentTarget.value)}
-            {...(errors.usageLimit ? { error: errors.usageLimit } : {})}
-          ></s-number-field>
-        )}
+          <s-checkbox
+            label="Limit the total number of uses"
+            name="usageLimitOn"
+            checked={state.usageLimitOn}
+            ref={onUsageLimitOnChange}
+          ></s-checkbox>
 
-        <s-checkbox
-          label="Limit to one use per customer"
-          name="oncePerCustomer"
-          checked={state.oncePerCustomer}
-          ref={onOncePerCustomerChange}
-        ></s-checkbox>
+          {state.usageLimitOn && (
+            <s-number-field
+              label="Total uses"
+              name="usageLimit"
+              min={1}
+              step={1}
+              value={state.usageLimit}
+              onInput={(event) => set("usageLimit", event.currentTarget.value)}
+              {...(errors.usageLimit ? { error: errors.usageLimit } : {})}
+            ></s-number-field>
+          )}
 
-        <s-checkbox
-          label="Stop the code once it has given away a total amount"
-          name="budgetCap"
-          disabled
-        ></s-checkbox>
+          <s-checkbox
+            label="Limit to one use per customer"
+            name="oncePerCustomer"
+            checked={state.oncePerCustomer}
+            ref={onOncePerCustomerChange}
+          ></s-checkbox>
+
+          {/* `s-checkbox` takes no children and its `details` is a plain
+              string, so the badge cannot go inside it. A grid puts the two side
+              by side instead: `max-content` keeps the checkbox at its natural
+              width, which an inline stack would not — a form control stretches
+              and would push the badge onto its own row. */}
+          <s-grid
+            gridTemplateColumns="max-content auto"
+            gap="small-300"
+            alignItems="baseline"
+          >
+            <s-checkbox
+              label="Stop the code once it has given away a total amount"
+              name="budgetCap"
+              details="A budget for the whole campaign, not one order."
+              disabled
+            ></s-checkbox>
+            <s-badge>Pro</s-badge>
+          </s-grid>
+        </s-stack>
       </s-section>
 
       {/* ---------------- 6 · Combinations ---------------- */}
@@ -673,22 +810,45 @@ export default function CreateDiscountPage() {
 
       {/* ---------------- 7 · What the customer sees ---------------- */}
       <s-section heading="What the customer sees">
-        <s-text-field
-          label="Checkout note"
-          name="checkoutNote"
-          value={checkoutNote}
-          disabled
-          maxLength={60}
-        ></s-text-field>
-        <s-paragraph color="subdued">
-          The buyer always sees a line at checkout. In this version it reads{" "}
-          <s-text type="strong">
-            {state.code || "CODE"} — {state.percentage || "0"}% off (max{" "}
-            {capMinor === null ? "0.00" : money(capMinor)})
-          </s-text>{" "}
-          with the note above beneath it. Editing the wording comes in a later
-          version.
-        </s-paragraph>
+        <s-stack direction="block" gap="base">
+          {/* The badge has to sit on the label's line, and `s-text-field`
+              takes its label as a string. So the visible label is ours and
+              the field's own label is kept for assistive technology only.
+              The field is disabled, so nothing is lost by the visible text
+              not being a `<label>` that focuses it. */}
+          <s-stack direction="block" gap="small-300">
+            <s-stack direction="inline" gap="small-300" alignItems="center">
+              <s-text>Checkout note</s-text>
+              <s-badge>Later version</s-badge>
+            </s-stack>
+            <s-text-field
+              label="Checkout note"
+              labelAccessibilityVisibility="exclusive"
+              name="checkoutNote"
+              value={checkoutNote}
+              disabled
+              maxLength={60}
+            ></s-text-field>
+          </s-stack>
+
+          {/* The same receipt the "See checkout view" modal shows, on the
+              same simulated cart as the live preview — one dataset, §12.4. */}
+          {ready ? (
+            <CheckoutReceipt
+              code={state.code || "CODE"}
+              percentage={percentage}
+              capMinor={capMinor!}
+              currencyCode={currencyCode}
+              subtotalMinor={simSubtotalMinor}
+              checkoutNote={checkoutNote}
+            />
+          ) : (
+            <s-paragraph color="subdued">
+              Enter a percentage and a maximum to see the buyer&apos;s checkout
+              lines.
+            </s-paragraph>
+          )}
+        </s-stack>
       </s-section>
 
       {/* ---------------- 8 · Active dates ---------------- */}
@@ -701,7 +861,8 @@ export default function CreateDiscountPage() {
             label="Start date"
             name="startDate"
             value={state.startDate}
-            ref={onStartDateChange}
+            defaultView={pickerView(state.startDate)}
+            ref={startDateRef}
             {...(errors.startDate ? { error: errors.startDate } : {})}
           ></s-date-field>
           {/* Polaris has no time field in this version, so the time is a
@@ -727,13 +888,17 @@ export default function CreateDiscountPage() {
             gridTemplateColumns="@container (inline-size <= 500px) 1fr, 1fr 1fr"
             gap="base"
           >
+            {/* `allow` greys out every day before the start date in the
+                picker. `defaultView` opens on the end date's own month, or on
+                the start date's when the field is empty — never on today. */}
             <s-date-field
               label="End date"
               name="endDate"
               value={state.endDate}
               allow={`${state.startDate}--`}
-              ref={onEndDateChange}
-              {...(errors.endDate ? { error: errors.endDate } : {})}
+              defaultView={pickerView(state.endDate) ?? pickerView(state.startDate)}
+              ref={endDateRef}
+              {...(endDateError ? { error: endDateError } : {})}
             ></s-date-field>
             <s-text-field
               label="End time (UTC, 24-hour)"
@@ -746,6 +911,20 @@ export default function CreateDiscountPage() {
         )}
       </s-section>
 
+      {/* Scroll room for the date pickers.
+
+          "Active dates" is the last card on the page, so its fields sit at the
+          very bottom of the scrollable area. `s-date-field` opens its calendar
+          below the field as a `position: fixed` dialog, and in an embedded app
+          nothing can be drawn past the iframe's viewport — so the day grid fell
+          outside the frame and could not be reached. `useRoomForPicker` scrolls
+          the field up to make space, but a page cannot scroll past its own end:
+          without this the field could only rise 82px of the ~220px needed.
+
+          Empty space below the last card, which costs nothing to look at and is
+          the difference between a usable picker and an unusable one. */}
+      <div className="maxoff-picker-scroll-room" aria-hidden="true"></div>
+
       {/* ---------------- Right column: Summary, then the preview ----------
           §12.2: the mockup buries the preview at the bottom of a 2,400px form,
           eleven cards below the fields that drive it. It belongs here, beside
@@ -754,42 +933,66 @@ export default function CreateDiscountPage() {
         <div style={{ position: "sticky", top: "16px" }}>
           <s-stack direction="block" gap="base">
             <s-section heading="Summary">
-              <s-stack direction="block" gap="small-200">
-                <SummaryRow label="Code" value={state.code || "—"} />
-                <SummaryRow label="Type" value="Percentage, capped" />
-                <SummaryRow
-                  label="Value"
-                  value={validPercentage ? formatPercent(percentage) : "—"}
-                />
-                <SummaryRow
-                  label="Maximum"
-                  value={capMinor === null ? "—" : money(capMinor)}
-                />
-                <SummaryRow
-                  label="Cap starts above"
-                  value={
-                    startsAboveMinor === null ? "—" : money(startsAboveMinor)
-                  }
-                />
-                <SummaryRow label="Applies to" value="All products" />
-                <SummaryRow label="Customers" value="All customers" />
-                <SummaryRow label="Combines" value={combinesLabel(state)} />
-                <SummaryRow
-                  label="Uses"
-                  value={
-                    state.usageLimitOn && state.usageLimit
-                      ? `${state.usageLimit} total`
-                      : "Unlimited"
-                  }
-                />
-                <SummaryRow
-                  label="Starts"
-                  value={state.startDate || "—"}
-                />
-                <SummaryRow
-                  label="Ends"
-                  value={state.endDateOn ? state.endDate || "—" : "No end date"}
-                />
+              <s-stack direction="block" gap="base">
+                {/* The whole discount in one sentence, on the one branded
+                    surface this card gets. §5 allows orange as a card tint
+                    with a 1px line and as brand text — the two numbers that
+                    define the offer are the only things wearing it, so the
+                    colour still means something by the time a merchant reads
+                    the rows below. */}
+                <div className="maxoff-summary-headline">
+                  {ready ? (
+                    <>
+                      <strong className="maxoff-summary-headline__figure">
+                        {formatPercent(percentage)} off
+                      </strong>
+                      , never more than{" "}
+                      <strong className="maxoff-summary-headline__figure maxoff-tabular">
+                        {money(capMinor!)}
+                      </strong>
+                      .
+                    </>
+                  ) : (
+                    <span className="maxoff-summary-headline__pending">
+                      Enter a percentage and a maximum to see the offer in one
+                      line.
+                    </span>
+                  )}
+                </div>
+
+                <s-stack direction="block" gap="small-200">
+                  <SummaryRow label="Code" value={state.code || "—"} />
+                  <SummaryRow label="Type" value="Percentage, capped" />
+                  <SummaryRow
+                    label="Maximum"
+                    value={capMinor === null ? "—" : money(capMinor)}
+                  />
+                  <SummaryRow
+                    label="Cap starts above"
+                    value={
+                      startsAboveMinor === null ? "—" : money(startsAboveMinor)
+                    }
+                  />
+                  <SummaryRow label="Applies to" value="All products" />
+                  <SummaryRow label="Customers" value="All customers" />
+                  <SummaryRow label="Uses" value={usesLabel(state)} />
+                  <SummaryRow
+                    label="Combines with"
+                    value={combinesLabel(state)}
+                  />
+                  <SummaryRow
+                    label="Starts"
+                    value={summaryMoment(startsAt, state.startTime)}
+                  />
+                  <SummaryRow
+                    label="Ends"
+                    value={
+                      state.endDateOn
+                        ? summaryMoment(endsAt, state.endTime)
+                        : "No end date"
+                    }
+                  />
+                </s-stack>
               </s-stack>
             </s-section>
 
@@ -816,7 +1019,10 @@ export default function CreateDiscountPage() {
                     onChange={(event) =>
                       setSimSubtotalMinor(Number(event.target.value))
                     }
-                    style={{ width: "100%", accentColor: "var(--maxoff-orange-700)" }}
+                    style={{
+                      width: "100%",
+                      accentColor: "var(--maxoff-orange-700)",
+                    }}
                   />
 
                   <s-button-group>
@@ -852,7 +1058,10 @@ export default function CreateDiscountPage() {
                         the maximum stopped it.
                       </>
                     ) : (
-                      <>the full {formatPercent(percentage)} — still under your maximum.</>
+                      <>
+                        the full {formatPercent(percentage)} — still under your
+                        maximum.
+                      </>
                     )}
                   </s-text>
 
@@ -870,10 +1079,7 @@ export default function CreateDiscountPage() {
                         )}, so the maximum does not apply yet.`}
                   </s-text>
 
-                  <s-button
-                    commandFor={CHECKOUT_PREVIEW_ID}
-                    command="--show"
-                  >
+                  <s-button commandFor={CHECKOUT_PREVIEW_ID} command="--show">
                     See checkout view
                   </s-button>
                 </s-stack>
@@ -885,13 +1091,16 @@ export default function CreateDiscountPage() {
                 Ready-made caps for common campaigns. Coming in a later version.
               </s-paragraph>
               <s-stack direction="block" gap="small-200">
-                {["Sitewide 15% / max 150", "Black Friday 30% / max 200", "Welcome 10% / max 25", "VIP 20% / max 80"].map(
-                  (template) => (
-                    <s-button key={template} disabled>
-                      {template}
-                    </s-button>
-                  ),
-                )}
+                {[
+                  "Sitewide 15% / max 150",
+                  "Black Friday 30% / max 200",
+                  "Welcome 10% / max 25",
+                  "VIP 20% / max 80",
+                ].map((template) => (
+                  <s-button key={template} disabled>
+                    {template}
+                  </s-button>
+                ))}
               </s-stack>
             </s-section>
           </s-stack>
@@ -990,15 +1199,42 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
 
 function combinesLabel(state: DiscountFormState): string {
   const parts = [
-    state.combinesProduct ? "product" : null,
-    state.combinesOrder ? "order" : null,
-    state.combinesShipping ? "shipping" : null,
+    state.combinesProduct ? "Product" : null,
+    state.combinesOrder ? "Order" : null,
+    state.combinesShipping ? "Shipping" : null,
   ].filter((part): part is string => part !== null);
 
   return parts.length === 0 ? "Nothing" : parts.join(", ");
 }
 
+/**
+ * The two usage limits read as one line, because they answer one question.
+ * A total cap and a per-customer cap are independent — a discount can carry
+ * both — and the summary said "Unlimited" whenever the total was off, which
+ * was wrong for the default: one use per customer is a limit.
+ */
+function usesLabel(state: DiscountFormState): string {
+  const parts = [
+    state.usageLimitOn && state.usageLimit ? `${state.usageLimit} total` : null,
+    state.oncePerCustomer ? "1 per customer" : null,
+  ].filter((part): part is string => part !== null);
+
+  return parts.length === 0 ? "Unlimited" : parts.join(", ");
+}
+
 /** `MAXOFF` plus four digits — enough to be unique in practice, short to type. */
+/**
+ * `2026-10-11` → `2026-10`, the month a date picker should open on.
+ *
+ * `s-date-field` opens on *today's* month unless it is told otherwise — which
+ * is why the End date picker landed on September with 11 October selected.
+ * `defaultView` is the documented control for that, and it only sets the
+ * opening month: once the merchant navigates, the field owns its own view.
+ */
+function pickerView(iso: string): string | undefined {
+  return /^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso.slice(0, 7) : undefined;
+}
+
 function generateCode(): string {
   return `MAXOFF${Math.floor(1000 + Math.random() * 9000)}`;
 }

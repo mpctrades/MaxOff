@@ -13,6 +13,7 @@ import {
   saveShopSettings,
 } from "../models/settings.server";
 import { CAP_ENGINE_DEPLOYED } from "../lib/cap";
+import { formatCurrencyChoice, formatMoney } from "../lib/format";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
@@ -60,96 +61,108 @@ export default function SettingsPage() {
       <s-paragraph color="subdued">How MaxOff behaves in your store.</s-paragraph>
 
       {/* ---------------- 1 · Checkout wording (V2) ---------------- */}
+      {/* Still `disabled`: §4.7 renders this field read-only in V1, and
+          `EDITABLE_SETTINGS` is empty so there is nothing behind it to write.
+          `maxLength` is off only because it is what draws the "33/60" counter;
+          the note's 60-character limit from §4.7 goes back on this field the
+          day editing ships. */}
       <s-section heading="Checkout wording">
         <s-text-field
-          label="Note shown under the discount at checkout"
+          label="Default note under a capped discount"
           name="defaultCheckoutNote"
           value={checkoutNote}
-          maxLength={60}
           disabled
           details="Used for new discounts. You can override it on any single discount."
         ></s-text-field>
-        <s-paragraph color="subdued">
-          Editing this wording comes in a later version. Every capped discount
-          currently shows this note when the maximum applies.
-        </s-paragraph>
       </s-section>
 
       {/* ---------------- 2 · Currency and rounding ---------------- */}
+      {/* Both controls are `disabled`, and both for a reason a merchant would
+          agree with rather than to look tidy. The store currency belongs to
+          Shopify — MaxOff follows it and never converts (rule 5), so an
+          editable select here would promise something the cap engine does not
+          do. Rounding is fixed by the Function itself: changing it in the
+          admin without changing the engine would make this screen lie about
+          what happens at checkout. */}
       <s-section heading="Currency and rounding">
         <s-stack direction="block" gap="base">
           <s-grid
-            gridTemplateColumns="@container (inline-size <= 500px) 1fr, 1fr 2fr"
+            gridTemplateColumns="@container (inline-size <= 500px) 1fr, 1fr 1fr"
             gap="base"
-            alignItems="start"
           >
-            <s-text color="subdued">Store currency</s-text>
-            <s-stack direction="block" gap="small-500">
-              <s-stack direction="inline" gap="small-300" alignItems="center">
-                <s-text type="strong">{currencyCode}</s-text>
-                {liveCurrencyCode === null && (
-                  <s-badge tone="warning">Last known</s-badge>
-                )}
-              </s-stack>
-              <s-text color="subdued">
-                MaxOff follows your store currency. You set it in Shopify
-                settings, not here.
-              </s-text>
-            </s-stack>
+            <s-select
+              label="Store currency"
+              name="storeCurrency"
+              value={currencyCode}
+              disabled
+              details={
+                liveCurrencyCode === null
+                  ? "Last known value — Shopify could not be reached."
+                  : "Set in Shopify settings, not here."
+              }
+            >
+              <s-option value={currencyCode}>
+                {formatCurrencyChoice(currencyCode)}
+              </s-option>
+            </s-select>
+
+            <s-select
+              label="Rounding"
+              name="rounding"
+              value={rounding === "down" ? "down" : "cent"}
+              disabled
+              details="Half-up to the cent, once, on the final discount amount."
+            >
+              <s-option value="cent">To the cent (recommended)</s-option>
+              <s-option value="down">Down to the whole unit</s-option>
+            </s-select>
           </s-grid>
 
-          {/* §6 and rule 5, stated where a merchant will look for it. */}
-          <s-paragraph color="subdued">
-            Maximums relabel, they are never converted. A maximum of 150 is 150{" "}
-            {currencyCode} — if your store currency changes, the number stays
-            the same and only the code beside it changes.
-          </s-paragraph>
-
-          <s-divider direction="inline"></s-divider>
-
-          <s-select
-            label="Rounding"
-            name="rounding"
-            value={rounding === "down" ? "down" : "cent"}
-            disabled
-            details="MaxOff rounds half-up to the cent, once, on the final discount amount."
-          >
-            <s-option value="cent">To the cent (recommended)</s-option>
-            <s-option value="down">Down to the whole unit</s-option>
-          </s-select>
-          <s-paragraph color="subdued">
-            Per-store rounding is not available yet. The cap engine rounds
-            half-up to the cent, so this cannot be changed without changing
-            what the engine does at checkout.
-          </s-paragraph>
-
-          <s-banner tone="info" heading="Selling in several currencies?">
-            Set a maximum per market instead of converting one number. That is a
-            Pro feature.
+          {/* Carries rule 5 on its own now that the "maximums relabel"
+              paragraph is gone: "instead of converting one number" is the
+              same promise in fewer words. */}
+          <s-banner tone="info">
+            <s-stack direction="inline" gap="small-300" alignItems="center">
+              <s-text>
+                Selling in several currencies?{" "}
+                <strong>Set a maximum per market</strong> instead of converting
+                one number.
+              </s-text>
+              <s-badge>Pro</s-badge>
+            </s-stack>
           </s-banner>
         </s-stack>
       </s-section>
 
       {/* ---------------- 3 · Email alerts (V2) ---------------- */}
+      {/* Every box is `disabled`: no alert is sent in V1, and nothing behind
+          this screen can turn one on. The first two are `checked` because that
+          is the state Arthur drew — see the note in the reply about what a
+          ticked box claims to a merchant who cannot read the source. */}
       <s-section heading="Email alerts">
-        <s-paragraph color="subdued">
-          None of these are sent yet. They are here so you can see what is
-          coming.
-        </s-paragraph>
         <s-stack direction="block" gap="small-300">
           <s-checkbox
             label="Weekly summary of the money you kept"
             name="alertWeekly"
+            details="Sent every Monday to your store's contact email."
+            checked
             disabled
           ></s-checkbox>
           <s-checkbox
-            label="Warn me before a capped discount expires"
+            label="A discount is about to expire"
             name="alertExpiry"
+            details="Two days before the end date."
+            checked
             disabled
           ></s-checkbox>
+          {/* "Cap" never appears in a label (CLAUDE.md, voice) — the merchant
+              word is "maximum". The threshold is rendered through `formatMoney`
+              so it carries the store's own currency rather than a hard-coded
+              USD. */}
           <s-checkbox
-            label="Tell me when a single order hits the maximum hard"
+            label={`A single order goes more than ${formatMoney(10000, currencyCode)} over the maximum`}
             name="alertBigCap"
+            details="Useful for spotting an influencer code being shared publicly."
             disabled
           ></s-checkbox>
         </s-stack>

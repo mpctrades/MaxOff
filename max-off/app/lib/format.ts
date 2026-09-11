@@ -24,18 +24,35 @@ const MINOR_UNITS = 100;
  * the number is unchanged by it (CLAUDE.md rule 5).
  */
 export function formatMoney(minor: number, currencyCode: string): string {
+  return `${formatAmount(minor)} ${currencyCode}`;
+}
+
+/**
+ * `1,600.00` — the same number `formatMoney` renders, without the currency
+ * code.
+ *
+ * For the simulated checkout receipt, where a code on every line is noise a
+ * real checkout does not have: the panel names the currency once in its
+ * header and the lines under it are bare, exactly as Shopify's own checkout
+ * shows them. Everywhere else a figure stands on its own, use `formatMoney` —
+ * an amount with no code beside it is a number, not money (rule 5).
+ */
+export function formatAmount(minor: number): string {
   const sign = minor < 0 ? "-" : "";
   const absolute = Math.abs(Math.trunc(minor));
 
   const whole = Math.floor(absolute / MINOR_UNITS);
   const cents = absolute % MINOR_UNITS;
 
-  const grouped = new Intl.NumberFormat("en-US", {
+  return `${sign}${groupWhole(whole)}.${String(cents).padStart(2, "0")}`;
+}
+
+/** `1234` → `1,234`. Grouping is `en-US` for every currency, per §6. */
+function groupWhole(whole: number): string {
+  return new Intl.NumberFormat("en-US", {
     useGrouping: true,
     maximumFractionDigits: 0,
   }).format(whole);
-
-  return `${sign}${grouped}.${String(cents).padStart(2, "0")} ${currencyCode}`;
 }
 
 /**
@@ -55,14 +72,27 @@ export function formatAmountPlain(minor: number): string {
   const whole = Math.floor(absolute / MINOR_UNITS);
   const cents = absolute % MINOR_UNITS;
 
-  const grouped = new Intl.NumberFormat("en-US", {
-    useGrouping: true,
-    maximumFractionDigits: 0,
-  }).format(whole);
-
   return cents === 0
-    ? `${sign}${grouped}`
-    : `${sign}${grouped}.${String(cents).padStart(2, "0")}`;
+    ? `${sign}${groupWhole(whole)}`
+    : `${sign}${groupWhole(whole)}.${String(cents).padStart(2, "0")}`;
+}
+
+/**
+ * `USD` → `USD — US Dollar`, for the store-currency control on settings.
+ *
+ * The name comes from `Intl.DisplayNames` rather than a table of our own: a
+ * hand-kept list of currency names is a list that goes stale, and this one
+ * follows the admin's locale for free. Falls back to the bare code if the
+ * runtime cannot name it, which is the only part that matters — the code is
+ * what MaxOff labels amounts with (rule 5).
+ */
+export function formatCurrencyChoice(code: string, locale = "en"): string {
+  try {
+    const name = new Intl.DisplayNames([locale], { type: "currency" }).of(code);
+    return name && name !== code ? `${code} — ${name}` : code;
+  } catch {
+    return code;
+  }
 }
 
 /** `15%`. Whole numbers only, per §6. */
@@ -81,6 +111,22 @@ export function formatPercent(percentage: number): string {
 export function formatDate(date: Date): string {
   const month = MONTHS[date.getUTCMonth()];
   return `${date.getUTCDate()} ${month} ${date.getUTCFullYear()}`;
+}
+
+/**
+ * `Jul 7` — a chart axis label.
+ *
+ * The money-kept chart has eight of these side by side in 10px type, so the
+ * year is dropped and the month leads: `Jul 7` reads as a date at a glance
+ * where `7/7` has to be decoded, and where `7 Jul` puts eight different digits
+ * in the column the eye scans first.
+ *
+ * Rendered in UTC for the same reason as `formatDate` — the week buckets in
+ * `home.server.ts` are UTC weeks, and a server in another zone must not shift
+ * a bar's label onto the wrong day.
+ */
+export function formatMonthDay(date: Date): string {
+  return `${MONTHS[date.getUTCMonth()]} ${date.getUTCDate()}`;
 }
 
 /**

@@ -1,9 +1,12 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  formatAmount,
+  formatCurrencyChoice,
   formatAmountPlain,
   formatDate,
   formatDateRange,
+  formatMonthDay,
   formatMoney,
   formatPercent,
 } from "./format";
@@ -29,6 +32,30 @@ const SPEC_8_AMOUNTS: [minor: number, expected: string][] = [
   [1, "0.01 USD"],
   [20999, "209.99 USD"],
 ];
+
+describe("formatAmount", () => {
+  test("is formatMoney without the currency code", () => {
+    expect(formatAmount(160000)).toBe("1,600.00");
+    expect(formatAmount(145000)).toBe("1,450.00");
+    expect(formatAmount(15000)).toBe("150.00");
+  });
+
+  test("always shows two decimals, unlike formatAmountPlain", () => {
+    expect(formatAmount(100000)).toBe("1,000.00");
+    expect(formatAmountPlain(100000)).toBe("1,000");
+  });
+
+  test("keeps the sign and the grouping", () => {
+    expect(formatAmount(-15000)).toBe("-150.00");
+    expect(formatAmount(123456789)).toBe("1,234,567.89");
+  });
+
+  test("agrees with formatMoney on every §8 amount", () => {
+    for (const [minor, expected] of SPEC_8_AMOUNTS) {
+      expect(`${formatAmount(minor)} USD`).toBe(expected);
+    }
+  });
+});
 
 describe("formatAmountPlain", () => {
   test("drops the cents when they are zero", () => {
@@ -127,5 +154,28 @@ describe("dates", () => {
 
   test("is rendered in UTC, so a late-evening date does not slip a day", () => {
     expect(formatDate(new Date("2026-09-10T23:30:00Z"))).toBe("10 Sep 2026");
+  });
+});
+
+describe("formatMonthDay", () => {
+  test("leads with the month and drops the year", () => {
+    expect(formatMonthDay(new Date("2026-07-07T00:00:00Z"))).toBe("Jul 7");
+    expect(formatMonthDay(new Date("2026-08-25T00:00:00Z"))).toBe("Aug 25");
+  });
+
+  test("is rendered in UTC, so a late-evening date does not slip a day", () => {
+    expect(formatMonthDay(new Date("2026-08-25T23:30:00Z"))).toBe("Aug 25");
+  });
+});
+
+describe("formatCurrencyChoice", () => {
+  test("names the currency beside its code", () => {
+    expect(formatCurrencyChoice("USD")).toBe("USD — US Dollar");
+    expect(formatCurrencyChoice("EUR")).toBe("EUR — Euro");
+  });
+
+  test("falls back to the bare code when the runtime cannot name it", () => {
+    // Not a real ISO code, so `Intl.DisplayNames` echoes it back.
+    expect(formatCurrencyChoice("ZZZ")).toBe("ZZZ");
   });
 });
