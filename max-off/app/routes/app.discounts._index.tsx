@@ -18,6 +18,10 @@ import {
   isDiscountTab,
 } from "../lib/cap";
 import { BrandButton } from "../components/BrandButton";
+import {
+  InternalButtonLink,
+  InternalLink,
+} from "../components/InternalNavigation";
 import type { DisplayStatus } from "../lib/cap";
 import { formatMoney, formatPercent } from "../lib/format";
 
@@ -126,9 +130,13 @@ export default function DiscountsListPage() {
       >
         Export
       </s-button>
-      <s-button slot="primary-action" variant="primary" href="/app/discounts/new">
+      <InternalButtonLink
+        slot="primary-action"
+        variant="primary"
+        href="/app/discounts/new"
+      >
         Create capped discount
-      </s-button>
+      </InternalButtonLink>
 
       <s-section accessibilityLabel="Capped discounts" padding="none">
         <s-table
@@ -317,9 +325,12 @@ function DiscountRow({ row }: { row: DiscountListRow }) {
   return (
     <s-table-row clickDelegate={`discount-link-${row.id}`}>
       <s-table-cell>
-        <s-link id={`discount-link-${row.id}`} href={`/app/discounts/${row.id}`}>
+        <InternalLink
+          id={`discount-link-${row.id}`}
+          href={`/app/discounts/${row.id}`}
+        >
           {rowLabel(row)}
-        </s-link>
+        </InternalLink>
       </s-table-cell>
       <s-table-cell>{formatPercent(row.percentage)} off</s-table-cell>
       <s-table-cell>{formatMoney(row.capMinor, row.currencyCode)}</s-table-cell>
@@ -426,7 +437,9 @@ function EmptyState({ storeIsEmpty }: { storeIsEmpty: boolean }) {
             Create capped discount
           </BrandButton>
         ) : (
-          <s-button href="/app/discounts">Clear filters</s-button>
+          <InternalButtonLink href="/app/discounts">
+            Clear filters
+          </InternalButtonLink>
         )}
       </s-grid>
     </s-grid>

@@ -7,6 +7,10 @@ import { displayStatusLabel } from "../lib/cap";
 import { getHomeData } from "../models/home.server";
 import type { HomeData, HomeWeek } from "../models/home.server";
 import { BrandButton } from "../components/BrandButton";
+import {
+  InternalButtonLink,
+  InternalLink,
+} from "../components/InternalNavigation";
 import { PlanStrip } from "../components/PlanStrip";
 import { nextPlan, PLAN_LABELS as PLAN_NAMES, toPlanKey } from "../lib/plans";
 import {
@@ -64,12 +68,16 @@ export default function HomePage() {
 
   return (
     <s-page heading="MaxOff">
-      <s-button slot="secondary-actions" href="/app/test">
+      <InternalButtonLink slot="secondary-actions" href="/app/test">
         Test a cart
-      </s-button>
-      <s-button slot="primary-action" variant="primary" href="/app/discounts/new">
+      </InternalButtonLink>
+      <InternalButtonLink
+        slot="primary-action"
+        variant="primary"
+        href="/app/discounts/new"
+      >
         Create capped discount
-      </s-button>
+      </InternalButtonLink>
 
       <s-paragraph color="subdued">
         Percentage discounts that stop at a maximum amount.
@@ -388,9 +396,9 @@ function DiscountsCard({ home }: { home: HomeData }) {
 
   return (
     <s-section heading="Your capped discounts">
-      <s-button slot="secondary-actions" href="/app/discounts">
+      <InternalButtonLink slot="secondary-actions" href="/app/discounts">
         View all
-      </s-button>
+      </InternalButtonLink>
 
       {home.discounts.length === 0 ? (
         <s-paragraph color="subdued">
@@ -417,12 +425,12 @@ function DiscountsCard({ home }: { home: HomeData }) {
                 clickDelegate={`discount-link-${discount.id}`}
               >
                 <s-table-cell>
-                  <s-link
+                  <InternalLink
                     id={`discount-link-${discount.id}`}
                     href={`/app/discounts/${discount.id}`}
                   >
                     {discount.code ?? "No code"}
-                  </s-link>
+                  </InternalLink>
                 </s-table-cell>
                 <s-table-cell>
                   {formatPercent(discount.percentage)} off

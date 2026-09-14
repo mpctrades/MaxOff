@@ -6,6 +6,7 @@ import { AppProvider } from "@shopify/shopify-app-react-router/react";
 
 import { authenticate } from "../shopify.server";
 import { syncBrandTheme } from "../lib/brand-theme";
+import { InternalLink } from "../components/InternalNavigation";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   await authenticate.admin(request);
@@ -26,12 +27,12 @@ export default function App() {
   return (
     <AppProvider embedded apiKey={apiKey}>
       <s-app-nav>
-        <s-link href="/app">Home</s-link>
-        <s-link href="/app/discounts">Capped discounts</s-link>
-        <s-link href="/app/discounts/new">Create new</s-link>
-        <s-link href="/app/test">Test a cart</s-link>
-        <s-link href="/app/settings">Settings</s-link>
-        <s-link href="/app/billing">Plans &amp; billing</s-link>
+        <InternalLink href="/app">Home</InternalLink>
+        <InternalLink href="/app/discounts">Capped discounts</InternalLink>
+        <InternalLink href="/app/discounts/new">Create new</InternalLink>
+        <InternalLink href="/app/test">Test a cart</InternalLink>
+        <InternalLink href="/app/settings">Settings</InternalLink>
+        <InternalLink href="/app/billing">Plans &amp; billing</InternalLink>
       </s-app-nav>
       <Outlet />
     </AppProvider>

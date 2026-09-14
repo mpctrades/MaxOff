@@ -1392,3 +1392,41 @@ Prisma with P1012 because the developer machine had no `DATABASE_URL` or Postgre
 - Prisma generated its client and applied `20260914000000_init` to `maxoff_dev`.
 - `npm run dev` reached Shopify CLI's “Ready, watching for changes in your app”; the Function,
   proxy, GraphiQL, React Router server, and development preview all started successfully.
+
+---
+
+## 14 Sep 2026 · embedded navigation no longer renders a bare `200`
+
+**Problem** — clicking **Create capped discount** (and other internal links) could replace the
+embedded page with a bare `200`. The links performed a document navigation to a protected app
+route. That request had no App Bridge bearer token, so Shopify returned its status-200
+authentication bounce document. React Router received that document during navigation as route
+data and rendered the response status instead of the requested page.
+
+**Fixed**
+
+- Internal Polaris links and link-buttons now keep navigation inside React Router. Their real
+  `href` remains for semantics and fallback, while ordinary clicks prevent the document request
+  and use the authenticated embedded-app data path.
+- `BrandButton` now renders React Router's `Link` for local URLs. External URLs and `_top`
+  billing links remain native anchors.
+- Modifier clicks, middle clicks, and already-cancelled events keep their native behaviour.
+
+**Verified locally**
+
+- All 224 app/lib/component tests pass, including seven focused navigation-event tests.
+- `npm run typecheck`, `npm run lint`, `npm test`, and `npm run build` pass; the Function suite
+  remains 106/106.
+
+**Verified on the deployed development app**
+
+- Deployed to `https://dev.maxoff.mpctrades.com`; Docker app and PostgreSQL are healthy and the
+  public certificate verifies.
+- Authenticated data loaders return 200 for Home, Capped discounts, Create new, Test a cart,
+  Settings, and Plans & billing.
+- A temporary code discount completed create → Shopify metafield verification → pause →
+  reactivate. Shopify stored 20%, a 5.00 USD cap, the code, dates, and checkout wording; the
+  PostgreSQL mirror matched.
+- A temporary automatic discount completed the same create → verify → pause → reactivate path.
+- Both exact QA discounts and their PostgreSQL mirror rows were deleted after the checks. No
+  merchant-created discount was changed.

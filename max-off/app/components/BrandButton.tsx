@@ -24,6 +24,8 @@
  * Polaris, and everywhere a Polaris button will do, we still do.
  */
 
+import { Link } from "react-router";
+
 export interface BrandButtonProps {
   children: React.ReactNode;
   /** Renders an anchor instead of a button. */
@@ -68,6 +70,19 @@ export function BrandButton({
   // A disabled link is not a thing — an `<a>` with no href is still in the
   // tab order and still announced as a link. A disabled button is both.
   if (href !== undefined && !disabled) {
+    if (href.startsWith("/") && target === undefined) {
+      return (
+        <Link
+          className={className}
+          to={href}
+          slot={slot}
+          aria-label={accessibilityLabel}
+        >
+          {children}
+        </Link>
+      );
+    }
+
     return (
       <a
         className={className}
