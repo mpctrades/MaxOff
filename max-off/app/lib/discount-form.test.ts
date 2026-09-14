@@ -38,7 +38,13 @@ describe("a valid form", () => {
 
     expect(result).toEqual({
       value: {
+        method: "code",
         code: "SUMMER15",
+        title: "",
+        appliesTo: "all",
+        collectionIds: [],
+        productIds: [],
+        checkoutNote: "Discount capped at maximum amount",
         percentage: 15,
         capMinor: 15000,
         startsAt: new Date("2026-09-10T00:00:00Z"),
@@ -388,5 +394,207 @@ describe("the Free plan's limits", () => {
     // A ceiling above the thirty-day default does not extend it.
     expect(defaultEndDate("2026-09-10", 60)).toBe("2026-10-10");
     expect(defaultEndDate("2026-09-10", null)).toBe("2026-10-10");
+  });
+});
+
+/**
+ * The five affordances that carried a "Later version" badge until 14 Sep 2026.
+ * Each one is a rule about what may be saved, so each one is tested here
+ * rather than only in the component — the action runs this same function, and
+ * a browser that skipped its checks must not get past it.
+ */
+describe("an automatic discount", () => {
+  const automatic = (over: Partial<DiscountFormState> = {}) =>
+    valid({ method: "automatic", code: "", title: "Summer sale", ...over });
+
+  test("is named by its title, and needs no code", () => {
+    const result = validateDiscountForm(automatic(), OPEN_PLAN);
+
+    expect("value" in result && result.value.method).toBe("automatic");
+    expect("value" in result && result.value.title).toBe("Summer sale");
+    expect("value" in result && result.value.code).toBe("");
+  });
+
+  test("needs a title, because Shopify has nothing else to call it", () => {
+    expect(errorsOf(automatic({ title: "   " })).title).toBe(
+      "Enter a name for this discount.",
+    );
+  });
+
+  test("carries no usage limit — Shopify's input has no field for one", () => {
+    const result = validateDiscountForm(
+      automatic({ usageLimitOn: true, usageLimit: "50" }),
+      OPEN_PLAN,
+    );
+
+    expect("value" in result && result.value.usageLimit).toBeNull();
+  });
+
+  test("a code left over from switching method is not saved", () => {
+    const result = validateDiscountForm(automatic({ code: "SUMMER15" }), OPEN_PLAN);
+
+    expect("value" in result && result.value.code).toBe("");
+  });
+});
+
+describe("a code discount", () => {
+  test("still needs its code, and needs no title", () => {
+    expect(errorsOf(valid({ code: "" })).code).toBe("Enter a discount code.");
+    expect(errorsOf(valid({ title: "" })).title).toBeUndefined();
+  });
+});
+
+describe("which products the discount applies to", () => {
+  const pick = (id: string) => ({ id, title: id });
+
+  test("defaults to the whole cart, with no ids", () => {
+    const result = validateDiscountForm(valid(), OPEN_PLAN);
+
+    expect("value" in result && result.value.appliesTo).toBe("all");
+    expect("value" in result && result.value.collectionIds).toEqual([]);
+    expect("value" in result && result.value.productIds).toEqual([]);
+  });
+
+  test("keeps the chosen collection ids", () => {
+    const result = validateDiscountForm(
+      valid({
+        appliesTo: "collections",
+        collections: [pick("gid://shopify/Collection/1"), pick("gid://shopify/Collection/2")],
+      }),
+      OPEN_PLAN,
+    );
+
+    expect("value" in result && result.value.collectionIds).toEqual([
+      "gid://shopify/Collection/1",
+      "gid://shopify/Collection/2",
+    ]);
+  });
+
+  test("drops a duplicate the picker returned twice", () => {
+    const result = validateDiscountForm(
+      valid({
+        appliesTo: "products",
+        products: [pick("gid://shopify/Product/1"), pick("gid://shopify/Product/1")],
+      }),
+      OPEN_PLAN,
+    );
+
+    expect("value" in result && result.value.productIds).toEqual([
+      "gid://shopify/Product/1",
+    ]);
+  });
+
+  test("refuses a targeted discount that names nothing", () => {
+    expect(errorsOf(valid({ appliesTo: "collections" })).collections).toBe(
+      "Choose at least one collection.",
+    );
+    expect(errorsOf(valid({ appliesTo: "products" })).products).toBe(
+      "Choose at least one product.",
+    );
+  });
+
+  test("ignores a selection the merchant then switched away from", () => {
+    const result = validateDiscountForm(
+      valid({ appliesTo: "all", products: [pick("gid://shopify/Product/1")] }),
+      OPEN_PLAN,
+    );
+
+    expect("value" in result && result.value.productIds).toEqual([]);
+  });
+});
+
+describe("the checkout note", () => {
+  const LOCKED = "Discount capped at maximum amount";
+
+  test("is the locked wording when the merchant writes nothing", () => {
+    const result = validateDiscountForm(valid({ checkoutNote: "  " }), OPEN_PLAN);
+
+    expect("value" in result && result.value.checkoutNote).toBe(LOCKED);
+  });
+
+  test("keeps the merchant's own wording on a plan that allows it", () => {
+    const result = validateDiscountForm(
+      valid({ checkoutNote: "Capped at our maximum" }),
+      OPEN_PLAN,
+    );
+
+    expect("value" in result && result.value.checkoutNote).toBe(
+      "Capped at our maximum",
+    );
+  });
+
+  test("is refused on Free, which does not have custom wording", () => {
+    expect(errorsOf(valid({ checkoutNote: "Our own words" }), "free").checkoutNote).toBe(
+      "Your own checkout wording is part of the Growth plan.",
+    );
+  });
+
+  test("the locked wording is not a rewording, so Free may still save it", () => {
+    // The form puts this default there itself. Refusing it would be refusing
+    // our own form, and a Free merchant could never save at all.
+    expect(errorsOf(valid({ checkoutNote: LOCKED }), "free").checkoutNote).toBeUndefined();
+  });
+
+  test("is refused when it is longer than the buyer's line can carry", () => {
+    expect(errorsOf(valid({ checkoutNote: "x".repeat(61) })).checkoutNote).toBe(
+      "Keep the note to 60 characters or fewer.",
+    );
+  });
+});
+
+describe("discountFormStateFrom, on what the browser actually posts", () => {
+  const post = (fields: Record<string, string>): FormData => {
+    const form = new FormData();
+    for (const [key, value] of Object.entries(fields)) {
+      form.set(key, value);
+    }
+    return form;
+  };
+
+  test("reads the method, the title and the picked resources", () => {
+    const state = discountFormStateFrom(
+      post({
+        method: "automatic",
+        title: "Summer sale",
+        appliesTo: "collections",
+        collections: JSON.stringify([
+          { id: "gid://shopify/Collection/1", title: "Sale" },
+        ]),
+      }),
+    );
+
+    expect(state.method).toBe("automatic");
+    expect(state.title).toBe("Summer sale");
+    expect(state.appliesTo).toBe("collections");
+    expect(state.collections).toEqual([
+      { id: "gid://shopify/Collection/1", title: "Sale" },
+    ]);
+  });
+
+  test("an unrecognised method is a code discount, never the looser one", () => {
+    expect(discountFormStateFrom(post({ method: "sorcery" })).method).toBe("code");
+  });
+
+  test("an unrecognised appliesTo is the whole cart", () => {
+    expect(discountFormStateFrom(post({ appliesTo: "variants" })).appliesTo).toBe("all");
+  });
+
+  test.each([
+    ["absent", undefined],
+    ["empty", ""],
+    ["not JSON", "gid://shopify/Product/1"],
+    ["not an array", '{"id":"gid://shopify/Product/1"}'],
+    ["entries without ids", '[{"title":"Shirt"}]'],
+  ])("picked products that are %s read as none chosen", (_label, value) => {
+    const state = discountFormStateFrom(
+      value === undefined ? post({}) : post({ products: value }),
+    );
+
+    // Validation then refuses a targeted discount with an empty list — the
+    // one thing that must never happen is a silent fall back to everything.
+    expect(state.products).toEqual([]);
+    expect(errorsOf({ ...valid(), appliesTo: "products", products: [] }).products).toBe(
+      "Choose at least one product.",
+    );
   });
 });

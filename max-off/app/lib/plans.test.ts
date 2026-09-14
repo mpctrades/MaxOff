@@ -136,6 +136,7 @@ describe("built versus entitled", () => {
       "activeDates",
       "usageLimits",
       "longCampaigns",
+      "customCheckoutWording",
     ]);
   });
 
@@ -145,10 +146,7 @@ describe("built versus entitled", () => {
     }
 
     expect(comingSoon("free")).toEqual([]);
-    expect(comingSoon("growth").map((entry) => entry.key)).toEqual([
-      "analytics",
-      "customCheckoutWording",
-    ]);
+    expect(comingSoon("growth").map((entry) => entry.key)).toEqual(["analytics"]);
   });
 
   test("the two lists never overlap and cover every entitlement", () => {

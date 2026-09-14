@@ -173,17 +173,22 @@ export default function DiscountsListPage() {
                   Every percentage discount with a maximum amount.
                 </s-text>
                 <s-search-field
-                  label="Search by code"
+                  label="Search by code or name"
                   labelAccessibilityVisibility="exclusive"
-                  placeholder="Search by code"
+                  placeholder="Search by code or name"
                   name="q"
                   value={query}
                   onInput={(event) => onSearchInput(event.currentTarget.value)}
                 ></s-search-field>
               </s-stack>
-              {/* V2, rendered as visible disabled affordances (rule 6). */}
-              <s-select label="Method" name="method" value="code" disabled>
+              {/* The method filter lists both methods now that both can be
+                  created, and filtering by it is still V2 — a select with one
+                  option was a promise about what the app could make, and that
+                  promise has changed. */}
+              <s-select label="Method" name="method" value="all" disabled>
+                <s-option value="all">All methods</s-option>
                 <s-option value="code">Discount code</s-option>
+                <s-option value="automatic">Automatic</s-option>
               </s-select>
               <s-select label="Cap type" name="capType" value="order" disabled>
                 <s-option value="order">The whole order</s-option>
@@ -192,7 +197,9 @@ export default function DiscountsListPage() {
           </s-stack>
 
           <s-table-header-row>
-            <s-table-header listSlot="primary">Code</s-table-header>
+            {/* "Code" no longer fits every row: an automatic discount is
+                listed by the name the merchant gave it. */}
+            <s-table-header listSlot="primary">Discount</s-table-header>
             <s-table-header>Discount</s-table-header>
             <s-table-header format="currency">Maximum</s-table-header>
             <s-table-header format="currency">Cap starts above</s-table-header>
@@ -237,6 +244,22 @@ export default function DiscountsListPage() {
   );
 }
 
+/**
+ * What names a discount in the list.
+ *
+ * A code discount is its code — that is what the merchant typed and what a
+ * buyer types back. An automatic discount has none, so it is named by the
+ * title the merchant gave it. "No code" is the last resort for a row whose
+ * mirror predates both.
+ */
+function rowLabel(row: DiscountListRow): string {
+  if (row.method === "automatic") {
+    return row.title ?? "Automatic discount";
+  }
+
+  return row.code ?? "No code";
+}
+
 function DiscountRow({ row }: { row: DiscountListRow }) {
   const fetcher = useFetcher<typeof action>();
   const shopify = useAppBridge();
@@ -261,7 +284,9 @@ function DiscountRow({ row }: { row: DiscountListRow }) {
 
     if (fetcher.data.ok) {
       const label = fetcher.data.status === "paused" ? "paused" : "activated";
-      shopify.toast.show(`${fetcher.data.code ?? "Discount"} ${label}`);
+      // A code discount is named by its code, an automatic one by its title.
+      const named = fetcher.data.code ?? fetcher.data.title ?? "Discount";
+      shopify.toast.show(`${named} ${label}`);
       return;
     }
 
@@ -293,7 +318,7 @@ function DiscountRow({ row }: { row: DiscountListRow }) {
     <s-table-row clickDelegate={`discount-link-${row.id}`}>
       <s-table-cell>
         <s-link id={`discount-link-${row.id}`} href={`/app/discounts/${row.id}`}>
-          {row.code ?? "No code"}
+          {rowLabel(row)}
         </s-link>
       </s-table-cell>
       <s-table-cell>{formatPercent(row.percentage)} off</s-table-cell>

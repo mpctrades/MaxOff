@@ -52,6 +52,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     discounts: active.rows.map((row) => ({
       id: row.id,
       code: row.code,
+      // An automatic discount has no code, so the tester names it by the
+      // merchant's own title — and shows the buyer a receipt with no code
+      // line, which is exactly what the Function emits for it.
+      label: row.method === "automatic" ? (row.title ?? "Automatic discount") : (row.code ?? "No code"),
       percentage: row.percentage,
       capMinor: row.capMinor,
       capStartsAboveMinor: row.capStartsAboveMinor,
@@ -234,7 +238,7 @@ export default function TestACartPage() {
             >
               {discounts.map((row) => (
                 <s-choice key={row.id} value={row.id}>
-                  {`${row.code ?? "No code"} — ${formatPercent(
+                  {`${row.label} — ${formatPercent(
                     row.percentage,
                   )} max ${money(row.capMinor)}`}
                 </s-choice>
@@ -339,7 +343,7 @@ export default function TestACartPage() {
       {discount && (
         <CheckoutPreviewModal
           id={CHECKOUT_PREVIEW_ID}
-          code={discount.code ?? "CODE"}
+          code={discount.code ?? ""}
           percentage={discount.percentage}
           capMinor={discount.capMinor}
           currencyCode={currencyCode}

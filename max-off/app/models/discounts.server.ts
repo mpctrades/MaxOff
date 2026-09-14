@@ -11,7 +11,7 @@ import type { Prisma } from "@prisma/client";
 import prisma from "../db.server";
 import { capStartsAboveMinor, displayStatus, DISCOUNT_TABS } from "../lib/cap";
 import type { DiscountTab, DisplayStatus } from "../lib/cap";
-import { capConfigMetafield, DEFAULT_CHECKOUT_NOTE } from "../lib/cap-config";
+import { capConfigMetafield } from "../lib/cap-config";
 import { formatMoney } from "../lib/format";
 import { activeDiscountLimit } from "../lib/plans";
 import { getPlanForGate } from "./plan.server";
@@ -25,6 +25,9 @@ const PAGE_SIZE = 25;
 export interface DiscountListRow {
   id: string;
   discountGid: string;
+  /** "code" or "automatic". An automatic discount has no code to show. */
+  method: string;
+  title: string | null;
   code: string | null;
   percentage: number;
   capMinor: number;
@@ -113,7 +116,16 @@ export async function listCappedDiscounts(input: {
   // however the merchant typed it. Prisma's `mode: "insensitive"` is not
   // available on SQLite.
   const searchWhere: Prisma.CappedDiscountWhereInput =
-    search === "" ? {} : { code: { contains: search.toUpperCase() } };
+    search === ""
+      ? {}
+      : {
+          // An automatic discount has no code, so searching only the code
+          // column would make every one of them unfindable.
+          OR: [
+            { code: { contains: search.toUpperCase() } },
+            { title: { contains: search } },
+          ],
+        };
 
   const where: Prisma.CappedDiscountWhereInput = {
     shop: input.shop,
@@ -152,6 +164,8 @@ export async function listCappedDiscounts(input: {
     rows: rows.map((row) => ({
       id: row.id,
       discountGid: row.discountGid,
+      method: row.method,
+      title: row.title,
       code: row.code,
       percentage: row.percentage,
       capMinor: row.capMinor,
@@ -204,6 +218,36 @@ const ACTIVATE_MUTATION = `#graphql
     }
   }`;
 
+/**
+ * The same two operations for an automatic discount.
+ *
+ * An automatic discount is a different node type in Shopify, and the code
+ * mutations simply do not accept its id — so the method a discount was created
+ * with decides which pair runs. Validated against the 2026-10 schema on
+ * 14 Sep 2026; both need only `write_discounts`.
+ */
+const PAUSE_AUTOMATIC_MUTATION = `#graphql
+  mutation MaxOffPauseAutomaticDiscount($id: ID!) {
+    discountAutomaticDeactivate(id: $id) {
+      userErrors {
+        field
+        code
+        message
+      }
+    }
+  }`;
+
+const ACTIVATE_AUTOMATIC_MUTATION = `#graphql
+  mutation MaxOffActivateAutomaticDiscount($id: ID!) {
+    discountAutomaticActivate(id: $id) {
+      userErrors {
+        field
+        code
+        message
+      }
+    }
+  }`;
+
 interface UserError {
   field?: string[] | null;
   code?: string | null;
@@ -214,6 +258,8 @@ interface MutationResponse {
   data?: {
     discountCodeDeactivate?: { userErrors: UserError[] } | null;
     discountCodeActivate?: { userErrors: UserError[] } | null;
+    discountAutomaticDeactivate?: { userErrors: UserError[] } | null;
+    discountAutomaticActivate?: { userErrors: UserError[] } | null;
   } | null;
   errors?: { message: string }[] | null;
 }
@@ -227,7 +273,7 @@ export interface AdminGraphqlClient {
 }
 
 export type SetPausedResult =
-  | { ok: true; code: string | null; status: DisplayStatus }
+  | { ok: true; code: string | null; title: string | null; status: DisplayStatus }
   | { ok: false; message: string; upgradeUrl?: string };
 
 /**
@@ -266,8 +312,16 @@ export async function setDiscountPaused(input: {
     }
   }
 
+  const automatic = discount.method === "automatic";
+
   const response = await input.admin.graphql(
-    input.paused ? PAUSE_MUTATION : ACTIVATE_MUTATION,
+    automatic
+      ? input.paused
+        ? PAUSE_AUTOMATIC_MUTATION
+        : ACTIVATE_AUTOMATIC_MUTATION
+      : input.paused
+        ? PAUSE_MUTATION
+        : ACTIVATE_MUTATION,
     { variables: { id: discount.discountGid } },
   );
 
@@ -278,9 +332,13 @@ export async function setDiscountPaused(input: {
     return { ok: false, message: transportError };
   }
 
-  const payload = input.paused
-    ? body.data?.discountCodeDeactivate
-    : body.data?.discountCodeActivate;
+  const payload = automatic
+    ? input.paused
+      ? body.data?.discountAutomaticDeactivate
+      : body.data?.discountAutomaticActivate
+    : input.paused
+      ? body.data?.discountCodeDeactivate
+      : body.data?.discountCodeActivate;
 
   const userError = payload?.userErrors?.[0];
   if (userError) {
@@ -311,6 +369,7 @@ export async function setDiscountPaused(input: {
   return {
     ok: true,
     code: updated.code,
+    title: updated.title,
     status: displayStatus(updated, now),
   };
 }
@@ -391,6 +450,29 @@ const CREATE_MUTATION = `#graphql
     }
   }`;
 
+/**
+ * The same thing for a discount that needs no code.
+ *
+ * `DiscountAutomaticAppInput` has no `code`, no `usageLimit` and no
+ * `appliesOncePerCustomer` — there is no code to ration, so Shopify does not
+ * offer the fields. The form hides them for this method rather than sending
+ * values Shopify would reject. Validated against the 2026-10 schema on
+ * 14 Sep 2026.
+ */
+const CREATE_AUTOMATIC_MUTATION = `#graphql
+  mutation MaxOffCreateAutomaticDiscount($discount: DiscountAutomaticAppInput!) {
+    discountAutomaticAppCreate(automaticAppDiscount: $discount) {
+      automaticAppDiscount {
+        discountId
+      }
+      userErrors {
+        field
+        code
+        message
+      }
+    }
+  }`;
+
 /** The uniqueness check §4.3 wants on blur. Needs `read_discounts`. */
 const CODE_TAKEN_QUERY = `#graphql
   query MaxOffCodeTaken($code: String!) {
@@ -402,7 +484,16 @@ const CODE_TAKEN_QUERY = `#graphql
 export interface CreateDiscountInput {
   shop: string;
   admin: AdminGraphqlClient;
+  /** "code" for a discount a buyer types, "automatic" for one that just applies. */
+  method: "code" | "automatic";
+  /** Empty for an automatic discount. */
   code: string;
+  /** The merchant's own name for an automatic discount. Derived for a code. */
+  title: string;
+  appliesTo: "all" | "collections" | "products";
+  collectionIds: string[];
+  productIds: string[];
+  checkoutNote: string;
   percentage: number;
   capMinor: number;
   currencyCode: string;
@@ -420,6 +511,8 @@ export type CreateDiscountResult =
       ok: true;
       code: string;
       discountGid: string;
+      /** The merchant-facing name, for the toast and the banner. */
+      title: string;
       /** False when Shopify accepted but our mirror write failed (§2b). */
       mirrored: boolean;
     }
@@ -467,6 +560,10 @@ interface CreateResponse {
       codeAppDiscount?: { discountId?: string | null } | null;
       userErrors: UserError[];
     } | null;
+    discountAutomaticAppCreate?: {
+      automaticAppDiscount?: { discountId?: string | null } | null;
+      userErrors: UserError[];
+    } | null;
   } | null;
   errors?: { message: string }[] | null;
 }
@@ -495,13 +592,21 @@ export async function createCappedDiscount(
     return refusal;
   }
 
+  const automatic = input.method === "automatic";
+
   let metafield;
   try {
     metafield = capConfigMetafield({
       percentage: input.percentage,
       capMinor: input.capMinor,
       currencyCode: input.currencyCode,
-      code: input.code,
+      // An automatic discount has no code, and a null here is what stops the
+      // Function prefixing the buyer's line with one.
+      code: automatic ? null : input.code,
+      checkoutNote: input.checkoutNote,
+      appliesTo: input.appliesTo,
+      collectionIds: input.collectionIds,
+      productIds: input.productIds,
     });
   } catch (error) {
     // buildCapConfig throws only on input the Function would refuse, which
@@ -513,37 +618,51 @@ export async function createCappedDiscount(
     };
   }
 
-  const title = `${input.code} — ${input.percentage}% capped at ${formatMoney(
+  const rule = `${input.percentage}% capped at ${formatMoney(
     input.capMinor,
     input.currencyCode,
   )}`;
 
-  const response = await input.admin.graphql(CREATE_MUTATION, {
-    variables: {
-      discount: {
-        title,
-        code: input.code,
-        functionHandle: FUNCTION_HANDLE,
-        // Without ORDER the Function returns no operations and the discount
-        // silently does nothing (BUILD-LOG, 8 Sep).
-        discountClasses: ["ORDER"],
-        startsAt: input.startsAt.toISOString(),
-        endsAt: input.endsAt?.toISOString() ?? null,
-        usageLimit: input.usageLimit,
-        appliesOncePerCustomer: input.oncePerCustomer,
-        // V1 eligibility is every buyer. `context` replaces the deprecated
-        // `customerSelection`; segments and specific customers are V2 and would
-        // also need read_customers.
-        context: { all: "ALL" },
-        combinesWith: {
-          orderDiscounts: input.combinesOrder,
-          productDiscounts: input.combinesProduct,
-          shippingDiscounts: input.combinesShipping,
-        },
-        metafields: [metafield],
-      },
+  // A code discount names itself after its code, because that is what the
+  // merchant recognises it by in Shopify's own discount list. An automatic
+  // discount has no code, so the merchant's own name is all there is.
+  const title = automatic ? input.title : `${input.code} — ${rule}`;
+
+  /** Everything both inputs share. The two differ only in how a buyer gets it. */
+  const common = {
+    title,
+    functionHandle: FUNCTION_HANDLE,
+    // Without ORDER the Function returns no operations and the discount
+    // silently does nothing (BUILD-LOG, 8 Sep).
+    discountClasses: ["ORDER"],
+    startsAt: input.startsAt.toISOString(),
+    endsAt: input.endsAt?.toISOString() ?? null,
+    combinesWith: {
+      orderDiscounts: input.combinesOrder,
+      productDiscounts: input.combinesProduct,
+      shippingDiscounts: input.combinesShipping,
     },
-  });
+    metafields: [metafield],
+  };
+
+  const response = automatic
+    ? await input.admin.graphql(CREATE_AUTOMATIC_MUTATION, {
+        variables: { discount: common },
+      })
+    : await input.admin.graphql(CREATE_MUTATION, {
+        variables: {
+          discount: {
+            ...common,
+            code: input.code,
+            usageLimit: input.usageLimit,
+            appliesOncePerCustomer: input.oncePerCustomer,
+            // V1 eligibility is every buyer. `context` replaces the deprecated
+            // `customerSelection`; segments and specific customers are V2 and
+            // would also need read_customers.
+            context: { all: "ALL" },
+          },
+        },
+      });
 
   const body = (await response.json()) as CreateResponse;
 
@@ -552,7 +671,9 @@ export async function createCappedDiscount(
     return { ok: false, message: transportError };
   }
 
-  const payload = body.data?.discountCodeAppCreate;
+  const payload = automatic
+    ? body.data?.discountAutomaticAppCreate
+    : body.data?.discountCodeAppCreate;
   const userError = payload?.userErrors?.[0];
   if (userError) {
     return {
@@ -562,7 +683,9 @@ export async function createCappedDiscount(
     };
   }
 
-  const discountGid = payload?.codeAppDiscount?.discountId;
+  const discountGid = automatic
+    ? body.data?.discountAutomaticAppCreate?.automaticAppDiscount?.discountId
+    : body.data?.discountCodeAppCreate?.codeAppDiscount?.discountId;
   if (!discountGid) {
     return {
       ok: false,
@@ -576,36 +699,38 @@ export async function createCappedDiscount(
       data: {
         shop: input.shop,
         discountGid,
-        method: "code",
-        code: input.code,
+        method: input.method,
+        // Null rather than an empty string: the column is nullable precisely
+        // so "this discount has no code" is a fact and not a blank one.
+        code: automatic ? null : input.code,
         title,
         percentage: input.percentage,
         capMinor: input.capMinor,
         currencyCode: input.currencyCode,
         scope: "order",
-        checkoutNote: DEFAULT_CHECKOUT_NOTE,
+        checkoutNote: input.checkoutNote,
         startsAt: input.startsAt,
         endsAt: input.endsAt,
         // Intent, not display: the list derives scheduled and expired from the
         // dates (§1a of docs/PROMPT-DISCOUNTS.md).
         status: "active",
-        usageLimit: input.usageLimit,
-        oncePerCustomer: input.oncePerCustomer,
+        usageLimit: automatic ? null : input.usageLimit,
+        oncePerCustomer: automatic ? false : input.oncePerCustomer,
         combinesProduct: input.combinesProduct,
         combinesOrder: input.combinesOrder,
         combinesShipping: input.combinesShipping,
       },
     });
 
-    return { ok: true, code: input.code, discountGid, mirrored: true };
+    return { ok: true, code: input.code, title, discountGid, mirrored: true };
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error(
-      `[maxoff] ${input.code} (${discountGid}) was created in Shopify but the mirror write failed`,
+      `[maxoff] ${title} (${discountGid}) was created in Shopify but the mirror write failed`,
       error,
     );
 
-    return { ok: true, code: input.code, discountGid, mirrored: false };
+    return { ok: true, code: input.code, title, discountGid, mirrored: false };
   }
 }
 

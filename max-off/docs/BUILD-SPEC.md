@@ -107,20 +107,37 @@ namespace: "$app"
 key:       "cap_config"
 type:      "json"
 value:     {
-  "version": 1,
+  "version": 2,
   "percentage": 15,
   "capAmount": "150.00",
   "currencyCode": "USD",
   "scope": "order",
   "checkoutNote": "Discount capped at maximum amount",
-  "code": "SUMMER15"
+  "code": "SUMMER15",
+  "appliesTo": "all",
+  "collectionIds": [],
+  "productIds": []
 }
 ```
 
 `code` was added in Gate 2. The Function's `Discount` type exposes only `discountClasses` and
 `metafield`, so the metafield is the only way the Function can know the code — without it the
 buyer-facing message cannot say `SUMMER15 — 15% off (max 150.00 USD)`. It is presentation only:
-a discount with no `code` recorded still caps, and only loses the prefix.
+a discount with no `code` recorded still caps, and only loses the prefix. An **automatic**
+discount writes `code: null` for the same reason: it has none, and the buyer's line is the rule
+on its own.
+
+**Version 2 (14 Sep 2026)** added the last three keys and gave `checkoutNote` a job. Version 1 is
+still read, and must go on being read: every discount created before that date carries it and is
+live in real checkouts, so refusing version 1 would switch off every capped discount in every
+installed shop on the day version 2 deploys. A version 1 config is read as `appliesTo: "all"` with
+the locked note, which is exactly what it meant. A version the Function has never seen is still
+refused rather than guessed at.
+
+`checkoutNote` now reaches the buyer: the Function appends it to the discount line, and **only
+when the maximum is what decided the amount**. Below the cap the note would not be true. Rewording
+it is a Growth entitlement (`customCheckoutWording` in `app/lib/plans.ts`); on Free the field is
+rendered disabled with its badge and the locked wording is written.
 
 Three mechanics that go with it, none of them obvious:
 
@@ -133,19 +150,40 @@ Three mechanics that go with it, none of them obvious:
   Shopify creates the definition there. `$app` is already private to MaxOff, and we store exactly
   one discount metafield, so the sub-namespace buys nothing. Do not reintroduce it without
   deploying a definition and reading it back.
-- **`[extensions.input.variables]` is NOT needed, and must not be added.** The 4 Sep draft of this
-  section said that block "is what lets the Function see the metafield". It is not: it populates
-  *input query variables* (`query Input($collectionIds: [ID!])`) from a JSON metafield whose top
-  level keys are variable names. Our input query passes `namespace` and `key` as literal
-  arguments and declares no variables, so the block is inert at best — and actively wrong, since
-  it would ask Shopify to read `percentage` and `capAmount` as query variables that do not exist.
+- **`[extensions.input.variables]` IS needed, as of 14 Sep 2026 — do not remove it.** This bullet
+  said the opposite until targeting shipped, and the reasoning was right for the code it described:
+  the block populates *input query variables* from a JSON metafield whose top-level keys are
+  variable names, and an input query with no variables has no use for it.
+
+  What changed is that the input query now has one. "Specific collections" cannot be done any other
+  way: a Function cannot ask what is in a collection, so Shopify has to evaluate
+  `product { inAnyCollection(ids: $collectionIds) }` *before* the Function runs, and `$collectionIds`
+  can only be filled from the function owner's metafield. So the block points at the same namespace
+  and key as the config itself:
+
+  ```toml
+  [extensions.input.variables]
+  namespace = "$app"
+  key = "cap_config"
+  ```
+
+  The old warning — that it "would ask Shopify to read `percentage` and `capAmount` as query
+  variables that do not exist" — does not happen: variables are matched by name, and keys with no
+  matching variable are simply not read. This is also why `collectionIds` is a **top-level** key of
+  `cap_config` and not nested under an `appliesTo` object. Nest it and `$collectionIds` arrives
+  null, `inAnyCollection` is false for every product, and the discount silently does nothing.
+
+  `productIds` needs none of this: the Function matches those itself against each line's product id,
+  which is why `parseCapConfig` returns product ids and no collection ids.
+  See https://shopify.dev/docs/apps/build/functions/input-queries/use-variables-input-queries
 - `shopify.app.toml` declares the definition in a `[discount.metafields.app.cap_config]` block —
   it goes exactly where the template's `[product.metafields.app.demo_info]` block is today, with
   `access.admin = "merchant_read"`: the merchant can see the cap on the discount, but only MaxOff
   writes it, so the Prisma mirror cannot drift from what the Function reads.
 
 The metafield can be written **inline in the `discountCodeAppCreate` mutation** via its
-`metafields` input. No separate `metafieldsSet` round trip on create.
+`metafields` input — and in `discountAutomaticAppCreate` the same way. No separate `metafieldsSet`
+round trip on create, so there is no window in which a live discount has no config.
 
 ### 3.2 The Function
 
@@ -161,8 +199,8 @@ API. You do not hand Shopify a percentage and a ceiling. Instead the Function do
 itself and returns the *result* as a fixed amount:
 
 ```
-read pct + cap from the discount's metafield
-subtotal = cart.cost.subtotalAmount.amount
+read pct + cap + appliesTo from the discount's metafield
+subtotal = cart.cost.subtotalAmount.amount     // when appliesTo = "all"
 given    = min(subtotal × pct / 100, cap)      // minor units, half-up, once
 emit     orderDiscountsAdd {
            candidates: [{
@@ -173,6 +211,30 @@ emit     orderDiscountsAdd {
            selectionStrategy: FIRST
          }
 ```
+
+**Targeting, added 14 Sep 2026.** When `appliesTo` is `"collections"` or `"products"` the shape is
+unchanged — still one `ORDER` candidate, still one fixed amount — and only two things move:
+
+```
+eligible = lines where inAnyCollection (collections) or product.id ∈ productIds (products)
+subtotal = Σ eligible line cost.subtotalAmount        // not cart.cost.subtotalAmount
+targets  = [{ orderSubtotal: { excludedCartLineIds: ids of the rest } }]
+```
+
+`excludedCartLineIds` is how a whole-order discount is narrowed to part of the cart. The obvious
+alternative — a `PRODUCT`-class discount with one candidate per line — is wrong for MaxOff: it
+would split the single maximum into one maximum *per line*, which is the PRO "Each item" behaviour
+and not what this discount promises.
+
+Two rules that are not obvious:
+
+- `appliesTo: "all"` keeps using `cart.cost.subtotalAmount` rather than summing the lines. The two
+  can differ, and every discount created before 14 Sep 2026 was written against the former — the
+  open question at the end of this section is asked about that figure. Summing instead would
+  quietly change the answer for every existing discount.
+- A line that is not a `ProductVariant` (a custom line from another app) has no product to match
+  and is never eligible. Guessing it in would take the percentage on merchandise the merchant did
+  not choose.
 
 Two schema facts make this work, both confirmed on
 `https://shopify.dev/docs/api/functions/2026-10/discount`:
@@ -210,6 +272,18 @@ Four things the Function must get right:
    applies to."*
 4. When combined with another discount, MaxOff caps **only its own share**. It never inspects or
    reduces another app's or Shopify's discount.
+5. A configuration it cannot read with certainty applies **no discount at all** — never an
+   uncapped one. That now includes a targeting rule it does not implement, and a discount that
+   says it targets a set while naming nothing in that set.
+
+**Both discount methods run the same Function.** `discountAutomaticAppCreate` takes the same
+`functionHandle`, the same `discountClasses: ["ORDER"]` and the same inline `metafields`, so an
+automatic capped discount is the code path above with `code: null` in its config. What
+`DiscountAutomaticAppInput` does *not* have is `code`, `usageLimit` or `appliesOncePerCustomer` —
+there is no code to ration — which is why the create form hides those controls for it rather than
+disabling them. Pausing one needs `discountAutomaticDeactivate`, not `discountCodeDeactivate`: the
+code mutations do not accept an automatic discount's id, so `CappedDiscount.method` decides which
+pair runs.
 
 Point 4 is true **by construction**, not by care: *"All discount functions run concurrently, and
 have no knowledge of each other."* Our Function cannot see another discount even if it wanted to.

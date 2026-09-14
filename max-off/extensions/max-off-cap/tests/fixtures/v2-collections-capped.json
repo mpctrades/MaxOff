@@ -6,11 +6,42 @@
       "cart": {
         "cost": {
           "subtotalAmount": {
-            "amount": "1400.0",
+            "amount": "1400.00",
             "currencyCode": "USD"
           }
         },
-        "lines": []
+        "lines": [
+          {
+            "id": "gid://shopify/CartLine/1",
+            "cost": {
+              "subtotalAmount": {
+                "amount": "1200.00"
+              }
+            },
+            "merchandise": {
+              "__typename": "ProductVariant",
+              "product": {
+                "id": "gid://shopify/Product/1",
+                "inAnyCollection": true
+              }
+            }
+          },
+          {
+            "id": "gid://shopify/CartLine/2",
+            "cost": {
+              "subtotalAmount": {
+                "amount": "200.00"
+              }
+            },
+            "merchandise": {
+              "__typename": "ProductVariant",
+              "product": {
+                "id": "gid://shopify/Product/2",
+                "inAnyCollection": false
+              }
+            }
+          }
+        ]
       },
       "discount": {
         "discountClasses": [
@@ -18,13 +49,18 @@
         ],
         "metafield": {
           "jsonValue": {
-            "version": 1,
+            "version": 2,
             "percentage": 15,
             "capAmount": "150.00",
             "currencyCode": "USD",
             "scope": "order",
             "checkoutNote": "Discount capped at maximum amount",
-            "code": "MAXOFF15"
+            "code": "MAXOFF15",
+            "appliesTo": "collections",
+            "collectionIds": [
+              "gid://shopify/Collection/11"
+            ],
+            "productIds": []
           }
         }
       }
@@ -39,7 +75,9 @@
                 "targets": [
                   {
                     "orderSubtotal": {
-                      "excludedCartLineIds": []
+                      "excludedCartLineIds": [
+                        "gid://shopify/CartLine/2"
+                      ]
                     }
                   }
                 ],

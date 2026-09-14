@@ -15,6 +15,33 @@ const VALID = {
   scope: 'order',
   checkoutNote: 'Discount capped at maximum amount',
   code: 'SUMMER15',
+  appliesTo: 'all',
+  collectionIds: [],
+  productIds: [],
+};
+
+/** What a fully-read `VALID` becomes, for the cases that assert the whole object. */
+const PARSED = {
+  percentage: 15,
+  capMinor: 15000,
+  code: 'SUMMER15',
+  checkoutNote: 'Discount capped at maximum amount',
+  appliesTo: 'all',
+  productIds: [],
+};
+
+/**
+ * A discount created before 14 Sep 2026. These are live in real shops, so the
+ * Function has to keep reading them — and read them as what they meant: the
+ * whole cart, and the locked note.
+ */
+const VALID_V1 = {
+  version: 1,
+  percentage: 15,
+  capAmount: '150.00',
+  currencyCode: 'USD',
+  scope: 'order',
+  code: 'SUMMER15',
 };
 
 function withoutKey(key: string): Record<string, unknown> {
@@ -25,7 +52,7 @@ function withoutKey(key: string): Record<string, unknown> {
 
 describe('parseCapConfig, on config it can read', () => {
   test('reads the percentage, the maximum in minor units, and the code', () => {
-    expect(parseCapConfig(VALID)).toEqual({percentage: 15, capMinor: 15000, code: 'SUMMER15'});
+    expect(parseCapConfig(VALID)).toEqual(PARSED);
   });
 
   test('accepts a maximum of one minor unit', () => {
@@ -36,14 +63,73 @@ describe('parseCapConfig, on config it can read', () => {
     expect(parseCapConfig({...VALID, percentage})?.percentage).toBe(percentage);
   });
 
-  test('accepts a missing scope, which has one legal value in V1', () => {
+  test('accepts a missing scope, which has one legal value today', () => {
     expect(parseCapConfig(withoutKey('scope'))).not.toBeNull();
   });
 
   test('ignores fields the Function does not use', () => {
-    const config = {...VALID, currencyCode: 'EUR', checkoutNote: '', somethingNew: true};
+    const config = {...VALID, currencyCode: 'EUR', somethingNew: true};
 
-    expect(parseCapConfig(config)).toEqual({percentage: 15, capMinor: 15000, code: 'SUMMER15'});
+    expect(parseCapConfig(config)).toEqual(PARSED);
+  });
+});
+
+describe('parseCapConfig, on a version 1 config still live in a shop', () => {
+  // Version 2 deploying must not switch off every discount created before it.
+  test('reads it as the whole cart, with the locked note', () => {
+    expect(parseCapConfig(VALID_V1)).toEqual(PARSED);
+  });
+
+  test('a version it has never seen is still refused', () => {
+    expect(parseCapConfig({...VALID, version: 3})).toBeNull();
+  });
+});
+
+describe('parseCapConfig, on which lines the discount applies to', () => {
+  test('a missing appliesTo is the whole cart, as version 1 meant', () => {
+    expect(parseCapConfig(withoutKey('appliesTo'))?.appliesTo).toBe('all');
+  });
+
+  test('keeps the chosen product ids', () => {
+    const config = {...VALID, appliesTo: 'products', productIds: ['gid://shopify/Product/1']};
+
+    expect(parseCapConfig(config)).toEqual({
+      ...PARSED,
+      appliesTo: 'products',
+      productIds: ['gid://shopify/Product/1'],
+    });
+  });
+
+  test('collection ids are Shopify\'s to resolve, so the parser drops them', () => {
+    const config = {...VALID, appliesTo: 'collections', collectionIds: ['gid://shopify/Collection/1']};
+
+    expect(parseCapConfig(config)).toEqual({...PARSED, appliesTo: 'collections'});
+  });
+
+  test.each([
+    ['a targeting rule this Function does not implement', {...VALID, appliesTo: 'variants'}],
+    ['products with no product ids', {...VALID, appliesTo: 'products', productIds: []}],
+    ['collections with no collection ids', {...VALID, appliesTo: 'collections', collectionIds: []}],
+    ['products whose ids are not strings', {...VALID, appliesTo: 'products', productIds: [7]}],
+  ])('applies no discount for %s', (_label, config) => {
+    expect(parseCapConfig(config)).toBeNull();
+  });
+});
+
+describe('parseCapConfig, on the note the buyer reads', () => {
+  test.each([
+    ['missing', withoutKey('checkoutNote')],
+    ['empty', {...VALID, checkoutNote: ''}],
+    ['whitespace', {...VALID, checkoutNote: '   '}],
+    ['not a string', {...VALID, checkoutNote: 42}],
+  ])('falls back to the locked wording when it is %s', (_label, config) => {
+    expect(parseCapConfig(config)?.checkoutNote).toBe('Discount capped at maximum amount');
+  });
+
+  test('keeps the merchant\'s own wording', () => {
+    expect(parseCapConfig({...VALID, checkoutNote: 'Capped at our maximum'})?.checkoutNote).toBe(
+      'Capped at our maximum',
+    );
   });
 });
 
@@ -57,7 +143,7 @@ describe('parseCapConfig, on a code it cannot use', () => {
     ['whitespace', {...VALID, code: '   '}],
     ['not a string', {...VALID, code: 15}],
   ])('still caps when the code is %s', (_label, config) => {
-    expect(parseCapConfig(config)).toEqual({percentage: 15, capMinor: 15000, code: null});
+    expect(parseCapConfig(config)).toEqual({...PARSED, code: null});
   });
 
   test('trims a padded code', () => {
@@ -79,7 +165,7 @@ describe('parseCapConfig applies no discount when', () => {
 
   test.each([
     ['version is missing', withoutKey('version')],
-    ['version is newer than this Function implements', {...VALID, version: 2}],
+    ['version is newer than this Function implements', {...VALID, version: 3}],
     ['version is a string', {...VALID, version: '1'}],
   ])('%s', (_label, config) => {
     expect(parseCapConfig(config)).toBeNull();

@@ -136,17 +136,20 @@ describe("the metafield round trip", () => {
         code: "SUMMER15",
       }),
     ).toEqual({
-      version: 1,
+      version: 2,
       percentage: 15,
       capAmount: "150.00",
       currencyCode: "USD",
       scope: "order",
       checkoutNote: "Discount capped at maximum amount",
       code: "SUMMER15",
+      appliesTo: "all",
+      collectionIds: [],
+      productIds: [],
     });
   });
 
-  test("the checkout note is always written, even though the field is V2", () => {
+  test("the checkout note falls back to the locked wording", () => {
     const config = buildCapConfig({
       percentage: 15,
       capMinor: 15000,
@@ -175,6 +178,9 @@ describe("the metafield round trip", () => {
       percentage: 15,
       capMinor: 15000,
       code: "SUMMER15",
+      checkoutNote: DEFAULT_CHECKOUT_NOTE,
+      appliesTo: "all",
+      productIds: [],
     });
   });
 
@@ -234,4 +240,128 @@ describe("the admin and the Function agree on the same numbers", () => {
       expect(toDecimalString(preview.givenMinor)).toBe(toDecimalString(given));
     },
   );
+});
+
+/**
+ * The version 2 fields, across the same seam.
+ *
+ * Everything here is written by `app/lib/cap-config.ts` and read by the
+ * Function's own parser, so a divergence in the targeting or the note fails
+ * here rather than as a discount that silently stops discounting.
+ */
+describe("version 2: which lines, and what the buyer reads", () => {
+  const base = {
+    percentage: 15,
+    capMinor: 15000,
+    currencyCode: "USD",
+    code: "SUMMER15",
+  };
+
+  const roundTrip = (input: Parameters<typeof buildCapConfig>[0]) =>
+    parseCapConfig(JSON.parse(JSON.stringify(buildCapConfig(input))));
+
+  test("collection ids are a top-level key, because the input query reads them by name", () => {
+    const config = buildCapConfig({
+      ...base,
+      appliesTo: "collections",
+      collectionIds: ["gid://shopify/Collection/1"],
+    });
+
+    // `[extensions.input.variables]` populates `$collectionIds` from the key
+    // of that exact name. Nesting it would leave the variable null and every
+    // product out of the set — a discount that quietly does nothing.
+    expect(config.collectionIds).toEqual(["gid://shopify/Collection/1"]);
+    expect(config.appliesTo).toBe("collections");
+  });
+
+  test("the Function reads a collection-targeted discount as targeted", () => {
+    const parsed = roundTrip({
+      ...base,
+      appliesTo: "collections",
+      collectionIds: ["gid://shopify/Collection/1"],
+    });
+
+    expect(parsed?.appliesTo).toBe("collections");
+    // Collections are resolved by Shopify before the Function runs, so the
+    // parser keeps no ids for them — only the products it matches itself.
+    expect(parsed?.productIds).toEqual([]);
+  });
+
+  test("the Function reads the chosen product ids back unchanged", () => {
+    const parsed = roundTrip({
+      ...base,
+      appliesTo: "products",
+      productIds: ["gid://shopify/Product/1", "gid://shopify/Product/2"],
+    });
+
+    expect(parsed?.appliesTo).toBe("products");
+    expect(parsed?.productIds).toEqual([
+      "gid://shopify/Product/1",
+      "gid://shopify/Product/2",
+    ]);
+  });
+
+  test("ids for a set the discount does not target are not written", () => {
+    const config = buildCapConfig({
+      ...base,
+      appliesTo: "all",
+      collectionIds: ["gid://shopify/Collection/1"],
+      productIds: ["gid://shopify/Product/1"],
+    });
+
+    expect(config.collectionIds).toEqual([]);
+    expect(config.productIds).toEqual([]);
+  });
+
+  test("a duplicate the picker returned twice is written once", () => {
+    const config = buildCapConfig({
+      ...base,
+      appliesTo: "products",
+      productIds: ["gid://shopify/Product/1", "gid://shopify/Product/1"],
+    });
+
+    expect(config.productIds).toEqual(["gid://shopify/Product/1"]);
+  });
+
+  test("a targeted discount naming nothing is refused here, not at checkout", () => {
+    expect(() =>
+      buildCapConfig({ ...base, appliesTo: "collections", collectionIds: [] }),
+    ).toThrow();
+    expect(() =>
+      buildCapConfig({ ...base, appliesTo: "products", productIds: [] }),
+    ).toThrow();
+  });
+
+  test("an automatic discount writes a null code, so the buyer sees no prefix", () => {
+    const parsed = roundTrip({ ...base, code: null });
+
+    expect(parsed?.code).toBeNull();
+  });
+
+  test("the merchant's note survives the round trip", () => {
+    const parsed = roundTrip({ ...base, checkoutNote: "Capped at our maximum" });
+
+    expect(parsed?.checkoutNote).toBe("Capped at our maximum");
+  });
+
+  test("a note of only whitespace falls back to the locked wording", () => {
+    expect(roundTrip({ ...base, checkoutNote: "   " })?.checkoutNote).toBe(
+      DEFAULT_CHECKOUT_NOTE,
+    );
+  });
+
+  test("a note longer than the buyer's line can carry is cut, not refused", () => {
+    const config = buildCapConfig({ ...base, checkoutNote: "x".repeat(200) });
+
+    expect(config.checkoutNote).toHaveLength(60);
+  });
+
+  test("whitespace inside a note is collapsed, so the line cannot be padded out", () => {
+    const config = buildCapConfig({
+      ...base,
+      checkoutNote: "  Capped   at\tour maximum  ",
+    });
+
+    expect(config.checkoutNote).toBe("Capped at our maximum");
+  });
 });

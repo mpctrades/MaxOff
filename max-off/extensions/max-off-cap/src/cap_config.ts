@@ -20,11 +20,24 @@ export const CAP_CONFIG_NAMESPACE = '$app';
 export const CAP_CONFIG_KEY = 'cap_config';
 
 /**
- * The only shape this Function understands. A discount written by a future
- * version of the admin carries a higher number, and this Function refuses it
- * rather than guessing at fields it does not know.
+ * Every shape this Function understands, oldest first.
+ *
+ * Version 1 is percentage + cap on the whole cart, and is still live: every
+ * discount created before 14 Sep 2026 carries it, and those discounts are
+ * running in real checkouts. Refusing them on the day version 2 deploys would
+ * silently switch off every capped discount in every installed shop — the
+ * exact failure the "refuse what we cannot read" rule exists to prevent, with
+ * the blast radius pointed the wrong way.
+ *
+ * Version 2 adds `appliesTo` with its two id lists, and a `checkoutNote` that
+ * reaches the buyer. A version 1 config is read as version 2 with `appliesTo`
+ * of "all" and the default note, which is exactly what it meant.
+ *
+ * A number that is neither is a discount written by an admin newer than this
+ * Function, and is refused rather than guessed at.
  */
-export const CAP_CONFIG_VERSION = 1;
+export const CAP_CONFIG_VERSION = 2;
+const SUPPORTED_VERSIONS = [1, 2];
 
 /** V1 caps the whole order. `item` and `collection` scopes are PRO, and unbuilt. */
 const SUPPORTED_SCOPE = 'order';
@@ -32,6 +45,12 @@ const SUPPORTED_SCOPE = 'order';
 /** Whole percent, as the merchant types it. */
 const MIN_PERCENTAGE = 1;
 const MAX_PERCENTAGE = 100;
+
+/** Locked copy, BUILD-SPEC §11, and the fallback for a version 1 config. */
+const DEFAULT_CHECKOUT_NOTE = 'Discount capped at maximum amount';
+
+/** Which part of the cart the percentage is taken on. */
+export type AppliesTo = 'all' | 'collections' | 'products';
 
 export interface CapConfig {
   /** Whole percent, 1-100. */
@@ -41,10 +60,24 @@ export interface CapConfig {
   /**
    * The discount code, stored here because the Function's `Discount` type
    * exposes only `discountClasses` and `metafield` — there is no other way for
-   * the Function to know the code it is running for. Null for a discount
-   * created before the code was recorded.
+   * the Function to know the code it is running for. Null for an automatic
+   * discount, which has no code, and for a discount created before the code
+   * was recorded.
    */
   code: string | null;
+  /** The line the buyer reads when the maximum is what decided the amount. */
+  checkoutNote: string;
+  /** Which cart lines the percentage is taken on. */
+  appliesTo: AppliesTo;
+  /**
+   * The chosen product ids, matched against each line's product.
+   *
+   * Collections are **not** matched here: they are resolved by Shopify before
+   * the Function runs, through the `$collectionIds` input query variable and
+   * `inAnyCollection`, because a Function cannot ask what is in a collection.
+   * That is why this interface carries product ids and no collection ids.
+   */
+  productIds: string[];
 }
 
 /**
@@ -61,7 +94,7 @@ export function parseCapConfig(jsonValue: unknown): CapConfig | null {
 
   const config = jsonValue as Record<string, unknown>;
 
-  if (config.version !== CAP_CONFIG_VERSION) {
+  if (typeof config.version !== 'number' || !SUPPORTED_VERSIONS.includes(config.version)) {
     return null;
   }
 
@@ -89,11 +122,61 @@ export function parseCapConfig(jsonValue: unknown): CapConfig | null {
     return null;
   }
 
+  const appliesTo = readAppliesTo(config.appliesTo);
+  if (appliesTo === null) {
+    return null;
+  }
+
+  const productIds = readIds(config.productIds);
+  const collectionIds = readIds(config.collectionIds);
+
+  // A discount that says it targets a set, and names nothing in that set,
+  // would take its percentage on a subtotal of zero. That is a discount of
+  // nothing, and it is far more likely to be a broken write than an intention.
+  if (appliesTo === 'products' && productIds.length === 0) {
+    return null;
+  }
+  if (appliesTo === 'collections' && collectionIds.length === 0) {
+    return null;
+  }
+
   return {
     percentage,
     capMinor,
     code: readCode(config.code),
+    checkoutNote: readCheckoutNote(config.checkoutNote),
+    appliesTo,
+    productIds,
   };
+}
+
+/**
+ * Absent means "all", because that is what every version 1 config meant.
+ * Present and unrecognised is refused: a targeting rule we do not implement
+ * must never quietly widen to the whole cart.
+ */
+function readAppliesTo(value: unknown): AppliesTo | null {
+  if (value === undefined || value === null) {
+    return 'all';
+  }
+
+  return value === 'all' || value === 'collections' || value === 'products' ? value : null;
+}
+
+/** Non-empty strings only. Anything else in the list is dropped, not fatal. */
+function readIds(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const ids: string[] = [];
+  for (const entry of value) {
+    if (typeof entry === 'string' && entry.trim() !== '') {
+      ids.push(entry.trim());
+    }
+  }
+
+  return ids;
 }
 
 /**
@@ -108,4 +191,14 @@ function readCode(value: unknown): string | null {
 
   const code = value.trim();
   return code === '' ? null : code;
+}
+
+/** Presentation too, and a version 1 config has none: fall back, never fail. */
+function readCheckoutNote(value: unknown): string {
+  if (typeof value !== 'string') {
+    return DEFAULT_CHECKOUT_NOTE;
+  }
+
+  const note = value.trim();
+  return note === '' ? DEFAULT_CHECKOUT_NOTE : note;
 }

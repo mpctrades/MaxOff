@@ -1236,3 +1236,83 @@ already there, only `onCard` needs a plan in it.
   entitlement's own label. `csvExport` carries "CSV export and 12-month history" and
   `twelveMonthHistory` drops off the card, so Pro reads as the website does while the two stay two
   entitlements and two gates. A test asserts both are still separately grantable.
+
+---
+
+## 14 Sep 2026 · the five "Later version" affordances, made real
+
+**Asked for** — every control on Create that carried a "Later version" badge, working, so a
+merchant can use it. Six things wore that badge. Five are built. The sixth, **specific customer
+segments**, needs the `read_customers` scope to list a shop's segments, which forces a reinstall
+for every installed merchant — CLAUDE.md rule 9 says ask, and the answer was to leave it gated.
+It keeps its badge and is the only one still unbuilt.
+
+**Built**
+
+1. **Automatic discounts.** `discountAutomaticAppCreate`, same `functionHandle`, same
+   `discountClasses: ["ORDER"]`, same inline `cap_config` — so it is the same Function with
+   `code: null` in its config, and the buyer's line is the rule with no prefix. No new scope.
+   `DiscountAutomaticAppInput` has no `code`, `usageLimit` or `appliesOncePerCustomer`, so the
+   form hides those controls rather than disabling them: no plan can unlock a field Shopify does
+   not offer. Pause and activate branch on `CappedDiscount.method` —
+   `discountAutomaticDeactivate` / `discountAutomaticActivate`, because the code mutations do not
+   accept an automatic discount's id.
+
+2. **Specific collections** and 3. **specific products.** The percentage is taken on the eligible
+   lines only; the maximum still applies to the whole order. One `ORDER` candidate as before,
+   narrowed with `orderSubtotal { excludedCartLineIds }`. Pickers use `shopify.resourcePicker`,
+   which needs only the `read_products` we already have.
+
+4. **Checkout note**, editable, and now actually reaching the buyer: the Function appends it to
+   the discount line, and only when the maximum is what decided the amount — below the cap the
+   note would not be true. It had been written into `cap_config` since Gate 2 and read by nobody.
+   Entitlement is Growth per the published pricing, so on Free the field is disabled with a
+   Growth badge. Moving it to Free is one line in `app/lib/plans.ts` and nowhere else.
+
+5. **Templates.** The four buttons fill the percentage and the maximum, and nothing else — a
+   template that silently rewrote a code the merchant had already typed would be help nobody
+   asked for.
+
+**`cap_config` is version 2.** Three new keys (`appliesTo`, `collectionIds`, `productIds`) and a
+job for `checkoutNote`. **The Function still reads version 1 and must go on reading it**: every
+discount created before today carries version 1 and is live in real checkouts, so refusing it
+would switch off every capped discount in every installed shop the moment version 2 deploys. A
+version 1 config reads as `appliesTo: "all"` with the locked note, which is what it meant. Version
+3 is still refused.
+
+**The one thing that will look wrong to the next session.** BUILD-SPEC §3.1 said, in bold,
+`[extensions.input.variables]` "is NOT needed, and must not be added". It is now needed, and the
+block is in `shopify.extension.toml`. That bullet has been rewritten rather than deleted, with the
+reason: a Function cannot ask what is in a collection, so Shopify must evaluate
+`inAnyCollection(ids: $collectionIds)` before the Function runs, and `$collectionIds` can only be
+filled from the function owner's metafield. This is also why `collectionIds` is a **top-level** key
+of `cap_config` — nest it and the variable arrives null, `inAnyCollection` is false for every
+product, and the discount silently does nothing.
+
+**Verified**
+
+- `npm run typecheck` — passes. `npm run lint` — passes. `npm run build` — passes.
+- App tests 217 pass, up from 183. New coverage: automatic discounts, targeting, the note's plan
+  gate and length, and what `discountFormStateFrom` does with malformed picker input.
+- Function tests 106 pass, up from 82. Ten new fixtures run through the real built wasm, including
+  collections under and over the cap, products with a custom line in the cart, an automatic
+  discount's codeless message, a merchant's own note, and the two configs that must apply no
+  discount at all (a targeted discount naming nothing, an `appliesTo` we do not implement).
+- `app/lib/cap-config.test.ts` still round-trips the admin's writes through the Function's own
+  parser, now including the version 2 fields.
+
+**Not verified, and it matters**
+
+Nothing here has run at a real checkout. The Function change needs `shopify app deploy`, which
+CLAUDE.md rule 9 says to ask before doing, so it has not been run. Until it is, the deployed
+Function is the version 1 one: **a discount created now with `appliesTo: "collections"` would be
+refused by it and would apply no discount at all.** Deploy before creating a targeted discount.
+
+**Remaining**
+
+- Deploy, then test on `maxoff-s7fqtwdd`: a collection-targeted discount over and under the cap,
+  an automatic discount, and a merchant-written note at a real checkout.
+- Customer segments, if and when the `read_customers` reinstall is acceptable.
+- Still open from 4 Sep, and still cheap now: whether `cart.cost.subtotalAmount` is before or
+  after *line-level* discounts (§3.2). Targeting did not answer this — it deliberately left the
+  `appliesTo: "all"` basis alone so the question is still asked about the same figure.

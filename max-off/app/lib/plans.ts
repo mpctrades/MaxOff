@@ -177,12 +177,16 @@ export const CAPABILITIES: readonly Capability[] = [
     note: "Blocked on read_orders protected-customer-data approval.",
   },
   {
+    // Built 14 Sep 2026. The Function reads `checkoutNote` from cap_config and
+    // puts it after the rule on the buyer's discount line, but only when the
+    // maximum is what decided the amount — below the cap the note would not be
+    // true. The entitlement stays Growth, which is what the published pricing
+    // says; moving it to Free is a one-line change here and nowhere else.
     key: "customCheckoutWording",
     label: "Custom checkout wording",
     plans: ["growth", "pro"],
-    built: false,
+    built: true,
     onCard: ["growth"],
-    note: "V2. The field is rendered disabled on Create and Settings.",
   },
   {
     key: "itemMaximums",

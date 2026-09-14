@@ -19,6 +19,7 @@ import { capDiscountMinor } from "../lib/cap";
 import { formatAmount, formatMoney, formatPercent } from "../lib/format";
 
 export interface CheckoutReceiptProps {
+  /** Empty for an automatic discount, which the buyer sees with no code. */
   code: string;
   percentage: number;
   capMinor: number;
@@ -56,10 +57,14 @@ export function CheckoutReceipt({
 
           {/* §5: discount codes are monospace. The whole line is, so the code
               and the maximum beside it read as the one machine-written string
-              the buyer actually sees. */}
+              the buyer actually sees.
+
+              The label is built the same way `buildMessage` builds it in the
+              Function — rule alone when there is no code, because an automatic
+              discount has none and a leading em dash is not a code. */}
           <ReceiptLine
             mono
-            label={`${code} — ${formatPercent(percentage)} off (max ${formatAmount(capMinor)})`}
+            label={discountLine(code, percentage, capMinor)}
             value={`−${formatAmount(givenMinor)}`}
           />
 
@@ -84,6 +89,19 @@ export function CheckoutReceipt({
       </s-box>
     </s-box>
   );
+}
+
+/**
+ * The buyer's discount line, mirroring `buildMessage` in
+ * `extensions/max-off-cap/src/cart_lines_discounts_generate_run.ts`.
+ *
+ * The two are deliberate twins for the same reason the arithmetic is (§8):
+ * different runtimes. What they must never do is disagree about what the buyer
+ * reads, so both drop the prefix when there is no code.
+ */
+function discountLine(code: string, percentage: number, capMinor: number): string {
+  const rule = `${formatPercent(percentage)} off (max ${formatAmount(capMinor)})`;
+  return code.trim() === "" ? rule : `${code} — ${rule}`;
 }
 
 /**

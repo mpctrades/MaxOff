@@ -12,6 +12,15 @@ description = "t:description"
   input_query = "src/cart_lines_discounts_generate_run.graphql"
   export = "cart-lines-discounts-generate-run"
 
+  # Input query variables, read from the discount's own cap_config metafield.
+  # Each top-level key of that JSON populates the variable of the same name in
+  # the input query — this is what puts merchant-chosen collection ids into
+  # `inAnyCollection`, which a Function has no other way to resolve.
+  # https://shopify.dev/docs/apps/build/functions/input-queries/use-variables-input-queries
+  [extensions.input.variables]
+  namespace = "$app"
+  key = "cap_config"
+
   [extensions.build]
   command = ""
   path = "dist/function.wasm"

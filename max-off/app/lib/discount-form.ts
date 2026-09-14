@@ -11,10 +11,40 @@
  */
 
 import { parseDecimalToMinor } from "./cap";
+import {
+  CHECKOUT_NOTE_MAX_LENGTH,
+  DEFAULT_CHECKOUT_NOTE,
+  isAppliesTo,
+  normaliseCheckoutNote,
+} from "./cap-config";
+import type { AppliesTo } from "./cap-config";
 import { can, maxCampaignDays } from "./plans";
 
+/** How a buyer gets the discount. */
+export type DiscountMethod = "code" | "automatic";
+
+/**
+ * One product or collection the merchant picked.
+ *
+ * The title rides along with the id purely so the form can show what was
+ * chosen without a second round trip to Shopify. Only the id is written to
+ * `cap_config`; a title that goes stale in our form is a cosmetic problem,
+ * where a stale id in the Function would be a discount on the wrong products.
+ */
+export interface PickedResource {
+  id: string;
+  title: string;
+}
+
 export interface DiscountFormState {
+  method: DiscountMethod;
   code: string;
+  /** The merchant-facing name of an automatic discount, which has no code. */
+  title: string;
+  appliesTo: AppliesTo;
+  collections: PickedResource[];
+  products: PickedResource[];
+  checkoutNote: string;
   percentage: string;
   capAmount: string;
   usageLimitOn: boolean;
@@ -36,7 +66,15 @@ export type DiscountFieldErrors = Partial<
 
 /** What a valid form becomes: the arguments `createCappedDiscount` takes. */
 export interface DiscountFormValue {
+  method: DiscountMethod;
+  /** Empty for an automatic discount. */
   code: string;
+  /** What the merchant sees in their own discount list. */
+  title: string;
+  appliesTo: AppliesTo;
+  collectionIds: string[];
+  productIds: string[];
+  checkoutNote: string;
   percentage: number;
   capMinor: number;
   startsAt: Date;
@@ -67,7 +105,13 @@ export function initialDiscountFormState(
   const startDate = today.toISOString().slice(0, 10);
 
   return {
+    method: "code",
     code: "",
+    title: "",
+    appliesTo: "all",
+    collections: [],
+    products: [],
+    checkoutNote: DEFAULT_CHECKOUT_NOTE,
     percentage: "15",
     capAmount: "",
     usageLimitOn: false,
@@ -165,6 +209,20 @@ export function campaignTooLongError(days: number): string {
 export const USAGE_LIMIT_NOT_ON_PLAN =
   "A limit on the total number of uses is part of the Growth plan.";
 
+export const CHECKOUT_NOTE_NOT_ON_PLAN =
+  "Your own checkout wording is part of the Growth plan.";
+
+export const CHECKOUT_NOTE_TOO_LONG = `Keep the note to ${CHECKOUT_NOTE_MAX_LENGTH} characters or fewer.`;
+
+/**
+ * A discount that targets a set and names nothing in it would take its
+ * percentage on a subtotal of zero — no discount at all, and no clue why. The
+ * Function refuses that config, so the form has to refuse it first, where the
+ * merchant can still fix it.
+ */
+export const NO_COLLECTIONS_CHOSEN = "Choose at least one collection.";
+export const NO_PRODUCTS_CHOSEN = "Choose at least one product.";
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
@@ -181,9 +239,40 @@ export function validateDiscountForm(
 ): DiscountFormResult {
   const errors: DiscountFieldErrors = {};
 
-  const code = state.code.trim().toUpperCase();
-  if (code === "") {
+  // An automatic discount has no code to enter — Shopify identifies it by
+  // title — so the two fields are required in the alternative, never together.
+  const method: DiscountMethod = state.method === "automatic" ? "automatic" : "code";
+
+  const code = method === "code" ? state.code.trim().toUpperCase() : "";
+  if (method === "code" && code === "") {
     errors.code = "Enter a discount code.";
+  }
+
+  const typedTitle = state.title.trim();
+  if (method === "automatic" && typedTitle === "") {
+    errors.title = "Enter a name for this discount.";
+  }
+
+  const appliesTo: AppliesTo = isAppliesTo(state.appliesTo) ? state.appliesTo : "all";
+  const collectionIds = appliesTo === "collections" ? idsOf(state.collections) : [];
+  const productIds = appliesTo === "products" ? idsOf(state.products) : [];
+
+  if (appliesTo === "collections" && collectionIds.length === 0) {
+    errors.collections = NO_COLLECTIONS_CHOSEN;
+  }
+  if (appliesTo === "products" && productIds.length === 0) {
+    errors.products = NO_PRODUCTS_CHOSEN;
+  }
+
+  // The note is only checked against the plan when the merchant actually
+  // changed it: a Free merchant submitting the default wording is submitting
+  // what we put there, and refusing that would be refusing our own form.
+  const checkoutNote = normaliseCheckoutNote(state.checkoutNote);
+  const noteChanged = checkoutNote !== DEFAULT_CHECKOUT_NOTE;
+  if (noteChanged && !can(plan, "customCheckoutWording")) {
+    errors.checkoutNote = CHECKOUT_NOTE_NOT_ON_PLAN;
+  } else if (state.checkoutNote.trim().length > CHECKOUT_NOTE_MAX_LENGTH) {
+    errors.checkoutNote = CHECKOUT_NOTE_TOO_LONG;
   }
 
   const percentageRaw = state.percentage.trim();
@@ -231,8 +320,11 @@ export function validateDiscountForm(
     errors.endDate = endDateRequiredError(maxDays);
   }
 
+  // Shopify's automatic discount input has no usageLimit and no
+  // appliesOncePerCustomer: there is no code to ration. The form hides both
+  // for an automatic discount; this makes a stray submission harmless.
   let usageLimit: number | null = null;
-  if (state.usageLimitOn) {
+  if (state.usageLimitOn && method === "code") {
     if (!can(plan, "usageLimits")) {
       errors.usageLimit = USAGE_LIMIT_NOT_ON_PLAN;
     } else {
@@ -252,7 +344,13 @@ export function validateDiscountForm(
 
   return {
     value: {
+      method,
       code,
+      title: typedTitle,
+      appliesTo,
+      collectionIds,
+      productIds,
+      checkoutNote,
       percentage,
       capMinor: capMinor as number,
       startsAt: startsAt as Date,
@@ -276,7 +374,13 @@ export function discountFormStateFrom(form: FormData): DiscountFormState {
   const flag = (name: string) => form.get(name) === "true";
 
   return {
+    method: text("method") === "automatic" ? "automatic" : "code",
     code: text("code"),
+    title: text("title"),
+    appliesTo: isAppliesTo(form.get("appliesTo")) ? (form.get("appliesTo") as AppliesTo) : "all",
+    collections: resources(form.get("collections")),
+    products: resources(form.get("products")),
+    checkoutNote: text("checkoutNote"),
     percentage: text("percentage"),
     capAmount: text("capAmount"),
     usageLimitOn: flag("usageLimitOn"),
@@ -291,4 +395,51 @@ export function discountFormStateFrom(form: FormData): DiscountFormState {
     endDate: text("endDate"),
     endTime: text("endTime"),
   };
+}
+
+/** Unique, non-empty ids, in the order the merchant picked them. */
+function idsOf(picked: PickedResource[]): string[] {
+  return [
+    ...new Set(
+      (picked ?? [])
+        .map((resource) => resource?.id?.trim() ?? "")
+        .filter((id) => id !== ""),
+    ),
+  ];
+}
+
+/**
+ * The picked products or collections, as the form posts them.
+ *
+ * They travel as one JSON field rather than repeated inputs because they are
+ * one value the merchant set in one gesture, and because `FormData` has no way
+ * to carry the title alongside the id without inventing a delimiter that some
+ * product name will eventually contain. Anything unparseable is an empty list,
+ * which validation then rejects for a targeted discount — never a silent
+ * fallback to the whole catalogue.
+ */
+function resources(value: FormDataEntryValue | null): PickedResource[] {
+  if (typeof value !== "string" || value.trim() === "") {
+    return [];
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.flatMap((entry): PickedResource[] => {
+      if (typeof entry !== "object" || entry === null) {
+        return [];
+      }
+
+      const { id, title } = entry as { id?: unknown; title?: unknown };
+      return typeof id === "string" && id.trim() !== ""
+        ? [{ id: id.trim(), title: typeof title === "string" ? title : id.trim() }]
+        : [];
+    });
+  } catch {
+    return [];
+  }
 }

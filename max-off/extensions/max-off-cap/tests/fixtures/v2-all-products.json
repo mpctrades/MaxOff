@@ -6,11 +6,27 @@
       "cart": {
         "cost": {
           "subtotalAmount": {
-            "amount": "1400.0",
+            "amount": "1400.00",
             "currencyCode": "USD"
           }
         },
-        "lines": []
+        "lines": [
+          {
+            "id": "gid://shopify/CartLine/1",
+            "cost": {
+              "subtotalAmount": {
+                "amount": "1400.00"
+              }
+            },
+            "merchandise": {
+              "__typename": "ProductVariant",
+              "product": {
+                "id": "gid://shopify/Product/1",
+                "inAnyCollection": false
+              }
+            }
+          }
+        ]
       },
       "discount": {
         "discountClasses": [
@@ -18,12 +34,16 @@
         ],
         "metafield": {
           "jsonValue": {
-            "version": 1,
+            "version": 2,
             "percentage": 15,
             "capAmount": "150.00",
             "currencyCode": "USD",
             "scope": "order",
-            "checkoutNote": "Discount capped at maximum amount"
+            "checkoutNote": "Discount capped at maximum amount",
+            "code": "MAXOFF15",
+            "appliesTo": "all",
+            "collectionIds": [],
+            "productIds": []
           }
         }
       }
@@ -34,7 +54,7 @@
           "orderDiscountsAdd": {
             "candidates": [
               {
-                "message": "15% off (max 150.00 USD) · Discount capped at maximum amount",
+                "message": "MAXOFF15 — 15% off (max 150.00 USD) · Discount capped at maximum amount",
                 "targets": [
                   {
                     "orderSubtotal": {

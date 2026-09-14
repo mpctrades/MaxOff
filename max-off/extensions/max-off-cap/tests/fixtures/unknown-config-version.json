@@ -9,7 +9,8 @@
             "amount": "1400.00",
             "currencyCode": "USD"
           }
-        }
+        },
+        "lines": []
       },
       "discount": {
         "discountClasses": [
@@ -17,7 +18,7 @@
         ],
         "metafield": {
           "jsonValue": {
-            "version": 2,
+            "version": 3,
             "percentage": 15,
             "capAmount": "150.00",
             "currencyCode": "USD",

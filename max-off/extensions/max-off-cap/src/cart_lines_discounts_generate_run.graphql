@@ -1,9 +1,35 @@
-query CartInput {
+# `$collectionIds` is not a runtime argument in the usual sense: Shopify reads
+# it from the discount's own `cap_config` metafield, by key name, because
+# `[extensions.input.variables]` in shopify.extension.toml points at that
+# namespace and key. A Function cannot ask what is in a collection, so this is
+# the only way merchant-chosen collections can reach it.
+#
+# It is declared `[ID!]` and not `[ID!]!`: a discount that targets all products
+# has no collectionIds, the variable arrives null, and a required variable
+# would abort the whole function run instead.
+query CartInput($collectionIds: [ID!]) {
   cart {
     cost {
       subtotalAmount {
         amount
         currencyCode
+      }
+    }
+    lines {
+      id
+      cost {
+        subtotalAmount {
+          amount
+        }
+      }
+      merchandise {
+        __typename
+        ... on ProductVariant {
+          product {
+            id
+            inAnyCollection(ids: $collectionIds)
+          }
+        }
       }
     }
   }

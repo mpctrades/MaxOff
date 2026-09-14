@@ -9,7 +9,8 @@
             "amount": "700.0",
             "currencyCode": "USD"
           }
-        }
+        },
+        "lines": []
       },
       "discount": {
         "discountClasses": [
