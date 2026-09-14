@@ -9,8 +9,17 @@ generator client {
 // enough when changing adapters.
 // See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
 datasource db {
-  provider = "sqlite"
-  url      = "file:dev.sqlite"
+  // Postgres, not SQLite, from 14 Sep 2026 — chosen for production because the
+  // Session table is what keeps merchants installed. A SQLite file inside the
+  // container is wiped on every redeploy, which logs every merchant out and
+  // makes them reinstall; that is an App Store review failure, not a bug report.
+  //
+  // Prisma cannot take `provider` from an env var, so dev and production run the
+  // same engine. That is the point: SQLite and Postgres disagree about case
+  // sensitivity in LIKE, and a dev database that behaves differently from the
+  // real one is how a search that works locally ships broken.
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model Session {

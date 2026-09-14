@@ -47,6 +47,13 @@ api_version = "2026-10"
   uri = "/webhooks/app/scopes_update"
   topics = [ "app/scopes_update" ]
 
+  # Mandatory privacy topics for every public App Store app. All three use one
+  # authenticated endpoint; `authenticate.webhook` verifies Shopify's HMAC
+  # before the handler reads the topic or changes any stored data.
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/compliance"
+  compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
+
 [auth]
 redirect_urls = [ "https://maxoff-dev.mpctrades.com/auth/callback" ]
 

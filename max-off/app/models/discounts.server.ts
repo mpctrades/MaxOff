@@ -111,10 +111,14 @@ export async function listCappedDiscounts(input: {
   const now = new Date();
   const search = input.query.trim();
 
-  // Discount codes are uppercase by convention, and SQLite's LIKE is
-  // case-insensitive for ASCII, so `contains` on an uppercased needle matches
-  // however the merchant typed it. Prisma's `mode: "insensitive"` is not
-  // available on SQLite.
+  // `mode: "insensitive"` on both columns, and it has to be explicit.
+  //
+  // This used to lean on SQLite, whose LIKE is case-insensitive for ASCII, and
+  // uppercased the needle because codes are stored uppercase. Postgres does not
+  // do that: `contains` there is case-sensitive, so "summer" would have stopped
+  // matching SUMMER15 and a title would only match on exact casing. Postgres is
+  // also what makes the fix available — the option this comment once said we
+  // could not use.
   const searchWhere: Prisma.CappedDiscountWhereInput =
     search === ""
       ? {}
@@ -122,8 +126,8 @@ export async function listCappedDiscounts(input: {
           // An automatic discount has no code, so searching only the code
           // column would make every one of them unfindable.
           OR: [
-            { code: { contains: search.toUpperCase() } },
-            { title: { contains: search } },
+            { code: { contains: search, mode: "insensitive" } },
+            { title: { contains: search, mode: "insensitive" } },
           ],
         };
 
