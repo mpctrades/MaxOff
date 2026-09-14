@@ -14,7 +14,11 @@ If you have an existing Remix app that you want to upgrade to React Router, plea
 
 ### Prerequisites
 
-Before you begin, you'll need to [download and install the Shopify CLI](https://shopify.dev/docs/apps/tools/cli/getting-started) if you haven't already.
+Before you begin, install:
+
+- Node.js 22
+- [Shopify CLI](https://shopify.dev/docs/apps/tools/cli/getting-started)
+- PostgreSQL 16
 
 ### Setup
 
@@ -25,10 +29,23 @@ shopify app init --template=https://github.com/Shopify/shopify-app-template-reac
 ### Local Development
 
 ```shell
-shopify app dev
+npm run dev
 ```
 
 Press P to open the URL to your app. Once you click install, you can start development.
+
+MaxOff uses PostgreSQL in development and production. Create a local database, copy
+`.env.example` to `.env`, and update `DATABASE_URL` for your machine. On macOS with Homebrew:
+
+```shell
+brew install postgresql@16
+brew services start postgresql@16
+$(brew --prefix postgresql@16)/bin/createdb maxoff_dev
+cp .env.example .env
+npm run setup
+```
+
+If port 5432 is already occupied, run PostgreSQL on another port and use that port in `.env`.
 
 Local development is powered by [the Shopify CLI](https://shopify.dev/docs/apps/tools/cli). It logs into your account, connects to an app, provides environment variables, updates remote config, creates a tunnel and provides commands to generate extensions.
 
@@ -79,12 +96,14 @@ For more information on the Shopify Dev MCP please read [the documentation](http
 
 ### Application Storage
 
-This template uses [Prisma](https://www.prisma.io/) to store session data, by default using an [SQLite](https://www.sqlite.org/index.html) database.
-The database is defined as a Prisma schema in `prisma/schema.prisma`.
+MaxOff uses [Prisma](https://www.prisma.io/) with PostgreSQL to store Shopify sessions,
+discount configuration, app settings, and cap events. The database is defined in
+`prisma/schema.prisma`.
 
-This use of SQLite works in production if your app runs as a single instance.
-The database that works best for you depends on the data your app needs and how it is queried.
-Here’s a short list of databases providers that provide a free tier to get started:
+Production uses the private PostgreSQL service in `docker-compose.yml`; local development must
+use a separate database through the `DATABASE_URL` in `.env`.
+
+Here are common managed database providers:
 
 | Database   | Type             | Hosters                                                                                                                                                                                                                                    |
 | ---------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -93,7 +112,7 @@ Here’s a short list of databases providers that provide a free tier to get sta
 | Redis      | Key-value        | [Digital Ocean](https://www.digitalocean.com/products/managed-databases-redis), [Amazon MemoryDB](https://aws.amazon.com/memorydb/)                                                                                                        |
 | MongoDB    | NoSQL / Document | [Digital Ocean](https://www.digitalocean.com/products/managed-databases-mongodb), [MongoDB Atlas](https://www.mongodb.com/atlas/database)                                                                                                  |
 
-To use one of these, you can use a different [datasource provider](https://www.prisma.io/docs/reference/api-reference/prisma-schema-reference#datasource) in your `schema.prisma` file, or a different [SessionStorage adapter package](https://github.com/Shopify/shopify-api-js/blob/main/packages/shopify-api/docs/guides/session-storage.md).
+Do not point local development at the production database.
 
 ### Build
 

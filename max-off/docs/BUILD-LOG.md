@@ -1371,3 +1371,24 @@ wrong word order.
 - A compliance request signed with the app secret returns 200 on the corrected hostname.
 - Shopify CLI validates the configuration and reports `maxoff-4` active.
 - The obsolete tunnel container and its server-side credential file were removed.
+
+---
+
+## 14 Sep 2026 · local PostgreSQL development restored
+
+**Problem** — after production moved from SQLite to PostgreSQL, local `npm run dev` failed in
+Prisma with P1012 because the developer machine had no `DATABASE_URL` or PostgreSQL server.
+
+**Fixed**
+
+- Installed PostgreSQL 16 with Homebrew and created a separate `maxoff_dev` database. Port 5432
+  was already occupied by an unrelated password-protected server, so this machine's MaxOff
+  cluster runs on port 5433 without touching the existing service.
+- Added the ignored local `.env`, a committed `.env.example`, Node 22 `.nvmrc`, and accurate
+  PostgreSQL development instructions. The production database is never used locally.
+
+**Verified**
+
+- Prisma generated its client and applied `20260914000000_init` to `maxoff_dev`.
+- `npm run dev` reached Shopify CLI's “Ready, watching for changes in your app”; the Function,
+  proxy, GraphiQL, React Router server, and development preview all started successfully.
