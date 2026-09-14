@@ -1,8 +1,4 @@
-import type {
-  ActionFunctionArgs,
-  HeadersFunction,
-  LoaderFunctionArgs,
-} from "react-router";
+import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
 import { useLoaderData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 
@@ -73,37 +69,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   };
 };
 
-/**
- * Leaving the embedded frame for Shopify's hosted plan page.
- *
- * The App Pricing docs say the redirect must leave the app frame and that
- * React Router apps should "use the framework's redirect utility" — which is
- * the `redirect` helper `authenticate.admin` returns, with `target: "_top"`.
- * A plain `<form method="post">` is used rather than React Router's `<Form>`
- * so the browser performs a real navigation and honours that response.
- */
-export const action = async ({ request }: ActionFunctionArgs) => {
-  const { admin, session, redirect } = await authenticate.admin(request);
-
-  const form = await request.formData();
-  if (form.get("intent") !== "view-plans") {
-    return { ok: false as const, message: "Unknown action." };
-  }
-
-  const { appHandle } = await getCurrentPlan({ shop: session.shop, admin });
-  const url = hostedPlanPageUrl({ shop: session.shop, appHandle });
-
-  if (url === null) {
-    return {
-      ok: false as const,
-      message:
-        "MaxOff could not work out where your plan page is. Open the app from your Shopify admin to change plan.",
-    };
-  }
-
-  return redirect(url, { target: "_top" });
-};
-
 export default function BillingPage() {
   const data = useLoaderData<typeof loader>();
 
@@ -127,15 +92,12 @@ export default function BillingPage() {
           nextChargeOn={data.currentPeriodEnd}
           action={
             data.recommended !== null && data.hostedPlanUrl !== null ? (
-              <form method="post">
-                <input type="hidden" name="intent" value="view-plans" />
-                {/* The name, not the price. The price is on the plan's own
-                    card a few centimetres below, and a button that carries it
-                    runs wider than the strip it sits in. */}
-                <BrandButton type="submit">
-                  Upgrade to {PLAN_LABELS[data.recommended]}
-                </BrandButton>
-              </form>
+              /* The name, not the price. The price is on the plan's own
+                 card a few centimetres below, and a button that carries it
+                 runs wider than the strip it sits in. */
+              <BrandButton href={data.hostedPlanUrl} target="_top">
+                Upgrade to {PLAN_LABELS[data.recommended]}
+              </BrandButton>
             ) : undefined
           }
         />
@@ -309,18 +271,16 @@ function PlanAction({
   const below = PLAN_KEYS.indexOf(plan) < PLAN_KEYS.indexOf(currentPlan);
 
   return (
-    <form method="post">
-      <input type="hidden" name="intent" value="view-plans" />
-      <BrandButton
-        fill
-        type="submit"
-        variant={plan === recommended ? "primary" : "secondary"}
-      >
-        {below
-          ? `Move to ${PLAN_LABELS[plan]}`
-          : `Upgrade to ${PLAN_LABELS[plan]}`}
-      </BrandButton>
-    </form>
+    <BrandButton
+      fill
+      href={hostedPlanUrl}
+      target="_top"
+      variant={plan === recommended ? "primary" : "secondary"}
+    >
+      {below
+        ? `Move to ${PLAN_LABELS[plan]}`
+        : `Upgrade to ${PLAN_LABELS[plan]}`}
+    </BrandButton>
   );
 }
 

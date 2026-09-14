@@ -428,6 +428,11 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
+  /* A `<button>` gets this from the UA stylesheet and an `<a>` does not, so
+     without it the link form of the button was 100% of its card *plus* its
+     padding — the upgrade buttons hung over both edges while "Current plan",
+     a real button, sat inside. */
+  box-sizing: border-box;
   /* Sized to its label, never to its container. `s-stack` and `s-section` lay
      their children out as a flex column, whose default `align-items: stretch`
      was pulling the button across the whole card. */

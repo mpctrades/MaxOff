@@ -28,6 +28,12 @@ export interface BrandButtonProps {
   children: React.ReactNode;
   /** Renders an anchor instead of a button. */
   href?: string;
+  /**
+   * Anchor target. `"_top"` is what carries a merchant out of the embedded
+   * iframe — a server redirect cannot, because the browser applies it to the
+   * frame that made the request and Shopify admin refuses to be framed.
+   */
+  target?: string;
   type?: "button" | "submit";
   variant?: "primary" | "secondary";
   disabled?: boolean;
@@ -42,6 +48,7 @@ export interface BrandButtonProps {
 export function BrandButton({
   children,
   href,
+  target,
   type = "button",
   variant = "primary",
   disabled = false,
@@ -65,6 +72,8 @@ export function BrandButton({
       <a
         className={className}
         href={href}
+        target={target}
+        rel={target ? "noopener" : undefined}
         slot={slot}
         aria-label={accessibilityLabel}
       >
