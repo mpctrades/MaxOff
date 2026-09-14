@@ -1,0 +1,58 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: maxoff
+      POSTGRES_USER: maxoff
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U maxoff -d maxoff"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    volumes:
+      - maxoff_postgres:/var/lib/postgresql/data
+    networks:
+      - internal
+
+  app:
+    build:
+      context: .
+      args:
+        SHOPIFY_APP_URL: ${SHOPIFY_APP_URL}
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://maxoff:${POSTGRES_PASSWORD}@db:5432/maxoff?schema=public
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - internal
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command:
+      - tunnel
+      - --no-autoupdate
+      - --url
+      - http://app:3000
+      - --credentials-file
+      - /etc/cloudflared/credentials.json
+      - run
+      - 73d5a7bb-897e-4eb6-95f1-4fe79894ea8d
+    volumes:
+      - ./cloudflared/credentials.json:/etc/cloudflared/credentials.json:ro
+    depends_on:
+      - app
+    networks:
+      - internal
+
+networks:
+  internal:
+
+volumes:
+  maxoff_postgres:

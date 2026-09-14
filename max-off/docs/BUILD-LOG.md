@@ -1316,3 +1316,36 @@ refused by it and would apply no discount at all.** Deploy before creating a tar
 - Still open from 4 Sep, and still cheap now: whether `cart.cost.subtotalAmount` is before or
   after *line-level* discounts (§3.2). Targeting did not answer this — it deliberately left the
   `appliesTo: "all"` basis alone so the question is still asked about the same figure.
+
+---
+
+## 14 Sep 2026 · persistent test deployment and compliance checks
+
+**Asked for** — bring the app online so the merchant can test it and clear Shopify's failed
+mandatory-webhook and webhook-HMAC automated checks.
+
+**Built and deployed**
+
+- Registered the three mandatory compliance topics at `/webhooks/compliance`. The route calls
+  Shopify's `authenticate.webhook(request)` before processing any payload. Customer requests are
+  acknowledged because MaxOff stores no customer-linked data; `shop/redact` removes the shop's
+  MaxOff records and sessions.
+- Released Shopify app version `maxoff-3`, including the compliance subscriptions and the version
+  2 discount Function.
+- Added a persistent Docker Compose deployment: PostgreSQL, the app, and the existing Cloudflare
+  named tunnel. The app now runs at `https://maxoff-dev.mpctrades.com` and survives SSH sessions
+  and container restarts. Production uses Node 22 and runs Prisma migrations before startup.
+
+**Verified**
+
+- Typecheck, lint, application build, and all 106 Function tests pass.
+- Shopify CLI accepted the app configuration and reports `maxoff-3` active.
+- The public URL returns HTTP 200 over TLS.
+- A forged compliance webhook returns HTTP 401; a locally signed compliance webhook returns
+  HTTP 200. The App Store automated checker still needs to be rerun from the Partner Dashboard.
+
+**Next real-store checks**
+
+- Open MaxOff from Shopify admin, create a capped discount, and exercise it in checkout.
+- Rerun the App Store automated checks. If either webhook result remains red, capture the new
+  result and the delivery timestamp so it can be matched against production logs.
