@@ -1349,3 +1349,25 @@ mandatory-webhook and webhook-HMAC automated checks.
 - Open MaxOff from Shopify admin, create a capped discount, and exercise it in checkout.
 - Rerun the App Store automated checks. If either webhook result remains red, capture the new
   result and the delivery timestamp so it can be matched against production logs.
+
+---
+
+## 14 Sep 2026 · corrected deployment hostname
+
+**Correction** — the existing Cloudflare DNS name for the development app is
+`dev.maxoff.mpctrades.com`, not `maxoff-dev.mpctrades.com`. The prior tunnel deployment used the
+wrong word order.
+
+**Changed**
+
+- The app and OAuth redirect URLs now use `https://dev.maxoff.mpctrades.com`.
+- MaxOff is published to nginx through `127.0.0.1:3010`; PostgreSQL remains private to Docker.
+- nginx owns public TLS and proxies the full Shopify application, including auth and compliance
+  webhooks. The unnecessary named-tunnel service is removed from the Compose stack.
+
+**Verified**
+
+- Let's Encrypt issued the certificate; HTTPS returns 200 and HTTP redirects to HTTPS.
+- A compliance request signed with the app secret returns 200 on the corrected hostname.
+- Shopify CLI validates the configuration and reports `maxoff-4` active.
+- The obsolete tunnel container and its server-side credential file were removed.

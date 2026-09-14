@@ -1,7 +1,7 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "2054aaf833b91f2a63cd47e8663c88ac"
-application_url = "https://maxoff-dev.mpctrades.com"
+application_url = "https://dev.maxoff.mpctrades.com"
 embedded = true
 name = "MaxOff"
 
@@ -55,7 +55,7 @@ api_version = "2026-10"
   compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
 
 [auth]
-redirect_urls = [ "https://maxoff-dev.mpctrades.com/auth/callback" ]
+redirect_urls = [ "https://dev.maxoff.mpctrades.com/auth/callback" ]
 
 [build]
 automatically_update_urls_on_dev = true

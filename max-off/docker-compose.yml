@@ -29,25 +29,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    networks:
-      - internal
-
-  tunnel:
-    image: cloudflare/cloudflared:latest
-    restart: unless-stopped
-    command:
-      - tunnel
-      - --no-autoupdate
-      - --url
-      - http://app:3000
-      - --credentials-file
-      - /etc/cloudflared/credentials.json
-      - run
-      - 73d5a7bb-897e-4eb6-95f1-4fe79894ea8d
-    volumes:
-      - ./cloudflared/credentials.json:/etc/cloudflared/credentials.json:ro
-    depends_on:
-      - app
+    ports:
+      - "127.0.0.1:3010:3000"
     networks:
       - internal
 
