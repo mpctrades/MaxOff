@@ -11,8 +11,6 @@ import {
   InternalButtonLink,
   InternalLink,
 } from "../components/InternalNavigation";
-import { PlanStrip } from "../components/PlanStrip";
-import { nextPlan, PLAN_LABELS as PLAN_NAMES, toPlanKey } from "../lib/plans";
 import {
   formatAmount,
   formatAmountPlain,
@@ -61,11 +59,6 @@ export default function HomePage() {
 
   const isNewInstall = home.totalCount === 0;
 
-  // Home reads the cached plan — it is a summary, not a gate, and the billing
-  // page refreshes the cache from Shopify every time it is opened.
-  const plan = toPlanKey(home.plan);
-  const upgradeTo = nextPlan(plan);
-
   return (
     <s-page heading="MaxOff">
       <InternalButtonLink slot="secondary-actions" href="/app/test">
@@ -78,26 +71,6 @@ export default function HomePage() {
       >
         Create capped discount
       </InternalButtonLink>
-
-      {/* Which plan, and how much of it is in use — the same strip as the top
-          of Plans & billing, so the answer is in the same shape on both
-          pages. The button is a link here: choosing a plan is billing's job,
-          and Home should not be the place a merchant accidentally leaves the
-          app frame. */}
-      <s-section>
-        <PlanStrip
-          plan={plan}
-          currencyCode={home.currencyCode}
-          activeCount={home.activeCount}
-          action={
-            upgradeTo !== null ? (
-              <BrandButton href="/app/billing">
-                Upgrade to {PLAN_NAMES[upgradeTo]}
-              </BrandButton>
-            ) : undefined
-          }
-        />
-      </s-section>
 
       {isNewInstall ? (
         <NewInstallCard />
