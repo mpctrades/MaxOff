@@ -15,43 +15,144 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return { showForm: Boolean(login) };
 };
 
+/**
+ * The one screen that is not inside the Shopify admin.
+ *
+ * A merchant reaches it by typing the app's own URL, and a Shopify reviewer
+ * reaches it before they have installed anything — so it has to say what
+ * MaxOff is and then get out of the way of the log-in field. It is the only
+ * route with no App Bridge and no Polaris, which is why it carries its own
+ * stylesheet rather than borrowing the admin's components.
+ *
+ * The copy is BUILD-SPEC §11's locked wording, not a second version of it:
+ * "Percentage discounts that stop at a maximum amount", "Cap starts above",
+ * and "MaxOff adds nothing to your theme" all appear here exactly as they
+ * appear in the app.
+ */
 export default function App() {
   const { showForm } = useLoaderData<typeof loader>();
 
   return (
-    <div className={styles.index}>
-      <div className={styles.content}>
-        <h1 className={styles.heading}>A short heading about [your app]</h1>
-        <p className={styles.text}>
-          A tagline about [your app] that describes your value proposition.
+    <main className={styles.page}>
+      <div className={styles.shell}>
+        <div className={styles.brand}>
+          {/* The product in one glyph: a line that climbs and then stops.
+              Decorative — the wordmark beside it carries the name. */}
+          <svg
+            className={styles.mark}
+            viewBox="0 0 28 28"
+            role="presentation"
+            aria-hidden="true"
+          >
+            <rect width="28" height="28" rx="7" />
+            <path d="M6 20 L12.5 11.5 L22 11.5" />
+          </svg>
+          MaxOff
+        </div>
+
+        <h1 className={styles.heading}>
+          Percentage discounts that{" "}
+          <span className={styles.accent}>stop at a maximum amount.</span>
+        </h1>
+
+        <p className={styles.tagline}>
+          Run 15% off without handing 300.00 to the one customer who fills
+          their basket. You set the percentage and the most you will ever give
+          away.
         </p>
-        {showForm && (
-          <Form className={styles.form} method="post" action="/auth/login">
-            <label className={styles.label}>
-              <span>Shop domain</span>
-              <input className={styles.input} type="text" name="shop" />
-              <span>e.g: my-shop-domain.myshopify.com</span>
-            </label>
-            <button className={styles.button} type="submit">
-              Log in
-            </button>
-          </Form>
-        )}
+
+        <div className={styles.panels}>
+          {showForm && (
+            <Form
+              className={styles.card}
+              method="post"
+              action="/auth/login"
+            >
+              <span className={styles.eyebrow}>Log in</span>
+
+              <label className={styles.label} htmlFor="shop">
+                Shop domain
+              </label>
+
+              <div className={styles.field}>
+                <input
+                  id="shop"
+                  className={styles.input}
+                  type="text"
+                  name="shop"
+                  placeholder="my-shop-domain.myshopify.com"
+                  autoComplete="off"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                />
+                <button className={styles.button} type="submit">
+                  Log in
+                </button>
+              </div>
+
+              <span className={styles.hint}>
+                e.g. my-shop-domain.myshopify.com
+              </span>
+            </Form>
+          )}
+
+          {/* The same figure the create screen puts in front of a merchant,
+              shown here with real numbers so the product is legible before
+              anyone installs it. */}
+          <div className={styles.example}>
+            <span className={styles.exampleRule}>
+              15% off · maximum 150.00 USD
+            </span>
+            <p className={styles.exampleLabel}>Cap starts above</p>
+            <p className={styles.exampleValue}>1,000.00 USD</p>
+            <p className={styles.exampleWorking}>
+              <span aria-hidden="true">150.00 ÷ 15% = 1,000.00</span>
+              <span className={styles.srOnly}>
+                150.00 divided by 15 percent equals 1,000.00
+              </span>
+            </p>
+            <p className={styles.exampleNote}>
+              Below that, a buyer gets the full 15%. Above it, the discount
+              stops at 150.00 and you keep the difference.
+            </p>
+          </div>
+        </div>
+
         <ul className={styles.list}>
-          <li>
-            <strong>Product feature</strong>. Some detail about your feature and
-            its benefit to your customer.
+          <li className={styles.point}>
+            <span className={styles.pointKey} aria-hidden="true">
+              01
+            </span>
+            <h2 className={styles.pointTitle}>One maximum, set by you</h2>
+            <p className={styles.pointText}>
+              Choose the percentage and the maximum discount. MaxOff works out
+              the rest on every cart, and shows you where the maximum starts
+              working before you save.
+            </p>
           </li>
-          <li>
-            <strong>Product feature</strong>. Some detail about your feature and
-            its benefit to your customer.
+          <li className={styles.point}>
+            <span className={styles.pointKey} aria-hidden="true">
+              02
+            </span>
+            <h2 className={styles.pointTitle}>Applied in Shopify&rsquo;s checkout</h2>
+            <p className={styles.pointText}>
+              The maximum is worked out by Shopify&rsquo;s own discount engine at
+              checkout, so the amount a buyer sees is the amount you set.
+            </p>
           </li>
-          <li>
-            <strong>Product feature</strong>. Some detail about your feature and
-            its benefit to your customer.
+          <li className={styles.point}>
+            <span className={styles.pointKey} aria-hidden="true">
+              03
+            </span>
+            <h2 className={styles.pointTitle}>Nothing in your storefront</h2>
+            <p className={styles.pointText}>
+              MaxOff adds nothing to your theme. There is no script to install
+              and no snippet to remove.
+            </p>
           </li>
         </ul>
       </div>
-    </div>
+    </main>
   );
 }
