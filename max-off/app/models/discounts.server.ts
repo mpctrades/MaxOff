@@ -12,6 +12,7 @@ import prisma from "../db.server";
 import { capStartsAboveMinor, displayStatus, DISCOUNT_TABS } from "../lib/cap";
 import type { DiscountTab, DisplayStatus } from "../lib/cap";
 import { capConfigMetafield } from "../lib/cap-config";
+import type { CapScope } from "../lib/cap-config";
 import { formatMoney } from "../lib/format";
 import { activeDiscountLimit } from "../lib/plans";
 import { getPlanForGate } from "./plan.server";
@@ -432,6 +433,21 @@ export async function planLimitRefusal(input: {
 const FUNCTION_HANDLE = "max-off-cap";
 
 /**
+ * The discount class a scope needs, which is the other half of the contract in
+ * `cart_lines_discounts_generate_run.ts`: the Function checks for exactly this
+ * class and returns nothing without it.
+ *
+ * Note for the week-4 edit screen: changing the scope of a live discount also
+ * changes the class it needs, so an edit that offers the scope has to move the
+ * discount's `discountClasses` with it — or refuse the change. Whether Shopify
+ * accepts a class change on an existing app discount is unverified; check it
+ * against the 2026-10 schema before building that screen.
+ */
+function discountClassFor(scope: CapScope): "ORDER" | "PRODUCT" {
+  return scope === "order" ? "ORDER" : "PRODUCT";
+}
+
+/**
  * Creating the discount. `codeAppDiscount { discountId }` is selected because
  * `discountGid` is `@unique` on our mirror and is how the orders/paid webhook
  * will find the discount — and that selection is why this app needs
@@ -494,6 +510,8 @@ export interface CreateDiscountInput {
   code: string;
   /** The merchant's own name for an automatic discount. Derived for a code. */
   title: string;
+  /** Whether the maximum is one per order, per line, or per collection. */
+  scope: CapScope;
   appliesTo: "all" | "collections" | "products";
   collectionIds: string[];
   productIds: string[];
@@ -608,6 +626,7 @@ export async function createCappedDiscount(
       // Function prefixing the buyer's line with one.
       code: automatic ? null : input.code,
       checkoutNote: input.checkoutNote,
+      scope: input.scope,
       appliesTo: input.appliesTo,
       collectionIds: input.collectionIds,
       productIds: input.productIds,
@@ -636,9 +655,12 @@ export async function createCappedDiscount(
   const common = {
     title,
     functionHandle: FUNCTION_HANDLE,
-    // Without ORDER the Function returns no operations and the discount
-    // silently does nothing (BUILD-LOG, 8 Sep).
-    discountClasses: ["ORDER"],
+    // The class has to match what the Function will emit for this scope, or
+    // the Function returns no operations and the discount silently does
+    // nothing (BUILD-LOG, 8 Sep). One maximum for the order is a single
+    // order-level amount — ORDER. A maximum per line or per collection hands
+    // out several amounts at once, which only PRODUCT candidates can carry.
+    discountClasses: [discountClassFor(input.scope)],
     startsAt: input.startsAt.toISOString(),
     endsAt: input.endsAt?.toISOString() ?? null,
     combinesWith: {

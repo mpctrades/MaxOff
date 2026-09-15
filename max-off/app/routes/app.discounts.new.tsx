@@ -22,11 +22,13 @@ import {
 import {
   CHECKOUT_NOTE_MAX_LENGTH,
   DEFAULT_CHECKOUT_NOTE,
+  isCapScope,
 } from "../lib/cap-config";
-import type { AppliesTo } from "../lib/cap-config";
+import type { AppliesTo, CapScope } from "../lib/cap-config";
 import {
   campaignTooLongError,
   CHECKOUT_NOTE_NOT_ON_PLAN,
+  COLLECTION_SCOPE_NEEDS_COLLECTIONS,
   combineDateTime,
   discountFormStateFrom,
   initialDiscountFormState,
@@ -35,7 +37,8 @@ import {
   USAGE_LIMIT_NOT_ON_PLAN,
   validateDiscountForm,
 } from "../lib/discount-form";
-import { can, maxCampaignDays, toPlanKey } from "../lib/plans";
+import { can, gateFor, maxCampaignDays } from "../lib/plans";
+import type { CapabilityGate } from "../lib/plans";
 import type {
   DiscountFieldErrors,
   DiscountFormState,
@@ -60,6 +63,27 @@ import type {
 
 const SAVE_BAR_ID = "create-discount-save-bar";
 const CHECKOUT_PREVIEW_ID = "create-checkout-preview";
+
+/**
+ * What one maximum covers, for the copy that has to name it.
+ *
+ * The arithmetic is the same under every scope — `min(basis × %, maximum)` —
+ * but the basis is a cart, a line or a collection, and a number whose unit is
+ * unstated is the thing this product exists not to do. "Say what a number
+ * means, not just the number."
+ */
+const SCOPE_BASIS_LABEL: Record<CapScope, string> = {
+  order: "Cart total",
+  item: "Item total",
+  collection: "Collection total",
+};
+
+/** The suffix that keeps "starts working above 1,000.00" true per scope. */
+const SCOPE_PER_LABEL: Record<CapScope, string> = {
+  order: "",
+  item: " per item",
+  collection: " per collection",
+};
 
 /** The live preview's slider range and chips, per §4.3 item 9. */
 const SLIDER_MIN_MINOR = 5000;
@@ -87,27 +111,33 @@ const TEMPLATES: { label: string; percentage: string; capAmount: string }[] = [
 ];
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
 
-  const settings = await ensureShopSettings(session.shop);
+  const [settings, plan] = await Promise.all([
+    ensureShopSettings(session.shop),
+    /**
+     * The plan decides what this form may offer: which maximums, how long a
+     * discount may run, and whether it may carry a usage limit.
+     *
+     * Read **live** from Shopify, not from the cached column. The cache is
+     * only refreshed by opening the billing page or by coming back through
+     * Shopify's approval redirect, so a merchant who upgrades and then comes
+     * straight here — which is the obvious thing to do after paying for the
+     * per-item maximum — would be shown the plan they had before. Reading live
+     * costs a round trip, measured at ~1.9s on the dev tunnel; it runs
+     * alongside the settings read rather than after it, and it buys a form
+     * that is never a tier behind the merchant.
+     *
+     * The action checks the plan again before anything is written, so this
+     * read decides what is offered and never what is allowed.
+     */
+    getPlanForGate({ shop: session.shop, admin }),
+  ]);
 
   return {
     currencyCode: settings.currencyCode,
     checkoutNote: settings.defaultCheckoutNote || DEFAULT_CHECKOUT_NOTE,
-    /**
-     * The plan decides what this form may offer: how long a discount may run,
-     * and whether it may carry a usage limit.
-     *
-     * Read from the **cached** column, which `getCurrentPlan` refreshes every
-     * time the billing page is opened, rather than from Shopify. Asking
-     * Shopify costs a round trip — measured at ~1.9s on the dev tunnel — on a
-     * page the merchant opens to type in, and all it buys is the difference
-     * between two plans for a merchant who upgraded seconds ago. The action
-     * checks the live plan before anything is written, so a stale cache can
-     * only ever show the wrong affordance, never save a discount the plan does
-     * not allow.
-     */
-    plan: toPlanKey(settings.plan),
+    plan,
   };
 };
 
@@ -172,6 +202,61 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   };
 };
 
+/**
+ * One maximum the merchant can choose, with whatever the plan has to say
+ * about it.
+ *
+ * The description and its badge sit on one line, so they have to live in one
+ * slot. `details` cannot hold the badge — Polaris extracts that slot to plain
+ * text and the badge would arrive as the bare word "Pro" — and a badge alone
+ * in `secondary-content` lands on a line of its own under the description.
+ * Putting both in `secondary-content` is the only arrangement that keeps a
+ * real badge beside its text.
+ *
+ * The cost: `details` is what Polaris wires to the input with
+ * `aria-describedby`, and this gives that up. It is only spent when there is a
+ * badge to show, which is when the choice is also disabled and so unreachable
+ * by keyboard; the text is still read in document order. A choice the merchant
+ * can actually pick keeps its `details`.
+ */
+function ScopeChoice({
+  value,
+  label,
+  details,
+  gate,
+}: {
+  value: CapScope;
+  label: string;
+  details: string;
+  gate: CapabilityGate;
+}) {
+  if (gate.badge === null) {
+    return (
+      <s-choice value={value}>
+        {label}
+        <s-text slot="details" color="subdued">
+          {details}
+        </s-text>
+      </s-choice>
+    );
+  }
+
+  return (
+    <s-choice value={value} disabled>
+      {label}
+      <s-stack
+        slot="secondary-content"
+        direction="inline"
+        gap="small-300"
+        alignItems="center"
+      >
+        <s-text color="subdued">{details}</s-text>
+        <s-badge>{gate.badge}</s-badge>
+      </s-stack>
+    </s-choice>
+  );
+}
+
 export default function CreateDiscountPage() {
   const { currencyCode, plan } = useLoaderData<typeof loader>();
 
@@ -180,6 +265,11 @@ export default function CreateDiscountPage() {
   const mayLimitUses = can(plan, "usageLimits");
   /** Whether this plan may replace the locked checkout wording with its own. */
   const mayRewordNote = can(plan, "customCheckoutWording");
+  /** The two Pro maximums, read from the same matrix as everything else. */
+  const itemGate = gateFor(plan, "itemMaximums");
+  const collectionGate = gateFor(plan, "collectionMaximums");
+  /** Entitled on Pro, not built yet — so a Pro merchant is told which it is. */
+  const budgetGate = gateFor(plan, "campaignBudget");
   const shopify = useAppBridge();
   const navigate = useNavigate();
 
@@ -376,6 +466,13 @@ export default function CreateDiscountPage() {
     }
   });
 
+  const onScopeChange = useNativeChange<ValuesElement>((element) => {
+    const picked = element.values?.[0];
+    if (isCapScope(picked)) {
+      set("scope", picked);
+    }
+  });
+
   const onAppliesToChange = useNativeChange<ValuesElement>((element) => {
     const picked = element.values?.[0];
     if (picked === "all" || picked === "collections" || picked === "products") {
@@ -480,6 +577,7 @@ export default function CreateDiscountPage() {
         method: state.method,
         code: automatic ? "" : state.code.trim().toUpperCase(),
         title: state.title.trim(),
+        scope: state.scope,
         appliesTo: state.appliesTo,
         // One JSON field each, because a picked resource is an id and a title
         // together and FormData has no way to keep the pair without inventing
@@ -666,7 +764,10 @@ export default function CreateDiscountPage() {
 
           {ready && startsAboveMinor !== null ? (
             <div className="maxoff-cap-callout">
-              <span>The maximum starts working above</span>
+              <span>
+                The maximum starts working above
+                {SCOPE_PER_LABEL[state.scope]}
+              </span>
               <strong className="maxoff-cap-callout__value maxoff-tabular">
                 {money(startsAboveMinor)}
               </strong>
@@ -699,7 +800,9 @@ export default function CreateDiscountPage() {
           <s-choice-list
             label="The maximum applies to"
             name="scope"
-            values={["order"]}
+            values={[state.scope]}
+            ref={onScopeChange}
+            {...(errors.scope ? { error: errors.scope } : {})}
           >
             <s-choice value="order">
               The whole order
@@ -707,48 +810,29 @@ export default function CreateDiscountPage() {
                 One maximum for the entire cart.
               </s-text>
             </s-choice>
-            {/* The description and its badge sit on one line, so they have
-                to live in one slot. `details` cannot hold the badge — Polaris
-                extracts that slot to plain text and the badge would arrive as
-                the bare word "Pro" — and a badge alone in `secondary-content`
-                lands on a line of its own under the description. Putting both
-                in `secondary-content` is the only arrangement that keeps a
-                real badge beside its text.
-
-                The cost: `details` is what Polaris wires to the input with
-                `aria-describedby`, and this gives that up. It is only spent on
-                choices that are disabled and so unreachable by keyboard, and
-                the text is still read in document order. The one enabled
-                choice above keeps its `details`. */}
-            <s-choice value="item" disabled>
-              Each item
-              <s-stack
-                slot="secondary-content"
-                direction="inline"
-                gap="small-300"
-                alignItems="center"
-              >
-                <s-text color="subdued">
-                  A separate maximum on every line.
-                </s-text>
-                <s-badge>Pro</s-badge>
-              </s-stack>
-            </s-choice>
-            <s-choice value="collection" disabled>
-              Each collection
-              <s-stack
-                slot="secondary-content"
-                direction="inline"
-                gap="small-300"
-                alignItems="center"
-              >
-                <s-text color="subdued">
-                  A separate maximum per collection.
-                </s-text>
-                <s-badge>Pro</s-badge>
-              </s-stack>
-            </s-choice>
+            <ScopeChoice
+              value="item"
+              label="Each item"
+              details="A separate maximum on every line."
+              gate={itemGate}
+            />
+            <ScopeChoice
+              value="collection"
+              label="Each collection"
+              details="A separate maximum per collection."
+              gate={collectionGate}
+            />
           </s-choice-list>
+
+          {/* Said once, under the list, rather than as a third disabled
+              choice: the merchant has already picked this maximum and the
+              thing to change is which products the discount applies to, two
+              sections down. */}
+          {state.scope === "collection" && state.appliesTo !== "collections" && (
+            <s-paragraph color="subdued">
+              {COLLECTION_SCOPE_NEEDS_COLLECTIONS}
+            </s-paragraph>
+          )}
         </s-stack>
       </s-section>
 
@@ -816,11 +900,17 @@ export default function CreateDiscountPage() {
             />
           )}
 
-          {state.appliesTo !== "all" && (
+          {/* Only under one maximum for the order. Under the per-item and
+              per-collection maximums the heading would be false, and the last
+              sentence would be selling a Pro merchant what they already pay
+              for — so it is not shown at all rather than reworded. */}
+          {state.appliesTo !== "all" && state.scope === "order" && (
             <s-banner tone="info" heading="The maximum is still one maximum">
               The percentage is taken on the chosen items only, and the maximum
-              still applies to the whole order. A separate maximum on each item
-              is a Pro feature.
+              still applies to the whole order.
+              {itemGate.allowed
+                ? " A separate maximum on each item is above, under the maximum."
+                : " A separate maximum on each item is a Pro feature."}
             </s-banner>
           )}
         </s-stack>
@@ -968,7 +1058,7 @@ export default function CreateDiscountPage() {
                     details={USAGE_LIMIT_NOT_ON_PLAN}
                     disabled
                   ></s-checkbox>
-                  <s-badge>Growth</s-badge>
+                  <s-badge>{gateFor(plan, "usageLimits").badge}</s-badge>
                 </s-grid>
               )}
 
@@ -995,7 +1085,7 @@ export default function CreateDiscountPage() {
                   details="A budget for the whole campaign, not one order."
                   disabled
                 ></s-checkbox>
-                <s-badge>Pro</s-badge>
+                <s-badge>{budgetGate.badge}</s-badge>
               </s-grid>
             </>
           )}
@@ -1074,7 +1164,7 @@ export default function CreateDiscountPage() {
             <s-stack direction="block" gap="small-300">
               <s-stack direction="inline" gap="small-300" alignItems="center">
                 <s-text>Checkout note</s-text>
-                <s-badge>Growth</s-badge>
+                <s-badge>{gateFor(plan, "customCheckoutWording").badge}</s-badge>
               </s-stack>
               <s-text-field
                 label="Checkout note"
@@ -1290,7 +1380,7 @@ export default function CreateDiscountPage() {
                     htmlFor="cart-size"
                     style={{ fontSize: "13px", fontWeight: 500 }}
                   >
-                    Cart total: {money(simSubtotalMinor)}
+                    {SCOPE_BASIS_LABEL[state.scope]}: {money(simSubtotalMinor)}
                   </label>
                   <input
                     id="cart-size"

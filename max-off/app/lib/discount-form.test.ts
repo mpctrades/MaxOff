@@ -2,11 +2,13 @@ import { describe, expect, test } from "vitest";
 
 import {
   campaignTooLongError,
+  COLLECTION_SCOPE_NEEDS_COLLECTIONS,
   combineDateTime,
   defaultEndDate,
   discountFormStateFrom,
   endDateRequiredError,
   initialDiscountFormState,
+  SCOPE_NOT_ON_PLAN,
   USAGE_LIMIT_NOT_ON_PLAN,
   validateDiscountForm,
 } from "./discount-form";
@@ -41,6 +43,7 @@ describe("a valid form", () => {
         method: "code",
         code: "SUMMER15",
         title: "",
+        scope: "order",
         appliesTo: "all",
         collectionIds: [],
         productIds: [],
@@ -596,5 +599,88 @@ describe("discountFormStateFrom, on what the browser actually posts", () => {
     expect(errorsOf({ ...valid(), appliesTo: "products", products: [] }).products).toBe(
       "Choose at least one product.",
     );
+  });
+});
+
+/**
+ * The Pro maximums, gated here and nowhere else.
+ *
+ * The form renders these choices disabled off-plan, but §6 is explicit that
+ * the server revalidates rather than trusting that it did: a stale tab whose
+ * plan has changed, or a post that never went through the form, has to be
+ * refused here. A Free store submitting `scope: "item"` is the case that
+ * matters — the UI it bypassed is not a gate.
+ */
+describe("which maximum the plan allows", () => {
+  const collection = { id: "gid://shopify/Collection/1", title: "Sale" };
+
+  test.each(["free", "growth"])("%s cannot take a maximum on each item", (plan) => {
+    expect(errorsOf(valid({ scope: "item" }), plan).scope).toBe(
+      SCOPE_NOT_ON_PLAN.item,
+    );
+  });
+
+  test.each(["free", "growth"])(
+    "%s cannot take a maximum per collection",
+    (plan) => {
+      const state = valid({
+        scope: "collection",
+        appliesTo: "collections",
+        collections: [collection],
+      });
+
+      expect(errorsOf(state, plan).scope).toBe(SCOPE_NOT_ON_PLAN.collection);
+    },
+  );
+
+  test("Pro takes a maximum on each item", () => {
+    const result = validateDiscountForm(valid({ scope: "item" }), "pro");
+    expect("value" in result && result.value.scope).toBe("item");
+  });
+
+  test("Pro takes a maximum per collection, with the collections to divide by", () => {
+    const result = validateDiscountForm(
+      valid({
+        scope: "collection",
+        appliesTo: "collections",
+        collections: [collection],
+      }),
+      "pro",
+    );
+
+    expect("value" in result && result.value.scope).toBe("collection");
+    expect("value" in result && result.value.collectionIds).toEqual([collection.id]);
+  });
+
+  // The Function refuses this pairing outright, so the form has to refuse it
+  // first — where the merchant can still change the answer.
+  test.each(["all", "products"] as const)(
+    "a maximum per collection is refused on a discount that applies to %s",
+    (appliesTo) => {
+      const state = valid({
+        scope: "collection",
+        appliesTo,
+        products: [{ id: "gid://shopify/Product/1", title: "Mug" }],
+      });
+
+      expect(errorsOf(state, "pro").scope).toBe(COLLECTION_SCOPE_NEEDS_COLLECTIONS);
+    },
+  );
+
+  test("every plan takes one maximum for the whole order", () => {
+    for (const plan of ["free", "growth", "pro"]) {
+      expect(errorsOf(valid({ scope: "order" }), plan).scope).toBeUndefined();
+    }
+  });
+
+  // Anything unreadable is the maximum every plan has, never a Pro one.
+  // Checked on Growth, whose form has no other rule to trip over: on Free the
+  // run-length ceiling would fail the same submission for its missing end
+  // date, and prove nothing about the scope.
+  test("an unreadable scope falls back to the whole order", () => {
+    const state = valid({ scope: "variant" as never });
+    const result = validateDiscountForm(state, OPEN_PLAN);
+
+    expect("value" in result && result.value.scope).toBe("order");
   });
 });

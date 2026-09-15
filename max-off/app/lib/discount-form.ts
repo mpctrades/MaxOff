@@ -13,12 +13,15 @@
 import { parseDecimalToMinor } from "./cap";
 import {
   CHECKOUT_NOTE_MAX_LENGTH,
+  DEFAULT_CAP_SCOPE,
   DEFAULT_CHECKOUT_NOTE,
   isAppliesTo,
+  isCapScope,
   normaliseCheckoutNote,
 } from "./cap-config";
-import type { AppliesTo } from "./cap-config";
+import type { AppliesTo, CapScope } from "./cap-config";
 import { can, maxCampaignDays } from "./plans";
+import type { CapabilityKey } from "./plans";
 
 /** How a buyer gets the discount. */
 export type DiscountMethod = "code" | "automatic";
@@ -41,6 +44,8 @@ export interface DiscountFormState {
   code: string;
   /** The merchant-facing name of an automatic discount, which has no code. */
   title: string;
+  /** Whether the maximum is one per order, per line, or per collection. */
+  scope: CapScope;
   appliesTo: AppliesTo;
   collections: PickedResource[];
   products: PickedResource[];
@@ -71,6 +76,7 @@ export interface DiscountFormValue {
   code: string;
   /** What the merchant sees in their own discount list. */
   title: string;
+  scope: CapScope;
   appliesTo: AppliesTo;
   collectionIds: string[];
   productIds: string[];
@@ -108,6 +114,7 @@ export function initialDiscountFormState(
     method: "code",
     code: "",
     title: "",
+    scope: DEFAULT_CAP_SCOPE,
     appliesTo: "all",
     collections: [],
     products: [],
@@ -223,6 +230,30 @@ export const CHECKOUT_NOTE_TOO_LONG = `Keep the note to ${CHECKOUT_NOTE_MAX_LENG
 export const NO_COLLECTIONS_CHOSEN = "Choose at least one collection.";
 export const NO_PRODUCTS_CHOSEN = "Choose at least one product.";
 
+/**
+ * Which entitlement each maximum needs. `order` needs none — it is the
+ * maximum every plan is sold on — so it is absent rather than mapped to
+ * something permissive.
+ */
+const SCOPE_CAPABILITY: Record<Exclude<CapScope, "order">, CapabilityKey> = {
+  item: "itemMaximums",
+  collection: "collectionMaximums",
+};
+
+export const SCOPE_NOT_ON_PLAN: Record<Exclude<CapScope, "order">, string> = {
+  item: "A separate maximum on each item is part of the Pro plan.",
+  collection: "A separate maximum per collection is part of the Pro plan.",
+};
+
+/**
+ * A maximum per collection with no collections to divide the cart into has no
+ * honest reading, and the Function refuses the pairing outright. Said here, on
+ * the field the merchant would change, rather than as a saved discount that
+ * quietly never discounts.
+ */
+export const COLLECTION_SCOPE_NEEDS_COLLECTIONS =
+  "A maximum per collection needs a discount that applies to chosen collections.";
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
@@ -262,6 +293,19 @@ export function validateDiscountForm(
   }
   if (appliesTo === "products" && productIds.length === 0) {
     errors.products = NO_PRODUCTS_CHOSEN;
+  }
+
+  // The Pro maximums, checked here and nowhere else. The form renders these
+  // choices disabled off-plan, so a submission that reaches this branch either
+  // came from a stale tab whose plan has since changed or from something that
+  // skipped the form altogether — §6 says both are the server's problem.
+  const scope: CapScope = isCapScope(state.scope) ? state.scope : DEFAULT_CAP_SCOPE;
+  if (scope !== "order") {
+    if (!can(plan, SCOPE_CAPABILITY[scope])) {
+      errors.scope = SCOPE_NOT_ON_PLAN[scope];
+    } else if (scope === "collection" && appliesTo !== "collections") {
+      errors.scope = COLLECTION_SCOPE_NEEDS_COLLECTIONS;
+    }
   }
 
   // The note is only checked against the plan when the merchant actually
@@ -347,6 +391,7 @@ export function validateDiscountForm(
       method,
       code,
       title: typedTitle,
+      scope,
       appliesTo,
       collectionIds,
       productIds,
@@ -377,6 +422,7 @@ export function discountFormStateFrom(form: FormData): DiscountFormState {
     method: text("method") === "automatic" ? "automatic" : "code",
     code: text("code"),
     title: text("title"),
+    scope: isCapScope(form.get("scope")) ? (form.get("scope") as CapScope) : DEFAULT_CAP_SCOPE,
     appliesTo: isAppliesTo(form.get("appliesTo")) ? (form.get("appliesTo") as AppliesTo) : "all",
     collections: resources(form.get("collections")),
     products: resources(form.get("products")),
