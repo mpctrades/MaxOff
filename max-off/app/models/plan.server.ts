@@ -86,8 +86,15 @@ interface CurrentPlanResponse {
 
 export interface CurrentPlan {
   plan: PlanKey;
-  /** Where the answer came from, so the page can be honest about it. */
-  source: "shopify" | "cache";
+  /**
+   * Where the answer came from, so the page can be honest about it.
+   *
+   * `"unmapped"` is the loud one: Shopify confirmed a paid subscription and we
+   * could not tell which plan it is. `plan` is then the Free floor — an
+   * entitlement we are certain the merchant is owed — and never a guess at the
+   * one they paid for.
+   */
+  source: "shopify" | "cache" | "unmapped";
   /** The app handle, for the hosted plan-selection URL. Null if unavailable. */
   appHandle: string | null;
   /** ISO date of the next charge, when Shopify tells us. Never guessed. */
@@ -165,6 +172,7 @@ export async function getCurrentPlan(input: {
   let plan: PlanKey = "free";
   let unmappedSubscriptionName: string | null = null;
   let currentPeriodEnd: string | null = null;
+  let source: CurrentPlan["source"] = "shopify";
 
   if (active.length > 0) {
     const subscription = active[0];
@@ -175,23 +183,46 @@ export async function getCurrentPlan(input: {
       plan = mapped;
     } else {
       // A subscription we cannot name is still a subscription somebody is
-      // paying for, so it is not Free. Growth is the least we can grant that
-      // is still paid; the raw name is surfaced so the mismatch is visible
-      // rather than silently mis-billing entitlements.
-      plan = "growth";
+      // paying for — and that is exactly why we must not guess which one.
+      //
+      // This used to grant Growth, on the reasoning that "paid is at least the
+      // cheapest paid tier". That is wrong in the direction that costs the
+      // merchant: a plan named "MaxOff Pro" or "Pro plan" in the Partner
+      // Dashboard misses `planFromLabel`, and the merchant is then charged
+      // 7.99 and quietly served Growth — no error, no banner, just two
+      // entitlements they paid for and cannot find.
+      //
+      // So `plan` drops to the Free floor, which is the only entitlement we
+      // are certain they are owed, and `source` says "unmapped" so every
+      // surface can say plainly that we could not read the plan. A merchant
+      // who sees "we cannot read your plan, contact support" gets it fixed.
+      // A merchant silently short-changed never knows to ask.
+      plan = "free";
+      source = "unmapped";
       unmappedSubscriptionName = subscription.name ?? null;
       // eslint-disable-next-line no-console
       console.warn(
-        `[maxoff] active subscription "${subscription.name}" does not match a MaxOff plan; treating as Growth`,
+        `[maxoff] active subscription ${JSON.stringify(subscription.name)} ` +
+          `(id ${subscription.id}, status ${subscription.status ?? "null"}) ` +
+          `matches no MaxOff plan. Matched case-insensitively against keys ` +
+          `[${PLAN_KEYS.join(", ")}] and labels ` +
+          `[${PLAN_KEYS.map((key) => PLAN_LABELS[key]).join(", ")}]. ` +
+          `Serving the Free floor and surfacing the mismatch; rename the plan ` +
+          `in the Partner Dashboard to one of those labels to resolve it.`,
       );
     }
   }
 
-  await cachePlan(settings, plan);
+  // Only a plan we could actually identify is worth caching. Writing the Free
+  // floor over a merchant's last known Growth would turn a naming mistake into
+  // a downgrade that outlives it.
+  if (source === "shopify") {
+    await cachePlan(settings, plan);
+  }
 
   return {
     plan,
-    source: "shopify",
+    source,
     appHandle: installation.app?.handle ?? null,
     currentPeriodEnd,
     unmappedSubscriptionName,
@@ -236,7 +267,9 @@ export async function getPlanSummary(input: {
 
   // "cache" is `getCurrentPlan`'s word for "the read did not happen" — the
   // GraphQL call threw, or Shopify returned no installation. Either way we
-  // have no answer, only a column.
+  // have no answer, only a column. "unmapped" is the read happening and
+  // returning a subscription we cannot name, which is just as much a non-answer
+  // — and the one case where printing a plan name would be an active lie.
   if (current.source !== "shopify") {
     return { plan: null, activeLimit: null };
   }

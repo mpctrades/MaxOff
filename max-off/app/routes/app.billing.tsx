@@ -75,10 +75,23 @@ export default function BillingPage() {
   return (
     <s-page heading="Plans &amp; billing">
       {data.unmappedSubscriptionName && (
-        <s-banner tone="warning" heading="Unrecognised subscription">
+        <s-banner tone="critical" heading="We cannot read your plan">
           Shopify reports an active subscription called “
           {data.unmappedSubscriptionName}”, which does not match a MaxOff plan.
-          You have been given Growth features while this is sorted out.
+          Until that is sorted out you have Free plan limits, even though you
+          are being charged. Contact support and we will put it right — your
+          discounts keep running in the meantime.
+        </s-banner>
+      )}
+
+      {/* One explanation at the top, rather than the same sentence repeated
+          under all three cards. The cards still say it individually, because a
+          merchant who scrolls straight to Pro should not have to scroll back. */}
+      {data.hostedPlanUrl === null && (
+        <s-banner tone="warning" heading="Plan changes are temporarily unavailable">
+          We could not reach Shopify&rsquo;s plan page for this store. Your
+          current plan and your capped discounts are unaffected. Try again in a
+          few minutes, or contact support and we will change your plan for you.
         </s-banner>
       )}
 
@@ -264,8 +277,19 @@ function PlanAction({
     );
   }
 
+  // Shopify hosts plan selection, and the URL needs the app's own handle. When
+  // the handle cannot be read the button has nowhere to go — but rendering
+  // nothing leaves a merchant staring at a plan they cannot choose, with no
+  // hint that anything went wrong. App Store requirement 1.2.3 is that a
+  // merchant can change plan without contacting support; when we genuinely
+  // cannot offer that, the least we owe them is to say so and where to ask.
   if (hostedPlanUrl === null) {
-    return null;
+    return (
+      <s-text color="subdued">
+        Plan changes are temporarily unavailable. Contact support and we will
+        move you to {PLAN_LABELS[plan]}.
+      </s-text>
+    );
   }
 
   const below = PLAN_KEYS.indexOf(plan) < PLAN_KEYS.indexOf(currentPlan);
