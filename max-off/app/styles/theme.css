@@ -63,6 +63,12 @@
      orange it is tinted with does not. */
   --maxoff-hero: var(--maxoff-orange-050);
   --maxoff-hero-line: var(--maxoff-orange-200);
+
+  /* The template chip's hover fill. A token for the same reason the hero is
+     one: white has to stay readable on it in both themes, and the orange that
+     works on a white card is not the orange that works on a dark one.
+     #d93f0c carries white at 4.5:1. */
+  --maxoff-template-hover: var(--maxoff-orange-600);
 }
 
 /**
@@ -86,6 +92,10 @@
        peach card nobody can read. */
     --maxoff-hero: #2b1409;
     --maxoff-hero-line: #7c2d12;
+    /* `--maxoff-orange-600` is remapped to #fb923c above so orange *text*
+       reads on dark. White on that is 2.1:1, so the chip's hover cannot
+       follow it — it takes a deep fill instead. */
+    --maxoff-template-hover: #9a3412;
   }
 }
 
@@ -602,4 +612,87 @@
 .maxoff-kept {
   font-weight: 600;
   color: var(--maxoff-orange-600);
+}
+
+
+/**
+ * A ready-made cap, on the create form.
+ *
+ * Drawn rather than composed from `s-button` for the reason `.maxoff-button`
+ * gives at length: a Polaris button fixes its fill, its 28px height and its
+ * 12px label inside its shadow DOM, and none of that leaves room for two lines
+ * of text or for the brand tint. This is a real `<button>`; only the paint is
+ * ours.
+ *
+ * Tinted at rest rather than filled. Four solid orange slabs down the sidebar
+ * would outshout Save, which is the thing this page is actually for — so the
+ * chips carry the brand at a tint and commit to a full orange only under the
+ * cursor, where the merchant has already shown interest.
+ */
+.maxoff-template {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  inline-size: 100%;
+  box-sizing: border-box;
+  padding: 9px 12px;
+  border: 1px solid var(--maxoff-hero-line);
+  border-radius: 10px;
+  background: var(--maxoff-hero);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+.maxoff-template__name {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+  color: var(--maxoff-orange-600);
+}
+
+/* The numbers the click will apply, in the same tabular figures every other
+   amount in the app uses. */
+.maxoff-template__rule {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--maxoff-text-subdued);
+  font-variant-numeric: tabular-nums;
+}
+
+.maxoff-template:hover {
+  background: var(--maxoff-template-hover);
+  border-color: var(--maxoff-template-hover);
+}
+
+/* Both lines invert together. The rule is held slightly back so the name still
+   leads, the way it does at rest. */
+.maxoff-template:hover .maxoff-template__name {
+  color: #fff;
+}
+
+.maxoff-template:hover .maxoff-template__rule {
+  color: rgb(255 255 255 / 0.85);
+}
+
+.maxoff-template:active {
+  background: var(--maxoff-orange-800);
+  border-color: var(--maxoff-orange-800);
+}
+
+/* Never only a colour change, and offset so it reads on the tint and on the
+   filled hover alike — the same ring as `.maxoff-button`. */
+.maxoff-template:focus-visible {
+  outline: 2px solid var(--maxoff-orange-800);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .maxoff-template {
+    transition: none;
+  }
 }

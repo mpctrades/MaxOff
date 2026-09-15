@@ -111,15 +111,11 @@ const QUICK_CHIPS_MINOR = [20000, 80000, 140000, 250000];
  * about one campaign, and silently rewriting a code the merchant already typed
  * is the kind of help nobody asked for.
  */
-const TEMPLATES: { label: string; percentage: string; capAmount: string }[] = [
-  { label: "Sitewide 15% / max 150", percentage: "15", capAmount: "150.00" },
-  {
-    label: "Black Friday 30% / max 200",
-    percentage: "30",
-    capAmount: "200.00",
-  },
-  { label: "Welcome 10% / max 25", percentage: "10", capAmount: "25.00" },
-  { label: "VIP 20% / max 80", percentage: "20", capAmount: "80.00" },
+const TEMPLATES: { name: string; percentage: string; capAmount: string }[] = [
+  { name: "Sitewide", percentage: "15", capAmount: "150.00" },
+  { name: "Black Friday", percentage: "30", capAmount: "200.00" },
+  { name: "Welcome", percentage: "10", capAmount: "25.00" },
+  { name: "VIP", percentage: "20", capAmount: "80.00" },
 ];
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -966,7 +962,7 @@ export default function CreateDiscountPage() {
               label="Discount code"
               name="code"
               value={state.code}
-              placeholder="SUMMER15"
+              placeholder="Enter discount code"
               onInput={(event) =>
                 set("code", event.currentTarget.value.toUpperCase())
               }
@@ -1676,14 +1672,37 @@ export default function CreateDiscountPage() {
                 Ready-made caps for common campaigns. Choosing one fills in the
                 percentage and the maximum. Nothing else is changed.
               </s-paragraph>
+              {/* Drawn rather than composed from `s-button`, for the same
+                  reason `BrandButton` is: a Polaris button hard-codes its fill,
+                  its 28px height and its 12px label inside its shadow DOM, and
+                  none of that leaves room for two lines or for the brand tint.
+                  These are real `<button>`s — only the paint is ours.
+
+                  Tinted at rest and solid orange on hover, rather than four
+                  solid orange slabs: a template is a shortcut, not the thing
+                  the page is for, and the primary action on this screen is
+                  Save. The rule under each name is built from the same two
+                  numbers the click applies, so a label can never promise a
+                  percentage the template does not set. */}
               <s-stack direction="block" gap="small-200">
                 {TEMPLATES.map((template) => (
-                  <s-button
-                    key={template.label}
+                  <button
+                    key={template.name}
+                    type="button"
+                    className="maxoff-template"
                     onClick={() => applyTemplate(template)}
                   >
-                    {template.label}
-                  </s-button>
+                    <span className="maxoff-template__name">
+                      {template.name}
+                    </span>
+                    <span className="maxoff-template__rule">
+                      {template.percentage}% off, max{" "}
+                      {formatMoney(
+                        parseDecimalToMinor(template.capAmount) ?? 0,
+                        currencyCode,
+                      )}
+                    </span>
+                  </button>
                 ))}
               </s-stack>
             </s-section>
