@@ -189,20 +189,26 @@ export const CAPABILITIES: readonly Capability[] = [
     onCard: ["growth"],
   },
   {
+    // Built 15 Sep 2026, with `collectionMaximums` below. `cap_config` version 3
+    // carries a `scope`, and the Function emits one PRODUCT-class candidate per
+    // eligible line instead of the single ORDER-class candidate the `order`
+    // scope uses. See `cart_lines_discounts_generate_run.ts`.
     key: "itemMaximums",
     label: "A separate maximum on each item",
     plans: ["pro"],
-    built: false,
+    built: true,
     onCard: ["pro"],
-    note: "PRO. Needs a cap_config scope beyond 'order' and a Function change.",
   },
   {
+    // Same change as `itemMaximums`. The grouping needs `inCollections`, which
+    // answers *which* of the targeted collections a product is in — the one
+    // question `inAnyCollection` cannot. A product in two of them counts
+    // against the first the merchant picked, so no line is discounted twice.
     key: "collectionMaximums",
     label: "A separate maximum per collection",
     plans: ["pro"],
-    built: false,
+    built: true,
     onCard: ["pro"],
-    note: "PRO. Needs a cap_config scope beyond 'order' and a Function change.",
   },
   {
     // The create form has shown a Pro badge on "Stop the code once it has
@@ -294,6 +300,67 @@ export function can(plan: string, key: CapabilityKey): boolean {
 export function hasNow(plan: string, key: CapabilityKey): boolean {
   const capability = CAPABILITIES.find((entry) => entry.key === key);
   return Boolean(capability?.built) && can(plan, key);
+}
+
+/** One control's answer to "can I use this, and what should sit beside it?" */
+export interface CapabilityGate {
+  /** Whether the plan is entitled to it. */
+  allowed: boolean;
+  /** Whether it exists in the product today. */
+  built: boolean;
+  /** Whether the control should work: both of the above. */
+  usable: boolean;
+  /**
+   * The badge beside the control, or null when there is nothing to say.
+   *
+   * A plan name means "this is not on your plan". "Coming soon" means the
+   * merchant already pays for it and we have not built it yet. The difference
+   * matters: a Pro merchant shown a "Pro" badge is being sold something they
+   * have already bought, which reads as the app not knowing who they are.
+   */
+  badge: string | null;
+}
+
+/**
+ * Everything a gated control needs, from the one matrix.
+ *
+ * Every `disabled` and every badge in the admin comes from here rather than
+ * from a literal in a component. A control that decides for itself is a second
+ * definition of the plan ladder, and the one that goes stale first — which is
+ * exactly how the create form spent four days showing Pro merchants a Pro
+ * badge on maximums they were entitled to.
+ *
+ * An unknown key is refused rather than allowed: a typo in a capability name
+ * should close a control, never open one.
+ */
+export function gateFor(plan: string, key: CapabilityKey): CapabilityGate {
+  const capability = CAPABILITIES.find((entry) => entry.key === key);
+  if (capability === undefined) {
+    return {allowed: false, built: false, usable: false, badge: null};
+  }
+
+  const allowed = capability.plans.includes(toPlanKey(plan));
+  const built = capability.built;
+
+  return {
+    allowed,
+    built,
+    usable: allowed && built,
+    badge: allowed
+      ? built
+        ? null
+        : "Coming soon"
+      : PLAN_LABELS[cheapestPlanWith(capability)],
+  };
+}
+
+/**
+ * The least expensive plan that includes a capability — what an upgrade badge
+ * should name. Read from `PLAN_KEYS`, which is ordered cheapest first, so
+ * adding a tier never leaves a badge naming the wrong one.
+ */
+function cheapestPlanWith(capability: Capability): PlanKey {
+  return PLAN_KEYS.find((key) => capability.plans.includes(key)) ?? "pro";
 }
 
 /** Everything this plan has today. */

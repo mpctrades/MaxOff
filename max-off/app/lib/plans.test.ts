@@ -5,6 +5,7 @@ import {
   can,
   CAPABILITIES,
   comingSoon,
+  gateFor,
   hasNow,
   includedNow,
   isPlanKey,
@@ -12,6 +13,7 @@ import {
   nextPlan,
   planCard,
   PLAN_KEYS,
+  PLAN_LABELS,
   toPlanKey,
   upgradeAdds,
 } from "./plans";
@@ -137,6 +139,8 @@ describe("built versus entitled", () => {
       "usageLimits",
       "longCampaigns",
       "customCheckoutWording",
+      "itemMaximums",
+      "collectionMaximums",
     ]);
   });
 
@@ -313,5 +317,74 @@ describe("what a card says", () => {
         expect(entry.plans, entry.key).toContain(plan);
       }
     }
+  });
+});
+
+/**
+ * The helper every gated control in the admin reads.
+ *
+ * The bug it exists to prevent: a Pro merchant shown a "Pro" badge on a
+ * maximum they already pay for. A badge that names a plan means "not yours";
+ * "Coming soon" means "yours, not built". Nothing in a component may decide
+ * that for itself.
+ */
+describe("what a gated control is told", () => {
+  test("an entitled, built capability is usable and says nothing", () => {
+    expect(gateFor("pro", "itemMaximums")).toEqual({
+      allowed: true,
+      built: true,
+      usable: true,
+      badge: null,
+    });
+  });
+
+  test("a capability the plan lacks is badged with the cheapest plan that has it", () => {
+    expect(gateFor("free", "itemMaximums").badge).toBe("Pro");
+    expect(gateFor("free", "usageLimits").badge).toBe("Growth");
+    expect(gateFor("growth", "itemMaximums").badge).toBe("Pro");
+  });
+
+  test("a capability the plan has but we have not built says so", () => {
+    expect(gateFor("pro", "campaignBudget")).toEqual({
+      allowed: true,
+      built: false,
+      usable: false,
+      badge: "Coming soon",
+    });
+  });
+
+  test("nothing unbuilt is ever usable", () => {
+    for (const capability of CAPABILITIES) {
+      for (const plan of PLAN_KEYS) {
+        const gate = gateFor(plan, capability.key);
+        expect(gate.usable).toBe(capability.built && capability.plans.includes(plan));
+      }
+    }
+  });
+
+  test("the badge agrees with the matrix for every plan and capability", () => {
+    for (const capability of CAPABILITIES) {
+      for (const plan of PLAN_KEYS) {
+        const gate = gateFor(plan, capability.key);
+
+        if (!gate.allowed) {
+          // Never the merchant's own plan: a badge naming the plan you are on
+          // is the bug this helper was written for.
+          expect(gate.badge).not.toBe(PLAN_LABELS[plan]);
+        } else {
+          expect(gate.badge).toBe(capability.built ? null : "Coming soon");
+        }
+      }
+    }
+  });
+
+  // A typo in a capability name must close a control, never open one.
+  test("an unknown capability is refused", () => {
+    expect(gateFor("pro", "somethingElse" as CapabilityKey)).toEqual({
+      allowed: false,
+      built: false,
+      usable: false,
+      badge: null,
+    });
   });
 });
