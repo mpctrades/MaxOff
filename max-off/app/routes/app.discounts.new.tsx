@@ -28,7 +28,6 @@ import {
   toDecimalString,
 } from "../lib/cap";
 import {
-  CHECKOUT_NOTE_MAX_LENGTH,
   DEFAULT_CHECKOUT_NOTE,
   isAppliesTo,
   isCapScope,
@@ -36,7 +35,6 @@ import {
 import type { AppliesTo, CapScope } from "../lib/cap-config";
 import {
   campaignTooLongError,
-  CHECKOUT_NOTE_NOT_ON_PLAN,
   COLLECTION_SCOPE_NEEDS_COLLECTIONS,
   combineDateTime,
   isMinimumKind,
@@ -174,7 +172,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // overrides whatever they like, which is what that section promises.
     defaults: {
       scope: isCapScope(settings.defaultScope) ? settings.defaultScope : undefined,
-      checkoutNote: settings.defaultCheckoutNote || DEFAULT_CHECKOUT_NOTE,
+      // Gated here because the field that used to carry the gate is gone. A
+      // shop that wrote its own wording on Growth still has it stored after
+      // moving to Free, and `validateDiscountForm` refuses a reworded note on
+      // a plan without the entitlement — so prefilling the stored wording
+      // would refuse *every* new discount, on a field the merchant can no
+      // longer see to fix. The locked wording is what such a shop starts from.
+      // `app/lib/settings-note.test.ts` is this rule written down.
+      checkoutNote: can(plan, "customCheckoutWording")
+        ? settings.defaultCheckoutNote || DEFAULT_CHECKOUT_NOTE
+        : DEFAULT_CHECKOUT_NOTE,
       oncePerCustomer: settings.defaultOncePerCustomer,
       combinesProduct: settings.defaultCombinesProduct,
       combinesOrder: settings.defaultCombinesOrder,
@@ -505,7 +512,6 @@ export default function CreateDiscountPage() {
   const maxDays = maxCampaignDays(plan);
   const mayLimitUses = can(plan, "usageLimits");
   /** Whether this plan may replace the locked checkout wording with its own. */
-  const mayRewordNote = can(plan, "customCheckoutWording");
   /** The two Pro maximums, read from the same matrix as everything else. */
   const itemGate = gateFor(plan, "itemMaximums");
   const collectionGate = gateFor(plan, "collectionMaximums");
@@ -621,9 +627,7 @@ export default function CreateDiscountPage() {
    * The code line is the same: an automatic discount has no code, so the
    * receipt shows the rule on its own, exactly as the Function builds it.
    */
-  const noteForPreview = mayRewordNote
-    ? state.checkoutNote.trim() || DEFAULT_CHECKOUT_NOTE
-    : DEFAULT_CHECKOUT_NOTE;
+  const noteForPreview = state.checkoutNote.trim() || DEFAULT_CHECKOUT_NOTE;
 
   const receiptCode = automatic ? "" : state.code || "CODE";
 
@@ -905,10 +909,6 @@ export default function CreateDiscountPage() {
         </button>
         <button onClick={discard}>Discard</button>
       </ui-save-bar>
-
-      <s-paragraph color="subdued">
-        A percentage discount that stops at a maximum amount.
-      </s-paragraph>
 
       {notMirrored && (
         <s-banner
@@ -1382,49 +1382,12 @@ export default function CreateDiscountPage() {
       {/* ---------------- 7 · What the customer sees ---------------- */}
       <s-section heading="What the customer sees">
         <s-stack direction="block" gap="base">
-          {/* The note the buyer reads when the maximum is what decided the
-              amount. The Function appends it to the discount line, and only on
-              a capped cart — below the maximum it would not be true.
-
-              Rewording it is a Growth entitlement. On Free the field is shown
-              disabled with its badge rather than hidden: a merchant cannot ask
-              for a plan whose features they never saw. Same arrangement as the
-              usage limit above. */}
-          {mayRewordNote ? (
-            <s-text-field
-              label="Checkout note"
-              name="checkoutNote"
-              value={state.checkoutNote}
-              placeholder={DEFAULT_CHECKOUT_NOTE}
-              details="Shown to the customer only when the maximum applies."
-              maxLength={CHECKOUT_NOTE_MAX_LENGTH}
-              onInput={(event) =>
-                set("checkoutNote", event.currentTarget.value)
-              }
-              {...(errors.checkoutNote ? { error: errors.checkoutNote } : {})}
-            ></s-text-field>
-          ) : (
-            /* The badge has to sit on the label's line, and `s-text-field`
-               takes its label as a string. So the visible label is ours and
-               the field's own label is kept for assistive technology only.
-               The field is disabled, so nothing is lost by the visible text
-               not being a `<label>` that focuses it. */
-            <s-stack direction="block" gap="small-300">
-              <s-stack direction="inline" gap="small-300" alignItems="center">
-                <s-text>Checkout note</s-text>
-                <s-badge>{gateFor(plan, "customCheckoutWording").badge}</s-badge>
-              </s-stack>
-              <s-text-field
-                label="Checkout note"
-                labelAccessibilityVisibility="exclusive"
-                name="checkoutNote"
-                value={DEFAULT_CHECKOUT_NOTE}
-                details={CHECKOUT_NOTE_NOT_ON_PLAN}
-                disabled
-                maxLength={CHECKOUT_NOTE_MAX_LENGTH}
-              ></s-text-field>
-            </s-stack>
-          )}
+          {/* The checkout note is not edited here any more — it is one wording
+              for the shop, set on Settings, and the receipt below shows it.
+              The value still travels with this form and still reaches the
+              buyer: it is carried in `state.checkoutNote`, seeded from the
+              shop's default, and written into `cap_config` on save. Removing
+              the field removed a control, not the note. */}
 
           {/* The same receipt the "See checkout view" modal shows, on the
               same simulated cart as the live preview — one dataset, §12.4. */}

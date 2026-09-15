@@ -455,9 +455,15 @@ export default function SettingsPage() {
             </s-stack>
           </s-stack>
 
+          {/* The exception is named rather than glossed over. The note lost
+              its per-discount field on the create form, so the promise that
+              held for the other three controls stopped being true for it, and
+              a closing line that still claimed it would be the page telling a
+              small lie about the buyer-facing copy. */}
           <s-paragraph color="subdued">
-            These only prefill the Create new form. Anything you change on a
-            single discount still wins.
+            These prefill the Create new form, and anything you change on a
+            single discount still wins. The checkout note has no per-discount
+            override: every new discount takes this wording.
           </s-paragraph>
         </s-stack>
       </s-section>
