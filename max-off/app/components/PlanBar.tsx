@@ -155,13 +155,14 @@ export function PlanBar({ plan, activeCount, activeLimit }: PlanBarProps) {
 
         {/* Always a button, never a bare link. On Pro there is no meter, and
             the right of the card used to end in a stretch of nothing with a
-            text link adrift in it. */}
-        <Link
-          className={`maxoff-planbar__action${
-            action.upgrade ? "" : " maxoff-planbar__action--neutral"
-          }`}
-          to="/app/billing"
-        >
+            text link adrift in it.
+
+            One orange fill in every state. Orange is this app's primary-action
+            colour rather than its "buy" colour — "Create capped discount"
+            wears it and sells nothing — so "Change plan" carrying it does not
+            pitch Pro at a merchant already on Pro. The arrow is what stays
+            exclusive to an upgrade: it points somewhere further up. */}
+        <Link className="maxoff-planbar__action" to="/app/billing">
           {action.label}
           {action.upgrade && <ArrowRight />}
         </Link>

@@ -772,11 +772,15 @@
  * Home's plan bar. Home only — §5 keeps brand chrome to the screens that earn
  * it, and Plans & billing already answers this question at full length.
  *
- * Values are Arthur's, given to the pixel, so they are written as given rather
- * than mapped onto the closest token. Two notes for whoever unifies them
- * later: the accent #e8562a is two points off `--maxoff-orange-500` (#ea580c),
- * and the greys here are their own ramp rather than `--maxoff-text-*`. Both
- * are deliberate for now and both are one search away from being tokens.
+ * Sizes are Arthur's, given to the pixel. The orange is *not* — the spec's
+ * #e8562a was two points off `--maxoff-orange-500`, and once the action became
+ * a filled orange button the card carried two nearly-identical oranges that
+ * read as a mistake rather than as a palette. The accent, the active segment's
+ * dot, the meter fill and the button are all `--maxoff-orange-500` now, which
+ * is the same orange every other primary button in the app is painted with.
+ *
+ * The greys are still their own ramp rather than `--maxoff-text-*`. Deliberate
+ * for now, and one search away from being tokens.
  */
 .maxoff-planbar {
   position: relative;
@@ -801,7 +805,7 @@
   inset-inline-start: 7px;
   inline-size: 4px;
   border-radius: 999px;
-  background: #e8562a;
+  background: var(--maxoff-orange-500);
 }
 
 .maxoff-planbar__identity {
@@ -866,7 +870,7 @@
   inline-size: 5px;
   block-size: 5px;
   border-radius: 999px;
-  background: #e8562a;
+  background: var(--maxoff-orange-500);
 }
 
 .maxoff-planbar__chips {
@@ -924,7 +928,7 @@
   display: block;
   block-size: 100%;
   border-radius: 999px;
-  background: #e8562a;
+  background: var(--maxoff-orange-500);
 }
 
 .maxoff-planbar__action {
@@ -934,7 +938,10 @@
   box-sizing: border-box;
   padding: 9px 15px;
   border-radius: 10px;
-  background: #1a1a1a;
+  /* The same fill, and the same ramp on hover and press, as every other
+     primary button in MaxOff — see `.maxoff-button`, including its note on
+     white-on-orange being 3.6:1 and a decision Arthur has confirmed twice. */
+  background: var(--maxoff-orange-500);
   color: #fff;
   font: inherit;
   font-size: 13px;
@@ -942,10 +949,21 @@
   line-height: 16px;
   text-decoration: none;
   white-space: nowrap;
+  transition: background 120ms ease;
 }
 
 .maxoff-planbar__action:hover {
-  background: #000;
+  background: var(--maxoff-orange-700);
+}
+
+.maxoff-planbar__action:active {
+  background: var(--maxoff-orange-800);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .maxoff-planbar__action {
+    transition: none;
+  }
 }
 
 .maxoff-planbar__action:focus-visible {
@@ -953,24 +971,7 @@
   outline-offset: 2px;
 }
 
-/**
- * The action on a plan with nothing above it to sell, and on one we could not
- * read.
- *
- * Still a button, so the right of the card is anchored rather than trailing
- * off into a text link — but outlined, because "Change plan" and "Plans &
- * billing" are somewhere to go, not something to buy. A dark fill here would
- * sell Pro to a merchant already on it.
- */
-.maxoff-planbar__action--neutral {
-  border: 1px solid #dcdcdc;
-  background: #fff;
-  color: #1a1a1a;
-}
 
-.maxoff-planbar__action--neutral:hover {
-  background: #f7f7f7;
-}
 
 /**
  * The fourth state: billing could not be read.
