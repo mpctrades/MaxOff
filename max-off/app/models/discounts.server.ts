@@ -1508,3 +1508,201 @@ export async function readDiscountDetail(input: {
     return { row, config: null, live: null, unreachable: true };
   }
 }
+
+/* ---------------------------------------------- editing a live discount --- */
+
+/**
+ * Change the three things that cannot change what a cart in flight is charged.
+ *
+ * The reasoning for that list, and for everything left off it, is in
+ * `app/lib/discount-edit.ts`. This module's job is the order of writes.
+ *
+ * Shopify first, mirror second (§3.1), and the metafield last of the two
+ * Shopify writes. If the discount update succeeds and the metafield rewrite
+ * fails, the discount is left with its old checkout note — cosmetic, and the
+ * merchant is told. The other order would leave the Function reading a note
+ * for dates that were never applied.
+ *
+ * Both update mutations validated against the 2026-10 schema on 15 Sep 2026;
+ * both need only `write_discounts`. `usageLimit` is deliberately absent from
+ * the automatic branch: it is not a field on `DiscountAutomaticAppInput` and
+ * the schema rejects it.
+ */
+const EDIT_CODE_MUTATION = `#graphql
+  mutation MaxOffEditCodeDiscount($id: ID!, $discount: DiscountCodeAppInput!) {
+    discountCodeAppUpdate(id: $id, codeAppDiscount: $discount) {
+      userErrors {
+        field
+        code
+        message
+      }
+    }
+  }`;
+
+const EDIT_AUTOMATIC_MUTATION = `#graphql
+  mutation MaxOffEditAutomaticDiscount($id: ID!, $discount: DiscountAutomaticAppInput!) {
+    discountAutomaticAppUpdate(id: $id, automaticAppDiscount: $discount) {
+      userErrors {
+        field
+        code
+        message
+      }
+    }
+  }`;
+
+export type EditDiscountResult =
+  | { ok: true; name: string }
+  | { ok: false; message: string };
+
+export async function editCappedDiscount(input: {
+  shop: string;
+  id: string;
+  endsAt: Date | null;
+  usageLimit: number | null;
+  checkoutNote: string;
+  admin: AdminGraphqlClient;
+}): Promise<EditDiscountResult> {
+  const row = await prisma.cappedDiscount.findFirst({
+    where: { id: input.id, shop: input.shop },
+  });
+
+  if (!row) {
+    return { ok: false, message: "That discount is no longer in MaxOff." };
+  }
+
+  const automatic = row.method === "automatic";
+
+  const response = await input.admin.graphql(
+    automatic ? EDIT_AUTOMATIC_MUTATION : EDIT_CODE_MUTATION,
+    {
+      variables: {
+        id: row.discountGid,
+        discount: {
+          endsAt: input.endsAt === null ? null : input.endsAt.toISOString(),
+          ...(automatic ? {} : { usageLimit: input.usageLimit }),
+        },
+      },
+    },
+  );
+
+  const body = (await response.json()) as MutationResponse;
+
+  const transportError = body.errors?.[0]?.message;
+  if (transportError) {
+    return { ok: false, message: transportError };
+  }
+
+  const payload = automatic
+    ? body.data?.discountAutomaticAppUpdate
+    : body.data?.discountCodeAppUpdate;
+
+  const userError = payload?.userErrors?.[0];
+  if (userError) {
+    // Shopify refused. Nothing local changed, so the screen reverts to truth.
+    return { ok: false, message: userError.message };
+  }
+
+  if (!payload) {
+    return {
+      ok: false,
+      message: "Shopify did not confirm the change. Nothing was changed.",
+    };
+  }
+
+  const name = row.code ?? row.title ?? "The discount";
+
+  // The checkout note lives in `cap_config`, which the Function reads and the
+  // discount mutation knows nothing about. Rewritten only when it actually
+  // changed, so an edit that only moved the end date costs one round trip.
+  if (input.checkoutNote !== (row.checkoutNote ?? "")) {
+    const noteWritten = await rewriteCheckoutNote({
+      discountGid: row.discountGid,
+      checkoutNote: input.checkoutNote,
+      admin: input.admin,
+    });
+
+    if (!noteWritten.ok) {
+      // The dates are already applied, so this is not a failure to undo — it
+      // is a partial success, and saying "saved" would hide the half that
+      // was not.
+      await prisma.cappedDiscount.update({
+        where: { id: row.id },
+        data: { endsAt: input.endsAt, usageLimit: input.usageLimit },
+      });
+
+      return {
+        ok: false,
+        message: `${name} was updated, but the checkout wording could not be saved: ${noteWritten.message}`,
+      };
+    }
+  }
+
+  await prisma.cappedDiscount.update({
+    where: { id: row.id },
+    data: {
+      endsAt: input.endsAt,
+      usageLimit: automatic ? row.usageLimit : input.usageLimit,
+      checkoutNote: input.checkoutNote,
+    },
+  });
+
+  return { ok: true, name };
+}
+
+/**
+ * Rewrite just the checkout note inside an existing `cap_config`.
+ *
+ * Reads the config first and writes it back whole with one key changed. The
+ * config carries the targeting, the minimums and the per-market maximums, and
+ * sending a fresh object built from our columns would drop every one of them —
+ * the mirror does not hold them.
+ */
+async function rewriteCheckoutNote(input: {
+  discountGid: string;
+  checkoutNote: string;
+  admin: AdminGraphqlClient;
+}): Promise<{ ok: true } | { ok: false; message: string }> {
+  const read = await input.admin.graphql(READ_CAP_CONFIG_QUERY, {
+    variables: { id: input.discountGid },
+  });
+
+  const readBody = (await read.json()) as {
+    data?: { discountNode?: { metafield?: { jsonValue?: unknown } | null } | null } | null;
+  };
+
+  const existing = readBody.data?.discountNode?.metafield?.jsonValue;
+
+  if (typeof existing !== "object" || existing === null || Array.isArray(existing)) {
+    return {
+      ok: false,
+      message: "its current settings could not be read, so nothing was overwritten",
+    };
+  }
+
+  const next = { ...(existing as Record<string, unknown>), checkoutNote: input.checkoutNote };
+
+  const write = await input.admin.graphql(REWRITE_CAP_CONFIG_MUTATION, {
+    variables: {
+      metafields: [
+        {
+          ownerId: input.discountGid,
+          namespace: CAP_CONFIG_NAMESPACE,
+          key: CAP_CONFIG_KEY,
+          type: CAP_CONFIG_TYPE,
+          value: JSON.stringify(next),
+        },
+      ],
+    },
+  });
+
+  const writeBody = (await write.json()) as {
+    data?: { metafieldsSet?: { userErrors?: { message: string }[] } | null } | null;
+    errors?: { message: string }[] | null;
+  };
+
+  const error =
+    writeBody.errors?.[0]?.message ??
+    writeBody.data?.metafieldsSet?.userErrors?.[0]?.message;
+
+  return error ? { ok: false, message: error } : { ok: true };
+}

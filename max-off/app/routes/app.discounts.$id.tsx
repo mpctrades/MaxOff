@@ -307,9 +307,19 @@ function ReadableDiscount({ data }: { data: ReadableData }) {
         Capped discounts
       </s-link>
 
-      {/* Pause is the one action here that changes anything, so it is the one
-          that gets the header. Duplicate and the tester are ways out to other
-          screens. Polaris allows three secondary actions; these are the three. */}
+      {/* Edit reaches the three fields that cannot change what a cart already
+          in checkout is charged — the end date, the usage limit and the
+          checkout wording. The percentage and the maximum are not among them;
+          `app/lib/discount-edit.ts` argues why. Polaris allows one primary and
+          three secondary actions, and these are them. */}
+      <InternalButtonLink
+        slot="primary-action"
+        variant="primary"
+        href={`/app/discounts/${data.id}/edit`}
+      >
+        Edit
+      </InternalButtonLink>
+
       <s-button
         slot="secondary-actions"
         loading={busy}
