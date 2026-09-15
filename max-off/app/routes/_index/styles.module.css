@@ -1,32 +1,37 @@
 /**
  * The public log-in screen. Outside the admin, so outside Polaris.
  *
- * Everything here is drawn from the tokens in app/styles/theme.css, which is
- * already global — no second palette, and no web font beyond the Inter that
- * root.tsx already loads from Shopify's CDN.
+ * Deliberately light-only, and deliberately self-contained.
  *
- * Two orange rules from that file are load-bearing here:
+ * `theme.css` reassigns its text and surface tokens under
+ * `prefers-color-scheme: dark` so the admin's own drawings stay legible on a
+ * dark Shopify admin. This page must be white for everybody, so it takes
+ * fixed locals below instead of those tokens — the values are the same
+ * palette, they just do not flip. `color-scheme: light` is what stops the
+ * browser darkening the input and the button on a dark OS.
  *
- *   - `--maxoff-orange-500` is sanctioned for text at 22px and up in bold
- *     (3.6:1, which clears the large-text floor), which is the heading accent
- *     and the one big figure. Nothing smaller uses it.
- *   - The text oranges are *reassigned* under a dark theme, so they cannot
- *     paint a fill that carries white text. The button therefore takes its
- *     own locals below, which do not flip: a solid orange with white on it
- *     reads the same either way.
+ * The orange ramp and its measured contrasts are documented in
+ * app/lib/brand-theme.ts. Only two are used here: `--orange` (5.2:1) for
+ * small text, and `--orange-strong` for the one big bold figure, which is the
+ * 22px-and-up case that ramp sanctions.
  */
 
 .page {
-  /* The button's fill, deliberately not a `--maxoff-*` token: those flip with
-     the colour scheme and would leave white text on a pale orange. */
-  --btn-bg: #d93f0c; /* 4.5:1 against white — the brightest that may carry it */
-  --btn-bg-hover: #c2410c;
-  --btn-bg-active: #9a3412;
-  --btn-fg: #ffffff;
+  --ink: #141210;
+  --body: #4a4644;
+  --muted: #6b6560;
+  --line: #e8e2dc;
+  --bg: #ffffff;
+  --tint: #fff2e8;
+  --tint-line: #f8c39a;
 
-  --page-bg: #fdfcfb;
-  --page-line: #e6ded6;
+  --orange: #c2410c; /* 5.2:1 on white — small text */
+  --orange-strong: #ea580c; /* big bold figures only */
+  --btn: #d93f0c; /* 4.5:1 — the brightest that may carry white text */
+  --btn-hover: #c2410c;
+  --btn-active: #9a3412;
 
+  color-scheme: light;
   box-sizing: border-box;
   min-height: 100dvh;
   display: flex;
@@ -34,20 +39,11 @@
   justify-content: center;
   padding-block: 56px;
   padding-inline: 20px;
-  background: var(--page-bg);
-  color: var(--maxoff-text);
+  background: var(--bg);
+  color: var(--body);
   font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     sans-serif;
   -webkit-font-smoothing: antialiased;
-}
-
-/* §5 is a light-only design; this keeps the page legible when the browser is
-   dark rather than proposing a dark theme for the product. */
-@media (prefers-color-scheme: dark) {
-  .page {
-    --page-bg: #141210;
-    --page-line: #3a322c;
-  }
 }
 
 .page *,
@@ -58,9 +54,9 @@
 
 .shell {
   width: 100%;
-  max-width: 880px;
+  max-width: 820px;
   display: grid;
-  gap: 28px;
+  gap: 24px;
 }
 
 /* ------------------------------------------------------------------ brand */
@@ -69,92 +65,71 @@
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.logo {
+  width: 36px;
+  height: 36px;
+  display: block;
+  border-radius: 9px;
+}
+
+.wordmark {
   font-size: 18px;
   font-weight: 700;
   letter-spacing: -0.01em;
-  color: var(--maxoff-text);
-}
-
-.mark {
-  width: 28px;
-  height: 28px;
-  flex: none;
-}
-
-.mark rect {
-  fill: var(--btn-bg);
-}
-
-.mark path {
-  fill: none;
-  stroke: #ffffff;
-  stroke-width: 2.6;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  color: var(--ink);
 }
 
 /* ------------------------------------------------------------- hero copy */
 
 .heading {
   margin: 0;
-  max-width: 20ch;
-  font-size: clamp(30px, 6vw, 46px);
-  line-height: 1.1;
-  font-weight: 800;
-  letter-spacing: -0.03em;
+  max-width: 22ch;
+  font-size: clamp(27px, 4.4vw, 38px);
+  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: -0.02em;
   text-wrap: balance;
-  color: var(--maxoff-text);
+  color: var(--ink);
 }
 
-/* 22px and up in bold, which is the one place orange-500 may carry text. */
 .accent {
-  color: var(--maxoff-orange-500);
+  color: var(--orange);
 }
 
 .tagline {
   margin: 0;
-  max-width: 58ch;
-  font-size: 17px;
+  max-width: 60ch;
+  font-size: 16px;
   line-height: 1.6;
-  color: var(--maxoff-text-subdued);
+  color: var(--body);
 }
 
 /* ---------------------------------------------------------------- panels */
 
-/* `stretch`, so the two panels share a baseline and a bottom edge when they
-   sit side by side. Each lays its own content out from the top, so the taller
-   one decides the height and neither is centred against the other. */
 .panels {
   display: grid;
-  gap: 20px;
-  grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   align-items: stretch;
+  margin-top: 4px;
 }
 
 .card {
   display: grid;
   gap: 8px;
   align-content: start;
-  padding: 22px;
-  border: 1px solid var(--page-line);
-  border-radius: 14px;
-  background: var(--maxoff-card);
-}
-
-.eyebrow {
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
-    "Liberation Mono", monospace;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--maxoff-orange-700);
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg);
 }
 
 .label {
   font-size: 14px;
   font-weight: 600;
-  color: var(--maxoff-text);
+  color: var(--ink);
 }
 
 .field {
@@ -164,24 +139,24 @@
 }
 
 .input {
-  flex: 1 1 200px;
+  flex: 1 1 190px;
   min-width: 0;
   padding: 10px 12px;
   font: inherit;
   font-size: 15px;
-  color: var(--maxoff-text);
-  background: var(--maxoff-card);
-  border: 1px solid var(--page-line);
-  border-radius: 9px;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid #d6cfc8;
+  border-radius: 8px;
 }
 
 .input::placeholder {
-  color: var(--maxoff-text-subdued);
+  color: var(--muted);
 }
 
 .input:focus-visible,
 .button:focus-visible {
-  outline: 2px solid var(--maxoff-orange-800);
+  outline: 2px solid var(--btn-active);
   outline-offset: 2px;
 }
 
@@ -191,81 +166,69 @@
   font: inherit;
   font-size: 15px;
   font-weight: 600;
-  color: var(--btn-fg);
-  background: var(--btn-bg);
+  color: #ffffff;
+  background: var(--btn);
   border: 1px solid transparent;
-  border-radius: 9px;
+  border-radius: 8px;
   cursor: pointer;
 }
 
 .button:hover {
-  background: var(--btn-bg-hover);
+  background: var(--btn-hover);
 }
 
 .button:active {
-  background: var(--btn-bg-active);
+  background: var(--btn-active);
 }
 
 .hint {
   font-size: 13px;
-  color: var(--maxoff-text-subdued);
+  color: var(--muted);
 }
 
 /* -------------------------------------------------- the worked example */
 
-/* The branded surface, on the same tokens as the create screen's callout, so
-   a merchant meets the same figure in the same clothes once they are inside. */
+/* The one branded surface, on the same tint and border the create screen's
+   callout uses, so a merchant meets the same figure in the same clothes once
+   they are inside. */
 .example {
   display: grid;
-  gap: 4px;
+  gap: 3px;
   align-content: start;
-  padding: 22px;
-  border: 1px solid var(--maxoff-hero-line);
-  border-radius: 14px;
-  background: var(--maxoff-hero);
+  padding: 20px;
+  border: 1px solid var(--tint-line);
+  border-radius: 12px;
+  background: var(--tint);
 }
 
 .exampleRule {
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
-    "Liberation Mono", monospace;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  color: var(--maxoff-orange-700);
-  margin-bottom: 8px;
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--orange);
 }
 
 .exampleLabel {
   margin: 0;
   font-size: 14px;
-  color: var(--maxoff-text-subdued);
+  color: var(--body);
 }
 
-/* A big figure in bold, which is orange-500's documented home. */
 .exampleValue {
   margin: 0;
-  font-size: 30px;
-  line-height: 1.15;
-  font-weight: 800;
+  font-size: 28px;
+  line-height: 1.2;
+  font-weight: 700;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
-  color: var(--maxoff-orange-500);
+  color: var(--orange-strong);
 }
 
 .exampleWorking {
-  margin: 0;
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
-    "Liberation Mono", monospace;
-  font-size: 12.5px;
+  margin: 2px 0 0;
+  font-size: 13px;
   font-variant-numeric: tabular-nums;
-  color: var(--maxoff-text-subdued);
-}
-
-.exampleNote {
-  margin: 12px 0 0;
-  font-size: 13.5px;
-  line-height: 1.55;
-  color: var(--maxoff-text);
+  color: var(--muted);
 }
 
 /* ---------------------------------------------------------------- points */
@@ -273,41 +236,32 @@
 .list {
   display: grid;
   gap: 20px;
-  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   list-style: none;
-  margin: 8px 0 0;
+  margin: 4px 0 0;
   padding: 24px 0 0;
-  border-top: 1px solid var(--page-line);
+  border-top: 1px solid var(--line);
 }
 
 .point {
   display: grid;
-  gap: 6px;
+  gap: 5px;
   align-content: start;
-}
-
-.pointKey {
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
-    "Liberation Mono", monospace;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  color: var(--maxoff-orange-700);
 }
 
 .pointTitle {
   margin: 0;
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: -0.01em;
-  color: var(--maxoff-text);
+  color: var(--ink);
 }
 
 .pointText {
   margin: 0;
   font-size: 14px;
   line-height: 1.6;
-  color: var(--maxoff-text-subdued);
+  color: var(--muted);
 }
 
 /* Polaris has `accessibilityVisibility`; this route has no Polaris. */

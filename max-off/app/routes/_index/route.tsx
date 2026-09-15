@@ -19,15 +19,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
  * The one screen that is not inside the Shopify admin.
  *
  * A merchant reaches it by typing the app's own URL, and a Shopify reviewer
- * reaches it before they have installed anything — so it has to say what
- * MaxOff is and then get out of the way of the log-in field. It is the only
- * route with no App Bridge and no Polaris, which is why it carries its own
- * stylesheet rather than borrowing the admin's components.
+ * reaches it before they have installed anything — so it says what MaxOff is
+ * and then gets out of the way of the log-in field. It is the only route with
+ * no App Bridge and no Polaris, which is why it carries its own stylesheet.
  *
  * The copy is BUILD-SPEC §11's locked wording, not a second version of it:
  * "Percentage discounts that stop at a maximum amount", "Cap starts above",
- * and "MaxOff adds nothing to your theme" all appear here exactly as they
- * appear in the app.
+ * and "MaxOff adds nothing to your theme".
  */
 export default function App() {
   const { showForm } = useLoaderData<typeof loader>();
@@ -36,18 +34,14 @@ export default function App() {
     <main className={styles.page}>
       <div className={styles.shell}>
         <div className={styles.brand}>
-          {/* The product in one glyph: a line that climbs and then stops.
-              Decorative — the wordmark beside it carries the name. */}
-          <svg
-            className={styles.mark}
-            viewBox="0 0 28 28"
-            role="presentation"
-            aria-hidden="true"
-          >
-            <rect width="28" height="28" rx="7" />
-            <path d="M6 20 L12.5 11.5 L22 11.5" />
-          </svg>
-          MaxOff
+          <img
+            className={styles.logo}
+            src="/maxoff-logo.png"
+            alt=""
+            width={36}
+            height={36}
+          />
+          <span className={styles.wordmark}>MaxOff</span>
         </div>
 
         <h1 className={styles.heading}>
@@ -63,13 +57,7 @@ export default function App() {
 
         <div className={styles.panels}>
           {showForm && (
-            <Form
-              className={styles.card}
-              method="post"
-              action="/auth/login"
-            >
-              <span className={styles.eyebrow}>Log in</span>
-
+            <Form className={styles.card} method="post" action="/auth/login">
               <label className={styles.label} htmlFor="shop">
                 Shop domain
               </label>
@@ -98,12 +86,9 @@ export default function App() {
           )}
 
           {/* The same figure the create screen puts in front of a merchant,
-              shown here with real numbers so the product is legible before
-              anyone installs it. */}
+              with real numbers, so the product is legible before install. */}
           <div className={styles.example}>
-            <span className={styles.exampleRule}>
-              15% off · maximum 150.00 USD
-            </span>
+            <p className={styles.exampleRule}>15% off, maximum 150.00 USD</p>
             <p className={styles.exampleLabel}>Cap starts above</p>
             <p className={styles.exampleValue}>1,000.00 USD</p>
             <p className={styles.exampleWorking}>
@@ -112,39 +97,25 @@ export default function App() {
                 150.00 divided by 15 percent equals 1,000.00
               </span>
             </p>
-            <p className={styles.exampleNote}>
-              Below that, a buyer gets the full 15%. Above it, the discount
-              stops at 150.00 and you keep the difference.
-            </p>
           </div>
         </div>
 
         <ul className={styles.list}>
           <li className={styles.point}>
-            <span className={styles.pointKey} aria-hidden="true">
-              01
-            </span>
             <h2 className={styles.pointTitle}>One maximum, set by you</h2>
             <p className={styles.pointText}>
-              Choose the percentage and the maximum discount. MaxOff works out
-              the rest on every cart, and shows you where the maximum starts
-              working before you save.
+              Choose the percentage and the maximum discount. MaxOff shows you
+              where the maximum starts working before you save.
             </p>
           </li>
           <li className={styles.point}>
-            <span className={styles.pointKey} aria-hidden="true">
-              02
-            </span>
             <h2 className={styles.pointTitle}>Applied in Shopify&rsquo;s checkout</h2>
             <p className={styles.pointText}>
-              The maximum is worked out by Shopify&rsquo;s own discount engine at
-              checkout, so the amount a buyer sees is the amount you set.
+              The maximum is worked out by Shopify&rsquo;s own discount engine,
+              so the amount a buyer sees is the amount you set.
             </p>
           </li>
           <li className={styles.point}>
-            <span className={styles.pointKey} aria-hidden="true">
-              03
-            </span>
             <h2 className={styles.pointTitle}>Nothing in your storefront</h2>
             <p className={styles.pointText}>
               MaxOff adds nothing to your theme. There is no script to install
