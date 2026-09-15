@@ -1,0 +1,24 @@
+{
+  "id": 5123456789015,
+  "admin_graphql_api_id": "gid://shopify/Order/5123456789015",
+  "name": "#1045",
+  "processed_at": "2026-09-14T15:20:00-04:00",
+  "currency": "USD",
+  "subtotal_price": "1250.00",
+  "total_discounts": "150.00",
+  "line_items": [
+    { "title": "Field jacket", "price": "700.00", "quantity": 2 }
+  ],
+  "discount_codes": [],
+  "discount_applications": [
+    {
+      "type": "automatic",
+      "title": "Autumn clearout",
+      "value": "150.00",
+      "value_type": "fixed_amount",
+      "allocation_method": "across",
+      "target_selection": "all",
+      "target_type": "line_item"
+    }
+  ]
+}

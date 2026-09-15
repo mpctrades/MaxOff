@@ -1,0 +1,27 @@
+{
+  "id": 5123456789013,
+  "admin_graphql_api_id": "gid://shopify/Order/5123456789013",
+  "name": "#1043",
+  "processed_at": "2026-09-14T11:03:02-04:00",
+  "currency": "USD",
+  "subtotal_price": "595.00",
+  "total_discounts": "105.00",
+  "line_items": [
+    { "title": "Field jacket", "price": "700.00", "quantity": 1 }
+  ],
+  "discount_codes": [
+    { "code": "SUMMER15", "amount": "105.00", "type": "fixed_amount" }
+  ],
+  "discount_applications": [
+    {
+      "type": "discount_code",
+      "title": "SUMMER15",
+      "code": "SUMMER15",
+      "value": "105.00",
+      "value_type": "fixed_amount",
+      "allocation_method": "across",
+      "target_selection": "all",
+      "target_type": "line_item"
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "id": 5123456789014,
+  "admin_graphql_api_id": "gid://shopify/Order/5123456789014",
+  "name": "#1044",
+  "processed_at": "2026-09-14T12:44:10-04:00",
+  "currency": "USD",
+  "subtotal_price": "180.00",
+  "total_discounts": "20.00",
+  "line_items": [
+    { "title": "Wool scarf", "price": "100.00", "quantity": 2 }
+  ],
+  "discount_codes": [
+    { "code": "WELCOME10", "amount": "20.00", "type": "percentage" }
+  ],
+  "discount_applications": [
+    {
+      "type": "discount_code",
+      "title": "WELCOME10",
+      "code": "WELCOME10",
+      "value": "10.0",
+      "value_type": "percentage",
+      "allocation_method": "across",
+      "target_selection": "all",
+      "target_type": "line_item"
+    }
+  ]
+}
