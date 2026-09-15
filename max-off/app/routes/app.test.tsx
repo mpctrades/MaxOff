@@ -37,6 +37,12 @@ const CHECKOUT_PREVIEW_ID = "test-checkout-preview";
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
 
+  // The detail screen links here with the discount it was showing, so the
+  // tester opens on that one rather than on whatever happens to be newest.
+  // Validated against the loaded list below, never trusted straight from the
+  // URL — an id from another shop must not select anything.
+  const requested = new URL(request.url).searchParams.get("discount");
+
   const [settings, active] = await Promise.all([
     ensureShopSettings(session.shop),
     listCappedDiscounts({
@@ -48,6 +54,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   ]);
 
   return {
+    requestedDiscountId:
+      requested !== null && active.rows.some((row) => row.id === requested)
+        ? requested
+        : null,
     currencyCode: settings.currencyCode,
     checkoutNote: settings.defaultCheckoutNote || DEFAULT_CHECKOUT_NOTE,
     // The shop's Settings choice. The tester exists to show what checkout
@@ -93,14 +103,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function TestACartPage() {
-  const { currencyCode, checkoutNote, rounding, discounts } =
+  const { currencyCode, checkoutNote, rounding, discounts, requestedDiscountId } =
     useLoaderData<typeof loader>();
   const shopify = useAppBridge();
   const recordFetcher = useFetcher<typeof action>();
 
 
   const [lines, setLines] = useState<BasketLine[]>([]);
-  const [selectedId, setSelectedId] = useState(discounts[0]?.id ?? "");
+  const [selectedId, setSelectedId] = useState(
+    requestedDiscountId ?? discounts[0]?.id ?? "",
+  );
   const recorded = useRef(false);
 
   const discount = useMemo(
