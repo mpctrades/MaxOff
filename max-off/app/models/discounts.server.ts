@@ -309,6 +309,49 @@ const ACTIVATE_AUTOMATIC_MUTATION = `#graphql
     }
   }`;
 
+/**
+ * Put the end date back after activating.
+ *
+ * Shopify has no "paused" discount. `DiscountStatus` is `ACTIVE | EXPIRED |
+ * SCHEDULED` and nothing else, so "pause" is `discountCodeDeactivate`, which
+ * **sets `endsAt` to now** — overwriting whatever end date the merchant chose.
+ * Activating again then **sets `endsAt` to null**, because that is what
+ * activating an expired discount does. Both behaviours are documented, and
+ * together they mean a pause-then-resume silently turns a campaign that was
+ * due to stop on 30 Sep into one that never stops.
+ *
+ * Verified against the 2026-10 reference on 15 Sep 2026:
+ *   .../mutations/discountCodeDeactivate — "Deactivating an active code
+ *     discount sets the `endsAt` to now."
+ *   .../mutations/discountCodeActivate — "Activating an expired code discount
+ *     sets its `endsAt` value to null."
+ *
+ * Our mirror is the only place the merchant's real end date survives that
+ * round trip, so after activating we write it back. Both mutations validated
+ * against the 2026-10 schema; both need only `write_discounts`.
+ */
+const RESTORE_ENDS_AT_MUTATION = `#graphql
+  mutation MaxOffRestoreCodeEndsAt($id: ID!, $endsAt: DateTime) {
+    discountCodeAppUpdate(id: $id, codeAppDiscount: { endsAt: $endsAt }) {
+      userErrors {
+        field
+        code
+        message
+      }
+    }
+  }`;
+
+const RESTORE_AUTOMATIC_ENDS_AT_MUTATION = `#graphql
+  mutation MaxOffRestoreAutomaticEndsAt($id: ID!, $endsAt: DateTime) {
+    discountAutomaticAppUpdate(id: $id, automaticAppDiscount: { endsAt: $endsAt }) {
+      userErrors {
+        field
+        code
+        message
+      }
+    }
+  }`;
+
 interface UserError {
   field?: string[] | null;
   code?: string | null;
@@ -321,6 +364,8 @@ interface MutationResponse {
     discountCodeActivate?: { userErrors: UserError[] } | null;
     discountAutomaticDeactivate?: { userErrors: UserError[] } | null;
     discountAutomaticActivate?: { userErrors: UserError[] } | null;
+    discountCodeAppUpdate?: { userErrors: UserError[] } | null;
+    discountAutomaticAppUpdate?: { userErrors: UserError[] } | null;
   } | null;
   errors?: { message: string }[] | null;
 }
@@ -370,6 +415,19 @@ export async function setDiscountPaused(input: {
     });
     if (refusal) {
       return refusal;
+    }
+
+    // Activating clears `endsAt` in Shopify (see RESTORE_ENDS_AT_MUTATION). If
+    // the merchant's end date has already gone by, there is nothing to put
+    // back — and letting the activation through would quietly convert a
+    // finished campaign into one with no end at all. Refuse, and say which
+    // date is in the way, rather than making that decision for them.
+    if (discount.endsAt !== null && discount.endsAt.getTime() <= now.getTime()) {
+      return {
+        ok: false,
+        message:
+          "This discount's end date has passed. Edit it to give it a new end date, then activate it.",
+      };
     }
   }
 
@@ -421,6 +479,49 @@ export async function setDiscountPaused(input: {
     !input.paused && discount.startsAt.getTime() > now.getTime()
       ? now
       : discount.startsAt;
+
+  // Activating wiped the end date in Shopify. Put the merchant's own date back,
+  // or the discount they paused for a fortnight comes back as a permanent one.
+  // The guard above has already established it is in the future.
+  if (!input.paused && discount.endsAt !== null) {
+    const restore = await input.admin.graphql(
+      automatic ? RESTORE_AUTOMATIC_ENDS_AT_MUTATION : RESTORE_ENDS_AT_MUTATION,
+      {
+        variables: {
+          id: discount.discountGid,
+          endsAt: discount.endsAt.toISOString(),
+        },
+      },
+    );
+
+    const restoreBody = (await restore.json()) as MutationResponse;
+    const restoreError =
+      restoreBody.errors?.[0]?.message ??
+      (automatic
+        ? restoreBody.data?.discountAutomaticAppUpdate
+        : restoreBody.data?.discountCodeAppUpdate
+      )?.userErrors?.[0]?.message;
+
+    if (restoreError) {
+      // The discount is live but open-ended, which is not what the merchant
+      // asked for and not something to paper over. Say exactly that: it is
+      // running, and the end date is the part that needs their attention.
+      // eslint-disable-next-line no-console
+      console.error(
+        `[maxoff] activated ${discount.discountGid} but could not restore endsAt: ${restoreError}`,
+      );
+
+      await prisma.cappedDiscount.update({
+        where: { id: discount.id },
+        data: { status: "active", startsAt, endsAt: null },
+      });
+
+      return {
+        ok: false,
+        message: `${discount.code ?? discount.title ?? "The discount"} is active again, but its end date could not be restored and it now runs until you stop it. Edit it to set the end date.`,
+      };
+    }
+  }
 
   const updated = await prisma.cappedDiscount.update({
     where: { id: discount.id },
