@@ -32,7 +32,13 @@
 import type { ShopSettings } from "@prisma/client";
 
 import prisma from "../db.server";
-import { isPlanKey, PLAN_KEYS, PLAN_LABELS, toPlanKey } from "../lib/plans";
+import {
+  isPlanKey,
+  PLAN_ACTIVE_DISCOUNT_LIMIT,
+  PLAN_KEYS,
+  PLAN_LABELS,
+  toPlanKey,
+} from "../lib/plans";
 import type { PlanKey } from "../lib/plans";
 import { ensureShopSettings } from "./settings.server";
 
@@ -189,6 +195,55 @@ export async function getCurrentPlan(input: {
     appHandle: installation.app?.handle ?? null,
     currentPeriodEnd,
     unmappedSubscriptionName,
+  };
+}
+
+/**
+ * The plan as a screen should state it, with "we could not tell" kept apart
+ * from "Free".
+ *
+ * `getCurrentPlan` answers every call with a `PlanKey`, and when the billing
+ * read fails it falls back to the cached column — which defaults to `"free"`
+ * and, on a shop nobody has ever successfully read, has never been written.
+ * That is the right behaviour for a *gate*: refusing a paid feature to a
+ * merchant we cannot verify is the safe direction to fail.
+ *
+ * It is the wrong behaviour for a *label*. Printing "Free" at the top of Home
+ * because Shopify timed out tells a merchant paying 7.99 a month that they are
+ * not paying, which is worse than admitting we do not know. So this wrapper
+ * keeps the distinction the gate deliberately throws away: `plan` is null when
+ * the answer came from the cache rather than from Shopify, and no caller may
+ * turn that null into "free".
+ *
+ * One query. This calls `getCurrentPlan` — the same helper Plans & billing and
+ * the create form use — and adds no billing round trip of its own.
+ */
+export interface PlanSummary {
+  /**
+   * The plan Shopify confirmed, or null when it could not be read. Never
+   * "free" as a stand-in for null.
+   */
+  plan: PlanKey | null;
+  /** How many discounts may be active. Null for unlimited *and* for unknown. */
+  activeLimit: number | null;
+}
+
+export async function getPlanSummary(input: {
+  shop: string;
+  admin: AdminGraphqlClient;
+}): Promise<PlanSummary> {
+  const current = await getCurrentPlan(input);
+
+  // "cache" is `getCurrentPlan`'s word for "the read did not happen" — the
+  // GraphQL call threw, or Shopify returned no installation. Either way we
+  // have no answer, only a column.
+  if (current.source !== "shopify") {
+    return { plan: null, activeLimit: null };
+  }
+
+  return {
+    plan: current.plan,
+    activeLimit: PLAN_ACTIVE_DISCOUNT_LIMIT[current.plan],
   };
 }
 

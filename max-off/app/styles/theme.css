@@ -767,3 +767,210 @@
     transition: none;
   }
 }
+
+/**
+ * Home's plan bar. Home only — §5 keeps brand chrome to the screens that earn
+ * it, and Plans & billing already answers this question at full length.
+ *
+ * Values are Arthur's, given to the pixel, so they are written as given rather
+ * than mapped onto the closest token. Two notes for whoever unifies them
+ * later: the accent #e8562a is two points off `--maxoff-orange-500` (#ea580c),
+ * and the greys here are their own ramp rather than `--maxoff-text-*`. Both
+ * are deliberate for now and both are one search away from being tokens.
+ */
+.maxoff-planbar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  box-sizing: border-box;
+  padding: 14px 18px 14px 22px;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow:
+    0 1px 3px rgb(26 26 26 / 0.07),
+    0 0 0 1px rgb(26 26 26 / 0.05);
+}
+
+/* Bled to the card's own edge rather than laid out in the flow, so the row's
+   gap never pushes it off the corner radius. */
+.maxoff-planbar__accent {
+  position: absolute;
+  inset-block: 14px;
+  inset-inline-start: 7px;
+  inline-size: 4px;
+  border-radius: 999px;
+  background: #e8562a;
+}
+
+.maxoff-planbar__identity {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.maxoff-planbar__kicker {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #9a9a9a;
+}
+
+.maxoff-planbar__name {
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 20px;
+  color: #1a1a1a;
+}
+
+.maxoff-planbar__rule {
+  align-self: stretch;
+  inline-size: 1px;
+  background: #ececec;
+}
+
+.maxoff-planbar__track {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 10px;
+  background: #f4f4f4;
+}
+
+.maxoff-planbar__segment {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 11px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  color: #949494;
+  /* Not a control: no pointer, no hover, nothing that invites a click that
+     would do nothing. */
+  cursor: default;
+}
+
+.maxoff-planbar__segment--on {
+  background: #fff;
+  font-weight: 600;
+  color: #1a1a1a;
+  box-shadow: 0 1px 2px rgb(26 26 26 / 0.12);
+}
+
+.maxoff-planbar__segment--on::before {
+  content: "";
+  inline-size: 5px;
+  block-size: 5px;
+  border-radius: 999px;
+  background: #e8562a;
+}
+
+.maxoff-planbar__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.maxoff-planbar__chip {
+  padding: 4px 9px;
+  border-radius: 7px;
+  background: #f7f7f7;
+  font-size: 12px;
+  line-height: 16px;
+  color: #545454;
+}
+
+.maxoff-planbar__right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-inline-start: auto;
+}
+
+.maxoff-planbar__meter {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.maxoff-planbar__meter-label {
+  font-size: 11px;
+  line-height: 14px;
+  color: #8a8a8a;
+  font-variant-numeric: tabular-nums;
+}
+
+.maxoff-planbar__meter-track {
+  display: block;
+  inline-size: 76px;
+  block-size: 5px;
+  border-radius: 999px;
+  background: #ededed;
+  overflow: hidden;
+}
+
+.maxoff-planbar__meter-fill {
+  display: block;
+  block-size: 100%;
+  border-radius: 999px;
+  background: #e8562a;
+}
+
+.maxoff-planbar__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  padding: 9px 15px;
+  border-radius: 10px;
+  background: #1a1a1a;
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 16px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.maxoff-planbar__action:hover {
+  background: #000;
+}
+
+.maxoff-planbar__action:focus-visible,
+.maxoff-planbar__link:focus-visible {
+  outline: 2px solid var(--maxoff-orange-800);
+  outline-offset: 2px;
+}
+
+.maxoff-planbar__link {
+  font-size: 13px;
+  font-weight: 500;
+  color: #545454;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.maxoff-planbar__link:hover {
+  color: #1a1a1a;
+  text-decoration: underline;
+}
+
+/**
+ * The fourth state: billing could not be read.
+ *
+ * Amber rather than red — nothing is broken for the merchant, we simply do not
+ * know the answer yet. The name carries the only strong colour on the card, so
+ * that "Unknown" is read rather than skimmed past as if it said Free.
+ */
+.maxoff-planbar--unknown .maxoff-planbar__accent {
+  background: #b98900;
+}
+
+.maxoff-planbar--unknown .maxoff-planbar__name {
+  color: #8e0b21;
+}

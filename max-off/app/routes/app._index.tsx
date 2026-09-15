@@ -6,7 +6,11 @@ import { authenticate } from "../shopify.server";
 import { displayStatusLabel } from "../lib/cap";
 import { getHomeData } from "../models/home.server";
 import type { HomeData, HomeWeek } from "../models/home.server";
+import { getPlanSummary } from "../models/plan.server";
+import { activeDiscountLimit, isPlanKey } from "../lib/plans";
+import type { PlanKey } from "../lib/plans";
 import { BrandButton } from "../components/BrandButton";
+import { PlanBar } from "../components/PlanBar";
 import {
   InternalButtonLink,
   InternalLink,
@@ -27,15 +31,63 @@ const STATUS_TONES: Record<string, "success" | "info" | "warning" | "neutral"> =
     expired: "neutral",
   };
 
+/**
+ * Force a plan-bar state while developing: `/app?planBar=free|growth|pro|unknown`.
+ *
+ * The plan comes from Shopify, so there is otherwise no way to see three of
+ * the four states on a dev store with no paid subscription — and the fourth,
+ * the one that matters most, only appears when Shopify is unreachable.
+ *
+ * Refused outright in production. Not because reading a query parameter is
+ * dangerous in itself — this changes a label and a meter, never an
+ * entitlement, and every real gate re-reads the plan server-side — but because
+ * a URL that makes the billing bar say "Pro" is a support ticket waiting to
+ * happen, and a screenshot of one is worse.
+ */
+function forcedPlanBar(request: Request): PlanKey | "unknown" | null {
+  if (process.env.NODE_ENV === "production") {
+    return null;
+  }
+
+  const value = new URL(request.url).searchParams.get("planBar");
+  if (value === "unknown") {
+    return "unknown";
+  }
+
+  return isPlanKey(value) ? value : null;
+}
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
 
   try {
-    return { home: await getHomeData(session.shop), error: null };
+    // One billing read, from the same helper Plans & billing and the create
+    // form use. `getPlanSummary` is the wrapper that keeps "we could not tell"
+    // apart from "Free" — see the note on it in `plan.server.ts`.
+    const [home, planSummary] = await Promise.all([
+      getHomeData(session.shop),
+      getPlanSummary({ shop: session.shop, admin }),
+    ]);
+
+    const forced = forcedPlanBar(request);
+    const plan =
+      forced === null ? planSummary.plan : forced === "unknown" ? null : forced;
+
+    return {
+      home,
+      planBar: {
+        plan,
+        // Derived from the plan actually being shown, so a forced state gets
+        // the meter that belongs to it rather than the live plan's.
+        activeLimit: plan === null ? null : activeDiscountLimit(plan),
+      },
+      error: null,
+    };
   } catch (error) {
     // A read failure is shown as a read failure. Never an invented zero.
     return {
       home: null,
+      planBar: null,
       error:
         error instanceof Error
           ? error.message
@@ -45,7 +97,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export default function HomePage() {
-  const { home, error } = useLoaderData<typeof loader>();
+  const { home, planBar, error } = useLoaderData<typeof loader>();
 
   if (home === null) {
     return (
@@ -71,6 +123,18 @@ export default function HomePage() {
       >
         Create capped discount
       </InternalButtonLink>
+
+      {/* Directly under the title and above the bento row. Home only: Plans &
+          billing answers this at length, and every other screen has its own
+          job. Shown on a new install too — a merchant deciding whether to pay
+          should be able to see what they are on before they have a discount. */}
+      {planBar && (
+        <PlanBar
+          plan={planBar.plan}
+          activeCount={home.activeCount}
+          activeLimit={planBar.activeLimit}
+        />
+      )}
 
       {isNewInstall ? (
         <NewInstallCard />

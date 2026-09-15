@@ -349,6 +349,52 @@ function cheapestPlanWith(capability: Capability): PlanKey {
   return PLAN_KEYS.find((key) => capability.plans.includes(key)) ?? "pro";
 }
 
+/**
+ * The two or three things worth naming about a plan, for Home's plan bar.
+ *
+ * Derived from the matrix above rather than typed out, because the numbers in
+ * it move: Arthur reset the allowance from 1/unlimited to 3/20/unlimited on
+ * 11 Sep, and a chip that had been hand-written "5 discounts" would still say
+ * so. The allowance itself is deliberately absent on the plans that have a
+ * number — the meter beside the chips already shows it, and saying "3
+ * discounts" next to "1 of 3 discounts" is the same fact twice.
+ *
+ * Free    → Whole-order maximum · 15 days each
+ * Growth  → Whole-order maximum · No time limit
+ * Pro     → Unlimited discounts · Every cap type · CSV export
+ */
+export function planChips(plan: PlanKey): string[] {
+  const chips: string[] = [];
+  const limit = PLAN_ACTIVE_DISCOUNT_LIMIT[plan];
+  const days = PLAN_MAX_CAMPAIGN_DAYS[plan];
+
+  // An unlimited allowance has no meter to state it, so it is a chip instead.
+  if (limit === null) {
+    chips.push("Unlimited discounts");
+  }
+
+  // Which maximums the plan can shape at all.
+  chips.push(
+    hasNow(plan, "itemMaximums") && hasNow(plan, "collectionMaximums")
+      ? "Every cap type"
+      : "Whole-order maximum",
+  );
+
+  // A ceiling is worth naming; so is its absence, but only where the plan
+  // above is still selling something else. Pro says "unlimited" already.
+  if (days !== null) {
+    chips.push(`${days} days each`);
+  } else if (limit !== null) {
+    chips.push("No time limit");
+  }
+
+  if (hasNow(plan, "csvExport")) {
+    chips.push("CSV export");
+  }
+
+  return chips;
+}
+
 /** Everything this plan has today. */
 export function includedNow(plan: PlanKey): Capability[] {
   return CAPABILITIES.filter((entry) => entry.built && entry.plans.includes(plan));
