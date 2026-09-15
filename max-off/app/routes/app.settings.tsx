@@ -277,8 +277,6 @@ export default function SettingsPage() {
         </button>
       </ui-save-bar>
 
-      <s-paragraph color="subdued">How MaxOff behaves in your store.</s-paragraph>
-
       {/* ---------------- 1 · Currency and rounding ---------------- */}
       {/* This section reaches discounts that already exist. The next one does
           not, and the page is ordered so the two sit next to each other and can

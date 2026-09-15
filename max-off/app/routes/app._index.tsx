@@ -79,10 +79,6 @@ export default function HomePage() {
         Create capped discount
       </InternalButtonLink>
 
-      <s-paragraph color="subdued">
-        Percentage discounts that stop at a maximum amount.
-      </s-paragraph>
-
       {/* Which plan, and how much of it is in use — the same strip as the top
           of Plans & billing, so the answer is in the same shape on both
           pages. The button is a link here: choosing a plan is billing's job,
