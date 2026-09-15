@@ -1,5 +1,5 @@
 import {describe, expect, test} from 'vitest';
-import {CAP_CONFIG_VERSION, parseCapConfig} from '../src/cap_config';
+import {capForCurrency, CAP_CONFIG_VERSION, parseCapConfig} from '../src/cap_config';
 
 /**
  * The rule under test is one sentence: configuration we cannot read with
@@ -30,6 +30,9 @@ const PARSED = {
   scope: 'order',
   productIds: [],
   collectionIds: [],
+  minSubtotalMinor: null,
+  minQuantity: null,
+  capsByCurrency: {},
 };
 
 /**
@@ -122,7 +125,7 @@ describe('parseCapConfig, on a version 1 config still live in a shop', () => {
   });
 
   test('a version it has never seen is still refused', () => {
-    expect(parseCapConfig({...VALID, version: 4})).toBeNull();
+    expect(parseCapConfig({...VALID, version: 5})).toBeNull();
   });
 });
 
@@ -215,7 +218,7 @@ describe('parseCapConfig applies no discount when', () => {
 
   test.each([
     ['version is missing', withoutKey('version')],
-    ['version is newer than this Function implements', {...VALID, version: 4}],
+    ['version is newer than this Function implements', {...VALID, version: 5}],
     ['version is a string', {...VALID, version: '1'}],
   ])('%s', (_label, config) => {
     expect(parseCapConfig(config)).toBeNull();
@@ -258,5 +261,82 @@ describe('parseCapConfig applies no discount when', () => {
     ],
   ])('%s', (_label, config) => {
     expect(parseCapConfig(config)).toBeNull();
+  });
+});
+
+describe('parseCapConfig, on the minimum a cart must meet', () => {
+  test('no minimum is the default, and every older config', () => {
+    expect(parseCapConfig(VALID)?.minSubtotalMinor).toBeNull();
+    expect(parseCapConfig(VALID)?.minQuantity).toBeNull();
+  });
+
+  test('reads a minimum subtotal as minor units', () => {
+    expect(parseCapConfig({...VALID, minSubtotal: '75.50'})?.minSubtotalMinor).toBe(7550);
+  });
+
+  test('reads a minimum quantity', () => {
+    expect(parseCapConfig({...VALID, minQuantity: 3})?.minQuantity).toBe(3);
+  });
+
+  test('an empty minimum is no minimum, not a broken one', () => {
+    expect(parseCapConfig({...VALID, minSubtotal: ''})?.minSubtotalMinor).toBeNull();
+  });
+
+  // A gate we cannot read is a gate we cannot enforce.
+  test.each([
+    ['a minimum subtotal as a number', {...VALID, minSubtotal: 75.5}],
+    ['a minimum subtotal in minor units', {...VALID, minSubtotal: 7550}],
+    ['a minimum subtotal of zero', {...VALID, minSubtotal: '0.00'}],
+    ['a minimum subtotal that is not a number', {...VALID, minSubtotal: 'seventy five'}],
+    ['a minimum quantity of zero', {...VALID, minQuantity: 0}],
+    ['a fractional minimum quantity', {...VALID, minQuantity: 2.5}],
+    ['a minimum quantity as a string', {...VALID, minQuantity: '3'}],
+  ])('applies no discount for %s', (_label, config) => {
+    expect(parseCapConfig(config)).toBeNull();
+  });
+});
+
+describe('parseCapConfig, on a maximum per market currency', () => {
+  test('no per-currency maximums is the default, and every older config', () => {
+    expect(parseCapConfig(VALID)?.capsByCurrency).toEqual({});
+  });
+
+  test('reads each currency as minor units, keyed upper-case', () => {
+    const config = {...VALID, capsByCurrency: {eur: '120.00', GBP: '110.50'}};
+
+    expect(parseCapConfig(config)?.capsByCurrency).toEqual({EUR: 12000, GBP: 11050});
+  });
+
+  test.each([
+    ['a key that is not a currency code', {...VALID, capsByCurrency: {EURO: '120.00'}}],
+    ['an amount in minor units', {...VALID, capsByCurrency: {EUR: 12000}}],
+    ['an amount of zero', {...VALID, capsByCurrency: {EUR: '0.00'}}],
+    ['an amount that is missing', {...VALID, capsByCurrency: {EUR: null}}],
+    ['a list rather than a map', {...VALID, capsByCurrency: ['120.00']}],
+  ])('applies no discount for %s', (_label, config) => {
+    expect(parseCapConfig(config)).toBeNull();
+  });
+});
+
+describe('capForCurrency', () => {
+  const config = parseCapConfig({
+    ...VALID,
+    capAmount: '150.00',
+    capsByCurrency: {EUR: '120.00'},
+  })!;
+
+  test('uses the merchant\'s own number for a currency they set', () => {
+    expect(capForCurrency(config, 'EUR')).toBe(12000);
+  });
+
+  test('matches the currency whatever case Shopify sends', () => {
+    expect(capForCurrency(config, 'eur')).toBe(12000);
+  });
+
+  // Rule 5: a 150 maximum is 150 in whatever the buyer pays in. Nothing here
+  // multiplies by an exchange rate, and nothing ever should.
+  test('relabels the base maximum for a currency they did not set', () => {
+    expect(capForCurrency(config, 'JPY')).toBe(15000);
+    expect(capForCurrency(config, 'USD')).toBe(15000);
   });
 });

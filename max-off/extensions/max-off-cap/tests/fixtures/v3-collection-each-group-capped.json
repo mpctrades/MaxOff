@@ -34,7 +34,8 @@
                   }
                 ]
               }
-            }
+            },
+            "quantity": 1
           },
           {
             "id": "gid://shopify/CartLine/2",
@@ -59,7 +60,8 @@
                   }
                 ]
               }
-            }
+            },
+            "quantity": 1
           },
           {
             "id": "gid://shopify/CartLine/3",
@@ -84,7 +86,8 @@
                   }
                 ]
               }
-            }
+            },
+            "quantity": 1
           },
           {
             "id": "gid://shopify/CartLine/4",
@@ -109,7 +112,8 @@
                   }
                 ]
               }
-            }
+            },
+            "quantity": 1
           }
         ]
       },

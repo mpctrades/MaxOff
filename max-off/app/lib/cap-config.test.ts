@@ -136,7 +136,7 @@ describe("the metafield round trip", () => {
         code: "SUMMER15",
       }),
     ).toEqual({
-      version: 3,
+      version: 4,
       percentage: 15,
       capAmount: "150.00",
       currencyCode: "USD",
@@ -183,6 +183,9 @@ describe("the metafield round trip", () => {
       scope: "order",
       productIds: [],
       collectionIds: [],
+      minSubtotalMinor: null,
+      minQuantity: null,
+      capsByCurrency: {},
     });
   });
 
@@ -416,5 +419,91 @@ describe("version 2: which lines, and what the buyer reads", () => {
     });
 
     expect(config.checkoutNote).toBe("Capped at our maximum");
+  });
+});
+
+/**
+ * The version 4 fields, round-tripped through the Function's own parser — the
+ * test that says the admin and the cap engine still agree about what a
+ * minimum and a per-market maximum mean.
+ */
+describe("the minimum a cart must meet", () => {
+  const base = {
+    percentage: 15,
+    capMinor: 15000,
+    currencyCode: "USD",
+    code: "SUMMER15",
+  };
+
+  test("no minimum writes no keys at all", () => {
+    const config = buildCapConfig(base);
+
+    expect(config.minSubtotal).toBeUndefined();
+    expect(config.minQuantity).toBeUndefined();
+  });
+
+  test("a minimum subtotal crosses as a major-unit decimal string", () => {
+    const config = buildCapConfig({ ...base, minSubtotalMinor: 7550 });
+
+    expect(config.minSubtotal).toBe("75.50");
+    expect(parseCapConfig(config)?.minSubtotalMinor).toBe(7550);
+  });
+
+  test("a minimum quantity crosses as a whole number", () => {
+    const config = buildCapConfig({ ...base, minQuantity: 3 });
+
+    expect(parseCapConfig(config)?.minQuantity).toBe(3);
+  });
+
+  test.each([
+    ["a fractional minimum", { minSubtotalMinor: 75.5 }],
+    ["a minimum of zero", { minSubtotalMinor: 0 }],
+    ["a fractional quantity", { minQuantity: 2.5 }],
+    ["a quantity of zero", { minQuantity: 0 }],
+  ])("refuses %s rather than writing it", (_label, extra) => {
+    expect(() => buildCapConfig({ ...base, ...extra })).toThrow();
+  });
+});
+
+describe("a maximum per market currency", () => {
+  const base = {
+    percentage: 15,
+    capMinor: 15000,
+    currencyCode: "USD",
+    code: "SUMMER15",
+  };
+
+  test("no per-market maximums writes no key at all", () => {
+    expect(buildCapConfig(base).capsByCurrency).toBeUndefined();
+  });
+
+  test("each currency crosses as a decimal string and reads back as minor units", () => {
+    const config = buildCapConfig({
+      ...base,
+      capsByCurrency: { EUR: 12000, gbp: 11050 },
+    });
+
+    expect(config.capsByCurrency).toEqual({ EUR: "120.00", GBP: "110.50" });
+    expect(parseCapConfig(config)?.capsByCurrency).toEqual({
+      EUR: 12000,
+      GBP: 11050,
+    });
+  });
+
+  // The store's own maximum is `capAmount`. Writing it twice is how the two
+  // come to disagree, so the row is dropped rather than duplicated.
+  test("the store currency is dropped, because capAmount already says it", () => {
+    const config = buildCapConfig({
+      ...base,
+      capsByCurrency: { USD: 20000, EUR: 12000 },
+    });
+
+    expect(config.capsByCurrency).toEqual({ EUR: "120.00" });
+  });
+
+  test("refuses an amount that is not a positive whole number of minor units", () => {
+    expect(() =>
+      buildCapConfig({ ...base, capsByCurrency: { EUR: 0 } }),
+    ).toThrow(/EUR/);
   });
 });

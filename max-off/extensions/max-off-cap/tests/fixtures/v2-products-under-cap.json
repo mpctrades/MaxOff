@@ -25,7 +25,8 @@
                 "inAnyCollection": false,
                 "inCollections": []
               }
-            }
+            },
+            "quantity": 1
           },
           {
             "id": "gid://shopify/CartLine/2",
@@ -41,7 +42,8 @@
                 "inAnyCollection": false,
                 "inCollections": []
               }
-            }
+            },
+            "quantity": 1
           }
         ]
       },

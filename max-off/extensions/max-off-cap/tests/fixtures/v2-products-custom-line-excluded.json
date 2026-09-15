@@ -25,7 +25,8 @@
                 "inAnyCollection": false,
                 "inCollections": []
               }
-            }
+            },
+            "quantity": 1
           },
           {
             "id": "gid://shopify/CartLine/2",
@@ -36,7 +37,8 @@
             },
             "merchandise": {
               "__typename": "CustomProduct"
-            }
+            },
+            "quantity": 1
           }
         ]
       },

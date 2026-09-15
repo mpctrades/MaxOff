@@ -6,7 +6,7 @@ import {
   ProductDiscountSelectionStrategy,
 } from '../generated/api';
 import {capDiscount, formatMoney, parseDecimalToMinor, toDecimalString} from './cap';
-import {parseCapConfig} from './cap_config';
+import {capForCurrency, parseCapConfig} from './cap_config';
 import type {CapConfig} from './cap_config';
 
 /**
@@ -57,9 +57,93 @@ export function cartLinesDiscountsGenerateRun(
 
   const {currencyCode} = input.cart.cost.subtotalAmount;
 
+  // The maximum for the currency this buyer is paying in. Relabelled, never
+  // converted: it is either a number the merchant typed for this currency or
+  // the base maximum, and no arithmetic connects the two.
+  const capMinor = capForCurrency(config, currencyCode);
+
+  // The minimum requirements gate the whole discount, not one group of it: a
+  // cart that does not qualify gets nothing, which is what "spend at least"
+  // means. Measured on the same part of the cart the percentage is taken on,
+  // so a discount on one collection is judged by that collection.
+  const qualifies = meetsMinimums(input, config);
+  if (qualifies !== true) {
+    // `null` is a cart we could not measure, `false` is one that does not
+    // qualify. Neither gets a discount.
+    return {operations: []};
+  }
+
   return config.scope === 'order'
-    ? orderScopeResult(input, config, currencyCode)
-    : perGroupResult(input, config, currencyCode);
+    ? orderScopeResult(input, config, capMinor, currencyCode)
+    : perGroupResult(input, config, capMinor, currencyCode);
+}
+
+/**
+ * Whether the cart clears the merchant's minimums.
+ *
+ * Returns null when an amount cannot be read, which the caller treats the same
+ * as "does not qualify" — the standing rule is that what we cannot read with
+ * certainty gets no discount.
+ *
+ * A discount with no minimums qualifies without measuring anything, so the
+ * common case costs nothing.
+ */
+function meetsMinimums(input: CartInput, config: CapConfig): boolean | null {
+  if (config.minSubtotalMinor === null && config.minQuantity === null) {
+    return true;
+  }
+
+  const totals = eligibleTotals(input, config);
+  if (totals === null) {
+    return null;
+  }
+
+  if (config.minSubtotalMinor !== null && totals.subtotalMinor < config.minSubtotalMinor) {
+    return false;
+  }
+
+  if (config.minQuantity !== null && totals.quantity < config.minQuantity) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * What the minimums are measured against: the eligible part of the cart.
+ *
+ * For a discount that applies to everything this is the cart's own subtotal —
+ * the same figure `discountBasis` uses, and for the same reason: it is what
+ * Shopify hands us, and summing the lines instead would quietly answer a
+ * different question.
+ */
+function eligibleTotals(
+  input: CartInput,
+  config: CapConfig,
+): {subtotalMinor: number; quantity: number} | null {
+  let quantity = 0;
+  let summedMinor = 0;
+
+  for (const line of input.cart.lines) {
+    if (config.appliesTo !== 'all' && !isEligible(line, config)) {
+      continue;
+    }
+
+    quantity += line.quantity;
+
+    const lineMinor = parseDecimalToMinor(line.cost.subtotalAmount.amount);
+    if (lineMinor === null) {
+      return null;
+    }
+    summedMinor += lineMinor;
+  }
+
+  if (config.appliesTo === 'all') {
+    const cartMinor = parseDecimalToMinor(input.cart.cost.subtotalAmount.amount);
+    return cartMinor === null ? null : {subtotalMinor: cartMinor, quantity};
+  }
+
+  return {subtotalMinor: summedMinor, quantity};
 }
 
 /* ------------------------------------------------------------------ order */
@@ -71,6 +155,7 @@ export function cartLinesDiscountsGenerateRun(
 function orderScopeResult(
   input: CartInput,
   config: CapConfig,
+  capMinor: number,
   currencyCode: string,
 ): CartLinesDiscountsGenerateRunResult {
   const basis = discountBasis(input, config);
@@ -82,7 +167,7 @@ function orderScopeResult(
   const {uncappedMinor, givenMinor} = capDiscount(
     basis.subtotalMinor,
     config.percentage,
-    config.capMinor,
+    capMinor,
   );
   if (givenMinor <= 0) {
     return {operations: []};
@@ -94,7 +179,7 @@ function orderScopeResult(
         orderDiscountsAdd: {
           candidates: [
             {
-              message: buildMessage(config, currencyCode, uncappedMinor > givenMinor),
+              message: buildMessage(config, capMinor, currencyCode, uncappedMinor > givenMinor),
               // `excludedCartLineIds` is how a whole-order discount is narrowed
               // to some of the cart. The alternative — a PRODUCT-class discount
               // with one candidate per line — would split MaxOff's single
@@ -136,6 +221,7 @@ interface CapGroup {
 function perGroupResult(
   input: CartInput,
   config: CapConfig,
+  capMinor: number,
   currencyCode: string,
 ): CartLinesDiscountsGenerateRunResult {
   const groups =
@@ -149,14 +235,14 @@ function perGroupResult(
     const {uncappedMinor, givenMinor} = capDiscount(
       group.subtotalMinor,
       config.percentage,
-      config.capMinor,
+      capMinor,
     );
     if (givenMinor <= 0) {
       continue;
     }
 
     candidates.push({
-      message: buildMessage(config, currencyCode, uncappedMinor > givenMinor),
+      message: buildMessage(config, capMinor, currencyCode, uncappedMinor > givenMinor),
       // `appliesToEachItem` is left at its default of false, so the amount is
       // applied once across the group rather than once per unit in it. That is
       // what makes this a maximum on the line — or on the collection — and not
@@ -396,11 +482,18 @@ function isEligible(line: CartInput['cart']['lines'][number], config: CapConfig)
  * the note beside the lines that actually hit the maximum and not beside the
  * ones that did not.
  *
- * The currency label is the cart's, not the config's: a 150 maximum is 150 in
- * whatever currency the buyer is paying in. Amounts relabel, they never convert.
+ * The currency label is the cart's, not the config's, and so is the number
+ * beside it: a buyer paying in EUR sees the merchant's EUR maximum when they
+ * set one, and the base maximum relabelled when they did not. Amounts
+ * relabel, they never convert.
  */
-function buildMessage(config: CapConfig, currencyCode: string, capped: boolean): string {
-  const rule = `${config.percentage}% off (max ${formatMoney(config.capMinor)} ${currencyCode})`;
+function buildMessage(
+  config: CapConfig,
+  capMinor: number,
+  currencyCode: string,
+  capped: boolean,
+): string {
+  const rule = `${config.percentage}% off (max ${formatMoney(capMinor)} ${currencyCode})`;
   const line = config.code === null ? rule : `${config.code} — ${rule}`;
 
   return capped ? `${line} · ${config.checkoutNote}` : line;

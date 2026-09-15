@@ -6,16 +6,17 @@
       "cart": {
         "cost": {
           "subtotalAmount": {
-            "amount": "1400.00",
+            "amount": "700.00",
             "currencyCode": "USD"
           }
         },
         "lines": [
           {
             "id": "gid://shopify/CartLine/1",
+            "quantity": 2,
             "cost": {
               "subtotalAmount": {
-                "amount": "1400.00"
+                "amount": "400.00"
               }
             },
             "merchandise": {
@@ -25,8 +26,24 @@
                 "inAnyCollection": false,
                 "inCollections": []
               }
+            }
+          },
+          {
+            "id": "gid://shopify/CartLine/2",
+            "quantity": 1,
+            "cost": {
+              "subtotalAmount": {
+                "amount": "300.00"
+              }
             },
-            "quantity": 1
+            "merchandise": {
+              "__typename": "ProductVariant",
+              "product": {
+                "id": "gid://shopify/Product/2",
+                "inAnyCollection": false,
+                "inCollections": []
+              }
+            }
           }
         ]
       },
@@ -36,16 +53,17 @@
         ],
         "metafield": {
           "jsonValue": {
-            "version": 2,
+            "version": 4,
             "percentage": 15,
             "capAmount": "150.00",
             "currencyCode": "USD",
             "scope": "order",
             "checkoutNote": "Discount capped at maximum amount",
-            "code": null,
+            "code": "MAXOFF15",
             "appliesTo": "all",
             "collectionIds": [],
-            "productIds": []
+            "productIds": [],
+            "minQuantity": 3
           }
         }
       }
@@ -56,7 +74,7 @@
           "orderDiscountsAdd": {
             "candidates": [
               {
-                "message": "15% off (max 150.00 USD) · Discount capped at maximum amount",
+                "message": "MAXOFF15 — 15% off (max 150.00 USD)",
                 "targets": [
                   {
                     "orderSubtotal": {
@@ -66,7 +84,7 @@
                 ],
                 "value": {
                   "fixedAmount": {
-                    "amount": "150.00"
+                    "amount": "105.00"
                   }
                 }
               }

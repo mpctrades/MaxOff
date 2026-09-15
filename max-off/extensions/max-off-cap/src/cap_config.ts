@@ -41,11 +41,16 @@ export const CAP_CONFIG_KEY = 'cap_config';
  * it could ever have meant — so the same widening rule holds a second time:
  * every live discount keeps working on the day version 3 deploys.
  *
+ * Version 4 adds the minimum requirements a cart must meet before any of this
+ * applies, and a maximum per market currency. Both are absent from every
+ * older config, and absent means "no minimum" and "one maximum in whatever
+ * currency the buyer pays in" — which is exactly what those configs meant.
+ *
  * A number that is none of them is a discount written by an admin newer than
  * this Function, and is refused rather than guessed at.
  */
-export const CAP_CONFIG_VERSION = 3;
-const SUPPORTED_VERSIONS = [1, 2, 3];
+export const CAP_CONFIG_VERSION = 4;
+const SUPPORTED_VERSIONS = [1, 2, 3, 4];
 
 /**
  * Which maximum the merchant bought.
@@ -99,6 +104,23 @@ export interface CapConfig {
    * collection.
    */
   productIds: string[];
+  /**
+   * The least the eligible part of the cart must come to before any discount
+   * applies, in minor units. Null is no minimum.
+   */
+  minSubtotalMinor: number | null;
+  /** The least number of eligible items required. Null is no minimum. */
+  minQuantity: number | null;
+  /**
+   * A maximum per market currency, in minor units, keyed by ISO code.
+   *
+   * Rule 5 — amounts relabel, they never convert — is why this exists at all:
+   * a 150 maximum is 150 in whatever the buyer pays in, and the only honest
+   * way to charge a different number in EUR is for the merchant to type that
+   * number. Nothing here is converted; a currency with no entry falls back to
+   * `capMinor`, which is the relabelling behaviour every earlier version had.
+   */
+  capsByCurrency: Record<string, number>;
   /**
    * The targeted collection ids, in the order the merchant picked them.
    *
@@ -184,6 +206,23 @@ export function parseCapConfig(jsonValue: unknown): CapConfig | null {
     return null;
   }
 
+  // A minimum we cannot read is a gate we cannot enforce, and a discount that
+  // ignores its own minimum is worse than one that does not apply.
+  const minSubtotalMinor = readOptionalMinor(config.minSubtotal);
+  if (minSubtotalMinor === INVALID) {
+    return null;
+  }
+
+  const minQuantity = readOptionalCount(config.minQuantity);
+  if (minQuantity === INVALID) {
+    return null;
+  }
+
+  const capsByCurrency = readCapsByCurrency(config.capsByCurrency);
+  if (capsByCurrency === null) {
+    return null;
+  }
+
   return {
     percentage,
     capMinor,
@@ -193,7 +232,90 @@ export function parseCapConfig(jsonValue: unknown): CapConfig | null {
     scope,
     productIds,
     collectionIds,
+    minSubtotalMinor,
+    minQuantity,
+    capsByCurrency,
   };
+}
+
+/**
+ * The maximum that applies to a cart paying in `currencyCode`.
+ *
+ * The merchant's own number for that currency when they set one, and the base
+ * maximum otherwise — relabelled, never converted.
+ */
+export function capForCurrency(config: CapConfig, currencyCode: string): number {
+  const own = config.capsByCurrency[currencyCode.toUpperCase()];
+  return own === undefined ? config.capMinor : own;
+}
+
+/** Distinguishes "absent, which is fine" from "present and unreadable". */
+const INVALID = Symbol('invalid');
+
+/**
+ * An optional money amount, as the same major-unit decimal string every other
+ * amount crosses the wire as. Absent is null; malformed is refused.
+ */
+function readOptionalMinor(value: unknown): number | null | typeof INVALID {
+  if (value === undefined || value === null || value === '') {
+    return null;
+  }
+
+  if (typeof value !== 'string') {
+    return INVALID;
+  }
+
+  const minor = parseDecimalToMinor(value);
+  return minor === null || minor <= 0 ? INVALID : minor;
+}
+
+/** An optional whole count above zero. Absent is null; malformed is refused. */
+function readOptionalCount(value: unknown): number | null | typeof INVALID {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
+    return INVALID;
+  }
+
+  return value;
+}
+
+/**
+ * The per-currency maximums, keyed by upper-case ISO code.
+ *
+ * Absent is an empty map, which is every version before 4 and means the one
+ * maximum applies to every currency. Present and malformed — a key that is not
+ * a currency code, an amount that is not a positive decimal string — refuses
+ * the whole config rather than silently charging the base maximum in a market
+ * the merchant thought they had set.
+ */
+function readCapsByCurrency(value: unknown): Record<string, number> | null {
+  if (value === undefined || value === null) {
+    return {};
+  }
+
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  const caps: Record<string, number> = {};
+
+  for (const [code, amount] of Object.entries(value as Record<string, unknown>)) {
+    if (!/^[A-Za-z]{3}$/.test(code)) {
+      return null;
+    }
+
+    const minor = readOptionalMinor(amount);
+    if (minor === INVALID || minor === null) {
+      return null;
+    }
+
+    caps[code.toUpperCase()] = minor;
+  }
+
+  return caps;
 }
 
 /**

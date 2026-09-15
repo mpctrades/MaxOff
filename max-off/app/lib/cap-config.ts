@@ -54,11 +54,12 @@ export const CAP_CONFIG_TYPE = "json";
  * Version 1 was percentage + cap on the whole cart. Version 2 adds
  * `appliesTo`, its two id lists, and a `checkoutNote` the Function actually
  * puts in front of the buyer. Version 3 adds `scope`, the Pro per-item and
- * per-collection maximums. The deployed Function still reads versions 1 and 2,
+ * per-collection maximums. Version 4 adds the minimum a cart must meet and a
+ * maximum per market currency. The deployed Function still reads versions 1 and 2,
  * because discounts created before each of them are live and carry them — see
  * `SUPPORTED_VERSIONS` in the Function's parser.
  */
-export const CAP_CONFIG_VERSION = 3;
+export const CAP_CONFIG_VERSION = 4;
 
 /**
  * Which maximum the merchant chose.
@@ -106,6 +107,19 @@ export function isAppliesTo(value: unknown): value is AppliesTo {
 export interface CapConfigInput {
   percentage: number;
   capMinor: number;
+  /** The least the eligible cart must come to, in minor units. Null is none. */
+  minSubtotalMinor?: number | null;
+  /** The least number of eligible items. Null is none. */
+  minQuantity?: number | null;
+  /**
+   * A maximum per market currency, in minor units, keyed by ISO code.
+   *
+   * Rule 5 is why this is a map the merchant fills in rather than a rate: a
+   * 150 maximum is 150 in whatever the buyer pays in, and the only honest way
+   * to charge a different number in EUR is for the merchant to say so. The
+   * store's own currency needs no entry — that is `capMinor`.
+   */
+  capsByCurrency?: Record<string, number>;
   currencyCode: string;
   /** Null for an automatic discount, which has no code to show the buyer. */
   code: string | null;
@@ -125,6 +139,11 @@ export interface CapConfigJson {
   scope: CapScope;
   checkoutNote: string;
   code: string | null;
+  /** Absent rather than null when there is no minimum, so an older Function
+   *  reading this config sees exactly the shape it saw before. */
+  minSubtotal?: string;
+  minQuantity?: number;
+  capsByCurrency?: Record<string, string>;
   appliesTo: AppliesTo;
   /**
    * Top level, and always present, because Shopify populates the input query's
@@ -180,6 +199,22 @@ export function buildCapConfig(input: CapConfigInput): CapConfigJson {
     );
   }
 
+  const minSubtotalMinor = input.minSubtotalMinor ?? null;
+  if (minSubtotalMinor !== null && (!Number.isInteger(minSubtotalMinor) || minSubtotalMinor < 1)) {
+    throw new Error(
+      `cap_config minSubtotalMinor must be a positive whole number of minor units, got ${minSubtotalMinor}`,
+    );
+  }
+
+  const minQuantity = input.minQuantity ?? null;
+  if (minQuantity !== null && (!Number.isInteger(minQuantity) || minQuantity < 1)) {
+    throw new Error(
+      `cap_config minQuantity must be a positive whole number, got ${minQuantity}`,
+    );
+  }
+
+  const capsByCurrency = cleanCaps(input.capsByCurrency, input.currencyCode);
+
   return {
     version: CAP_CONFIG_VERSION,
     percentage: input.percentage,
@@ -188,10 +223,48 @@ export function buildCapConfig(input: CapConfigInput): CapConfigJson {
     scope,
     checkoutNote: normaliseCheckoutNote(input.checkoutNote),
     code: input.code,
+    // Omitted entirely when unset. The Function reads an absent key as "no
+    // minimum", which is what every config before version 4 meant, so writing
+    // an explicit null would be a second way of saying the same thing.
+    ...(minSubtotalMinor === null ? {} : {minSubtotal: toDecimalString(minSubtotalMinor)}),
+    ...(minQuantity === null ? {} : {minQuantity}),
+    ...(Object.keys(capsByCurrency).length === 0 ? {} : {capsByCurrency}),
     appliesTo,
     collectionIds,
     productIds,
   };
+}
+
+/**
+ * The per-currency maximums as the Function reads them: upper-case ISO codes
+ * against major-unit decimal strings.
+ *
+ * The store's own currency is dropped rather than written, because that is
+ * what `capAmount` already is — two places to state the same maximum is one
+ * place for them to disagree.
+ */
+function cleanCaps(
+  caps: Record<string, number> | undefined,
+  storeCurrency: string,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+
+  for (const [code, minor] of Object.entries(caps ?? {})) {
+    const iso = code.trim().toUpperCase();
+    if (!/^[A-Z]{3}$/.test(iso) || iso === storeCurrency.trim().toUpperCase()) {
+      continue;
+    }
+
+    if (!Number.isInteger(minor) || minor < 1) {
+      throw new Error(
+        `cap_config maximum for ${iso} must be a positive whole number of minor units, got ${minor}`,
+      );
+    }
+
+    out[iso] = toDecimalString(minor);
+  }
+
+  return out;
 }
 
 /**
