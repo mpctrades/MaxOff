@@ -11,6 +11,7 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import { listCappedDiscounts, setDiscountPaused } from "../models/discounts.server";
 import type { DiscountListRow } from "../models/discounts.server";
+import { ensureShopSettings } from "../models/settings.server";
 import {
   DISCOUNT_TAB_LABELS,
   DISCOUNT_TABS,
@@ -24,6 +25,7 @@ import {
 } from "../components/InternalNavigation";
 import type { DisplayStatus } from "../lib/cap";
 import { formatMoney, formatPercent } from "../lib/format";
+import { gateFor } from "../lib/plans";
 
 /** How long to wait after the last keystroke before searching. */
 const SEARCH_DEBOUNCE_MS = 400;
@@ -39,6 +41,12 @@ const STATUS_TONES: Record<DisplayStatus, "success" | "info" | "warning" | "neut
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
 
+  // The cached plan, not a live read: the only thing it decides here is the
+  // wording of a toast on a button that does nothing yet. A ~1.9s round trip
+  // to Shopify on every load of the main list is not worth a badge.
+  const settings = await ensureShopSettings(session.shop);
+  const exportGate = gateFor(settings.plan, "csvExport");
+
   const url = new URL(request.url);
   const tabParam = url.searchParams.get("tab");
   const tab = isDiscountTab(tabParam) ? tabParam : "all";
@@ -53,12 +61,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       page: Number.isNaN(page) ? 1 : page,
     });
 
-    return { list, tab, query, error: null };
+    return { list, tab, query, exportGate, error: null };
   } catch (error) {
     return {
       list: null,
       tab,
       query,
+      exportGate,
       error:
         error instanceof Error
           ? error.message
@@ -82,7 +91,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function DiscountsListPage() {
-  const { list, tab, query, error } = useLoaderData<typeof loader>();
+  const { list, tab, query, exportGate, error } = useLoaderData<typeof loader>();
   const shopify = useAppBridge();
   const submit = useSubmit();
   const debounce = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -124,9 +133,18 @@ export default function DiscountsListPage() {
 
   return (
     <s-page heading="Capped discounts">
+      {/* Not built yet either way. The toast says which of the two reasons
+          applies, so a merchant who already pays for Pro is told it is coming
+          rather than sold what they have. */}
       <s-button
         slot="secondary-actions"
-        onClick={() => shopify.toast.show("Export is a Pro feature")}
+        onClick={() =>
+          shopify.toast.show(
+            exportGate.allowed
+              ? "Export is coming soon"
+              : "Export is a Pro feature",
+          )
+        }
       >
         Export
       </s-button>

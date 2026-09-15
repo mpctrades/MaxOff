@@ -14,6 +14,7 @@ import {
 } from "../models/settings.server";
 import { CAP_ENGINE_DEPLOYED } from "../lib/cap";
 import { formatCurrencyChoice, formatMoney } from "../lib/format";
+import { gateFor } from "../lib/plans";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
@@ -36,6 +37,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     liveCurrencyCode,
     rounding: settings.rounding,
     checkoutNote: settings.defaultCheckoutNote,
+    /** The cached plan is enough: this decides one badge, not what is saved. */
+    perMarketGate: gateFor(settings.plan, "perMarketCurrency"),
   };
 };
 
@@ -53,8 +56,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function SettingsPage() {
-  const { currencyCode, liveCurrencyCode, rounding, checkoutNote, hasEditableFields } =
-    useLoaderData<typeof loader>();
+  const {
+    currencyCode,
+    liveCurrencyCode,
+    rounding,
+    checkoutNote,
+    hasEditableFields,
+    perMarketGate,
+  } = useLoaderData<typeof loader>();
 
   return (
     <s-page heading="Settings">
@@ -128,7 +137,7 @@ export default function SettingsPage() {
                 <strong>Set a maximum per market</strong> instead of converting
                 one number.
               </s-text>
-              <s-badge>Pro</s-badge>
+              <s-badge>{perMarketGate.badge}</s-badge>
             </s-stack>
           </s-banner>
         </s-stack>
