@@ -34,7 +34,7 @@
 
 import { Link } from "react-router";
 
-import { PLAN_KEYS, PLAN_LABELS, planChips } from "../lib/plans";
+import { nextPlan, PLAN_KEYS, PLAN_LABELS, planChips } from "../lib/plans";
 import type { PlanKey } from "../lib/plans";
 
 export interface PlanBarProps {
@@ -46,11 +46,29 @@ export interface PlanBarProps {
   activeLimit: number | null;
 }
 
-/** What each plan's action offers, and where it goes. */
-const UPGRADE_LABEL: Partial<Record<PlanKey, string>> = {
-  free: "Upgrade",
-  growth: "Upgrade to Pro",
-};
+/**
+ * What the action says, and whether it is an upgrade.
+ *
+ * Named from `nextPlan` rather than written out, so "Upgrade to Growth" and
+ * "Upgrade to Pro" cannot drift from the ladder and a fourth tier would name
+ * itself. The top plan has nothing above it to sell, so it gets the one action
+ * that is still true — the billing page, where a plan can be changed or
+ * cancelled — and never a button claiming an upgrade that does not exist.
+ *
+ * An unknown plan gets the same neutral action. Offering "Upgrade to Growth"
+ * to a merchant we could not verify would be a guess about what they already
+ * pay for, which is the whole thing this bar refuses to do.
+ */
+function actionFor(plan: PlanKey | null): { label: string; upgrade: boolean } {
+  if (plan === null) {
+    return { label: "Plans & billing", upgrade: false };
+  }
+
+  const next = nextPlan(plan);
+  return next === null
+    ? { label: "Change plan", upgrade: false }
+    : { label: `Upgrade to ${PLAN_LABELS[next]}`, upgrade: true };
+}
 
 export function PlanBar({ plan, activeCount, activeLimit }: PlanBarProps) {
   const known = plan !== null;
@@ -63,7 +81,7 @@ export function PlanBar({ plan, activeCount, activeLimit }: PlanBarProps) {
     ? planChips(plan)
     : ["We couldn't reach Shopify billing just now"];
 
-  const upgrade = known ? UPGRADE_LABEL[plan] : undefined;
+  const action = actionFor(plan);
 
   return (
     <div
@@ -109,6 +127,12 @@ export function PlanBar({ plan, activeCount, activeLimit }: PlanBarProps) {
         ))}
       </div>
 
+      {/* A second hairline, matching the one after the plan name. The two
+          frame the row into what it actually is — who you are, what you get,
+          what you can do — instead of one long run of pills with the action
+          floating off the end. */}
+      <span className="maxoff-planbar__rule" aria-hidden="true" />
+
       <div className="maxoff-planbar__right">
         {showMeter && (
           <div className="maxoff-planbar__meter">
@@ -129,16 +153,18 @@ export function PlanBar({ plan, activeCount, activeLimit }: PlanBarProps) {
           </div>
         )}
 
-        {upgrade ? (
-          <Link className="maxoff-planbar__action" to="/app/billing">
-            {upgrade}
-            <ArrowRight />
-          </Link>
-        ) : (
-          <Link className="maxoff-planbar__link" to="/app/billing">
-            Plans &amp; billing
-          </Link>
-        )}
+        {/* Always a button, never a bare link. On Pro there is no meter, and
+            the right of the card used to end in a stretch of nothing with a
+            text link adrift in it. */}
+        <Link
+          className={`maxoff-planbar__action${
+            action.upgrade ? "" : " maxoff-planbar__action--neutral"
+          }`}
+          to="/app/billing"
+        >
+          {action.label}
+          {action.upgrade && <ArrowRight />}
+        </Link>
       </div>
     </div>
   );

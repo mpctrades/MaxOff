@@ -785,7 +785,7 @@
   gap: 18px;
   flex-wrap: wrap;
   box-sizing: border-box;
-  padding: 14px 18px 14px 22px;
+  padding: 16px 20px 16px 24px;
   border-radius: 14px;
   background: #fff;
   box-shadow:
@@ -797,7 +797,7 @@
    gap never pushes it off the corner radius. */
 .maxoff-planbar__accent {
   position: absolute;
-  inset-block: 14px;
+  inset-block: 16px;
   inset-inline-start: 7px;
   inline-size: 4px;
   border-radius: 999px;
@@ -873,12 +873,20 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  /* Takes the leftover width so the second hairline sits against the action
+     group rather than drifting into the middle of an empty row. */
+  flex: 1 1 auto;
 }
 
+/* Outlined rather than filled. The segmented track beside these is a run of
+   grey pills too, and at a glance the whole row read as one undifferentiated
+   strip of them — the track is a position on a ladder, the chips are a list of
+   what you get, and they should not look like the same object. */
 .maxoff-planbar__chip {
   padding: 4px 9px;
+  border: 1px solid #ececec;
   border-radius: 7px;
-  background: #f7f7f7;
+  background: #fff;
   font-size: 12px;
   line-height: 16px;
   color: #545454;
@@ -888,7 +896,6 @@
   display: flex;
   align-items: center;
   gap: 14px;
-  margin-inline-start: auto;
 }
 
 .maxoff-planbar__meter {
@@ -941,23 +948,28 @@
   background: #000;
 }
 
-.maxoff-planbar__action:focus-visible,
-.maxoff-planbar__link:focus-visible {
+.maxoff-planbar__action:focus-visible {
   outline: 2px solid var(--maxoff-orange-800);
   outline-offset: 2px;
 }
 
-.maxoff-planbar__link {
-  font-size: 13px;
-  font-weight: 500;
-  color: #545454;
-  text-decoration: none;
-  white-space: nowrap;
+/**
+ * The action on a plan with nothing above it to sell, and on one we could not
+ * read.
+ *
+ * Still a button, so the right of the card is anchored rather than trailing
+ * off into a text link — but outlined, because "Change plan" and "Plans &
+ * billing" are somewhere to go, not something to buy. A dark fill here would
+ * sell Pro to a merchant already on it.
+ */
+.maxoff-planbar__action--neutral {
+  border: 1px solid #dcdcdc;
+  background: #fff;
+  color: #1a1a1a;
 }
 
-.maxoff-planbar__link:hover {
-  color: #1a1a1a;
-  text-decoration: underline;
+.maxoff-planbar__action--neutral:hover {
+  background: #f7f7f7;
 }
 
 /**

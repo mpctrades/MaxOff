@@ -1,6 +1,11 @@
 import { describe, expect, test } from "vitest";
 
-import { activeDiscountLimit, planChips, PLAN_LABELS } from "./plans";
+import {
+  activeDiscountLimit,
+  nextPlan,
+  planChips,
+  PLAN_LABELS,
+} from "./plans";
 import type { PlanKey } from "./plans";
 
 /**
@@ -89,5 +94,62 @@ describe("the meter's fill", () => {
 
   test("over the allowance still stops at the end of the track", () => {
     expect(fill(9, 3)).toBe(100);
+  });
+});
+
+
+/**
+ * The action, which is the one control on the bar.
+ *
+ * Named from `nextPlan` rather than written out, so the labels cannot drift
+ * from the ladder. The mirror of `actionFor` in `components/PlanBar.tsx`.
+ */
+const actionFor = (plan: PlanKey | null): { label: string; upgrade: boolean } => {
+  if (plan === null) {
+    return { label: "Plans & billing", upgrade: false };
+  }
+
+  const next = nextPlan(plan);
+  return next === null
+    ? { label: "Change plan", upgrade: false }
+    : { label: `Upgrade to ${PLAN_LABELS[next]}`, upgrade: true };
+};
+
+describe("the action each plan gets", () => {
+  test("Free is sold the tier above it, by name", () => {
+    expect(actionFor("free")).toEqual({
+      label: "Upgrade to Growth",
+      upgrade: true,
+    });
+  });
+
+  test("Growth is sold the tier above it, by name", () => {
+    expect(actionFor("growth")).toEqual({
+      label: "Upgrade to Pro",
+      upgrade: true,
+    });
+  });
+
+  /**
+   * The top plan has nothing above it. A button reading "Upgrade to …" there
+   * would sell a merchant something they already have.
+   */
+  test("Pro is offered a change, never an upgrade", () => {
+    expect(actionFor("pro")).toEqual({ label: "Change plan", upgrade: false });
+    expect(actionFor("pro").label).not.toContain("Upgrade");
+  });
+
+  test("Unknown is never sold anything, because we do not know what they have", () => {
+    expect(actionFor(null)).toEqual({
+      label: "Plans & billing",
+      upgrade: false,
+    });
+    expect(actionFor(null).label).not.toContain("Upgrade");
+  });
+
+  test("every state has an action, so the card never ends in nothing", () => {
+    for (const plan of [null, "free", "growth", "pro"] as (PlanKey | null)[]) {
+      expect(actionFor(plan).label.length).toBeGreaterThan(0);
+    }
   });
 });
