@@ -13,7 +13,7 @@ import {
   saveShopSettings,
 } from "../models/settings.server";
 import { CAP_ENGINE_DEPLOYED } from "../lib/cap";
-import { formatCurrencyChoice, formatMoney } from "../lib/format";
+import { formatCurrencyChoice } from "../lib/format";
 import { gateFor } from "../lib/plans";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -115,6 +115,10 @@ export default function SettingsPage() {
               </s-option>
             </s-select>
 
+            {/* One option, like the currency beside it. Rounding is fixed by
+                the Function, so a second option in this list would be a choice
+                the merchant cannot make — the same reason the currency select
+                lists only the store's own. */}
             <s-select
               label="Rounding"
               name="rounding"
@@ -122,8 +126,9 @@ export default function SettingsPage() {
               disabled
               details="Half-up to the cent, once, on the final discount amount."
             >
-              <s-option value="cent">To the cent (recommended)</s-option>
-              <s-option value="down">Down to the whole unit</s-option>
+              <s-option value={rounding === "down" ? "down" : "cent"}>
+                {rounding === "down" ? "Down to the whole unit" : "To the cent"}
+              </s-option>
             </s-select>
           </s-grid>
 
@@ -133,47 +138,12 @@ export default function SettingsPage() {
           <s-banner tone="info">
             <s-stack direction="inline" gap="small-300" alignItems="center">
               <s-text>
-                Selling in several currencies?{" "}
-                <strong>Set a maximum per market</strong> instead of converting
-                one number.
+                Selling in several currencies? Set a maximum per market on each
+                discount, instead of converting one number.
               </s-text>
-              <s-badge>{perMarketGate.badge}</s-badge>
+              {perMarketGate.badge && <s-badge>{perMarketGate.badge}</s-badge>}
             </s-stack>
           </s-banner>
-        </s-stack>
-      </s-section>
-
-      {/* ---------------- 3 · Email alerts (V2) ---------------- */}
-      {/* Every box is `disabled`: no alert is sent in V1, and nothing behind
-          this screen can turn one on. The first two are `checked` because that
-          is the state Arthur drew — see the note in the reply about what a
-          ticked box claims to a merchant who cannot read the source. */}
-      <s-section heading="Email alerts">
-        <s-stack direction="block" gap="small-300">
-          <s-checkbox
-            label="Weekly summary of the money you kept"
-            name="alertWeekly"
-            details="Sent every Monday to your store's contact email."
-            checked
-            disabled
-          ></s-checkbox>
-          <s-checkbox
-            label="A discount is about to expire"
-            name="alertExpiry"
-            details="Two days before the end date."
-            checked
-            disabled
-          ></s-checkbox>
-          {/* "Cap" never appears in a label (CLAUDE.md, voice) — the merchant
-              word is "maximum". The threshold is rendered through `formatMoney`
-              so it carries the store's own currency rather than a hard-coded
-              USD. */}
-          <s-checkbox
-            label={`A single order goes more than ${formatMoney(10000, currencyCode)} over the maximum`}
-            name="alertBigCap"
-            details="Useful for spotting an influencer code being shared publicly."
-            disabled
-          ></s-checkbox>
         </s-stack>
       </s-section>
 

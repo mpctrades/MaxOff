@@ -12,11 +12,17 @@ import { authenticate } from "../shopify.server";
 import {
   cancelCappedDiscount,
   exportCappedDiscountsCsv,
+  isCapTypeFilter,
+  isMethodFilter,
   listCappedDiscounts,
   setDiscountPaused,
 } from "../models/discounts.server";
+import type {
+  CapTypeFilter,
+  DiscountListRow,
+  MethodFilter,
+} from "../models/discounts.server";
 import { getPlanForGate } from "../models/plan.server";
-import type { DiscountListRow } from "../models/discounts.server";
 import { ensureShopSettings } from "../models/settings.server";
 import {
   DISCOUNT_TAB_LABELS,
@@ -32,6 +38,8 @@ import {
 import type { DisplayStatus } from "../lib/cap";
 import { formatMoney, formatPercent } from "../lib/format";
 import { gateFor, hasNow } from "../lib/plans";
+import { useNativeChange } from "../lib/polaris-events";
+import type { ValueElement } from "../lib/polaris-events";
 
 /** How long to wait after the last keystroke before searching. */
 const SEARCH_DEBOUNCE_MS = 400;
@@ -68,20 +76,29 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const query = url.searchParams.get("q") ?? "";
   const page = Number.parseInt(url.searchParams.get("page") ?? "1", 10);
 
+  const methodParam = url.searchParams.get("method");
+  const method = isMethodFilter(methodParam) ? methodParam : "all";
+  const capTypeParam = url.searchParams.get("capType");
+  const capType = isCapTypeFilter(capTypeParam) ? capTypeParam : "all";
+
   try {
     const list = await listCappedDiscounts({
       shop: session.shop,
       tab,
       query,
+      method,
+      capType,
       page: Number.isNaN(page) ? 1 : page,
     });
 
-    return { list, tab, query, exportGate, error: null };
+    return { list, tab, query, method, capType, exportGate, error: null };
   } catch (error) {
     return {
       list: null,
       tab,
       query,
+      method,
+      capType,
       exportGate,
       error:
         error instanceof Error
@@ -112,6 +129,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       shop: session.shop,
       tab: isDiscountTab(tabParam) ? tabParam : "all",
       query: url.searchParams.get("q") ?? "",
+      method: isMethodFilter(url.searchParams.get("method"))
+        ? (url.searchParams.get("method") as MethodFilter)
+        : "all",
+      capType: isCapTypeFilter(url.searchParams.get("capType"))
+        ? (url.searchParams.get("capType") as CapTypeFilter)
+        : "all",
     });
 
     // Returned as text rather than as a file response because this route is
@@ -144,7 +167,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function DiscountsListPage() {
-  const { list, tab, query, exportGate, error } = useLoaderData<typeof loader>();
+  const { list, tab, query, method, capType, exportGate, error } =
+    useLoaderData<typeof loader>();
   const shopify = useAppBridge();
   const submit = useSubmit();
   const debounce = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -200,19 +224,44 @@ export default function DiscountsListPage() {
     shopify.toast.show("Export downloaded");
   }, [exportFetcher.data, exportFetcher.state, shopify]);
 
-  const go = (next: { tab?: string; q?: string; page?: number }) => {
+  const go = (next: {
+    tab?: string;
+    q?: string;
+    page?: number;
+    method?: string;
+    capType?: string;
+  }) => {
     const params: Record<string, string> = {
       tab: next.tab ?? tab,
       q: next.q ?? query,
+      method: next.method ?? method,
+      capType: next.capType ?? capType,
     };
     if (next.page && next.page > 1) {
       params.page = String(next.page);
     }
+    // "all" is the default on both filters and the empty string on search, so
+    // none of the three belongs in the URL when it is not narrowing anything.
     if (params.q === "") {
       delete params.q;
     }
+    if (params.method === "all") {
+      delete params.method;
+    }
+    if (params.capType === "all") {
+      delete params.capType;
+    }
     submit(params, { method: "get" });
   };
+
+  // Changing a filter returns to the first page: page 3 of a narrower list is
+  // usually empty, and an empty table is read as "nothing matches".
+  const onMethodChange = useNativeChange<ValueElement>((element) =>
+    go({ method: element.value ?? "all", page: 1 }),
+  );
+  const onCapTypeChange = useNativeChange<ValueElement>((element) =>
+    go({ capType: element.value ?? "all", page: 1 }),
+  );
 
   const onSearchInput = (value: string) => {
     clearTimeout(debounce.current);
@@ -311,17 +360,29 @@ export default function DiscountsListPage() {
                   onInput={(event) => onSearchInput(event.currentTarget.value)}
                 ></s-search-field>
               </s-stack>
-              {/* The method filter lists both methods now that both can be
-                  created, and filtering by it is still V2 — a select with one
-                  option was a promise about what the app could make, and that
-                  promise has changed. */}
-              <s-select label="Method" name="method" value="all" disabled>
+              {/* Both read straight off columns in our own mirror, so both
+                  filter for real. The cap-type options are the three scopes
+                  the Function implements, and nothing else. */}
+              <s-select
+                label="Method"
+                name="method"
+                value={method}
+                ref={onMethodChange}
+              >
                 <s-option value="all">All methods</s-option>
                 <s-option value="code">Discount code</s-option>
                 <s-option value="automatic">Automatic</s-option>
               </s-select>
-              <s-select label="Cap type" name="capType" value="order" disabled>
+              <s-select
+                label="Cap type"
+                name="capType"
+                value={capType}
+                ref={onCapTypeChange}
+              >
+                <s-option value="all">All maximums</s-option>
                 <s-option value="order">The whole order</s-option>
+                <s-option value="item">Each item</s-option>
+                <s-option value="collection">Each collection</s-option>
               </s-select>
             </s-grid>
           </s-stack>

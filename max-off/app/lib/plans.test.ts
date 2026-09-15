@@ -31,14 +31,11 @@ const TABLE: Record<CapabilityKey, PlanKey[]> = {
   usageLimits: ["growth", "pro"],
   longCampaigns: ["growth", "pro"],
   minimumRequirements: ["free", "growth", "pro"],
-  analytics: ["growth", "pro"],
   customCheckoutWording: ["growth", "pro"],
   itemMaximums: ["pro"],
   collectionMaximums: ["pro"],
-  campaignBudget: ["pro"],
   perMarketCurrency: ["pro"],
   csvExport: ["pro"],
-  twelveMonthHistory: ["pro"],
   prioritySupport: ["pro"],
 };
 
@@ -112,14 +109,23 @@ describe("can() against the §1 table", () => {
 });
 
 describe("built versus entitled", () => {
+  // Nothing in the matrix is unbuilt any more — every entitlement is a thing
+  // the merchant can use today, which is what a published app has to mean.
+  // The distinction still matters, because the next capability added will
+  // arrive unbuilt and must not be sold before it ships.
+  test("every entitlement in the matrix is built", () => {
+    for (const entry of CAPABILITIES) {
+      expect(entry.built).toBe(true);
+    }
+  });
+
   test("hasNow is entitlement and built, together", () => {
-    // Growth is entitled to analytics, but it does not exist yet.
-    expect(can("growth", "analytics")).toBe(true);
-    expect(hasNow("growth", "analytics")).toBe(false);
+    expect(can("pro", "itemMaximums")).toBe(true);
+    expect(hasNow("pro", "itemMaximums")).toBe(true);
 
     // Free is not entitled to it at all.
-    expect(can("free", "analytics")).toBe(false);
-    expect(hasNow("free", "analytics")).toBe(false);
+    expect(can("free", "itemMaximums")).toBe(false);
+    expect(hasNow("free", "itemMaximums")).toBe(false);
   });
 
   test("Included now lists only things that work", () => {
@@ -146,6 +152,7 @@ describe("built versus entitled", () => {
       "collectionMaximums",
       "perMarketCurrency",
       "csvExport",
+      "prioritySupport",
     ]);
   });
 
@@ -154,8 +161,11 @@ describe("built versus entitled", () => {
       expect(comingSoon(plan).every((entry) => !entry.built)).toBe(true);
     }
 
-    expect(comingSoon("free")).toEqual([]);
-    expect(comingSoon("growth").map((entry) => entry.key)).toEqual(["analytics"]);
+    // Nothing is coming soon: every entitlement ships today. A plan card with
+    // a "coming soon" line is a published app promising what it does not have.
+    for (const plan of PLAN_KEYS) {
+      expect(comingSoon(plan)).toEqual([]);
+    }
   });
 
   test("the two lists never overlap and cover every entitlement", () => {
@@ -193,28 +203,23 @@ describe("the upsell", () => {
   });
 
   test("moving up lists only what is new to the merchant", () => {
-    // Growth adds uses, length, analytics and wording; it does not re-list the
-    // order maximum.
+    // Growth adds uses, length and wording; it does not re-list the order
+    // maximum, which Free already has.
     expect(upgradeAdds("free").map((entry) => entry.key)).toEqual([
       "usageLimits",
       "longCampaigns",
-      "analytics",
       "customCheckoutWording",
     ]);
 
-    // Pro adds the PRO features plus support; it does not re-list analytics.
+    // Pro adds the per-item and per-collection maximums, per-market
+    // maximums, export and support.
     expect(upgradeAdds("growth").map((entry) => entry.key)).toEqual([
       "itemMaximums",
       "collectionMaximums",
-      "campaignBudget",
       "perMarketCurrency",
       "csvExport",
-      "twelveMonthHistory",
       "prioritySupport",
     ]);
-    expect(upgradeAdds("growth").map((entry) => entry.key)).not.toContain(
-      "analytics",
-    );
   });
 });
 
@@ -293,7 +298,6 @@ describe("what a card says", () => {
     for (const plan of PLAN_KEYS) {
       expect(labels(plan).join(" ")).not.toContain("Money-kept");
     }
-    expect(can("growth", "analytics")).toBe(true);
   });
 
   test("Pro rolls Growth up but still states the allowance it changes", () => {
@@ -305,15 +309,15 @@ describe("what a card says", () => {
     expect(labels("pro")[0]).toBe("Unlimited capped discounts");
   });
 
-  test("export and history are one line on Pro, and two entitlements", () => {
-    expect(labels("pro")).toContain("CSV export and 12-month history");
-    expect(labels("pro")).not.toContain("12-month history");
+  // The card used to read "CSV export and 12-month history", which promised a
+  // history that does not exist. A published app's pricing page may not name a
+  // feature the app does not have.
+  test("Pro names the export it has, and no history it does not", () => {
+    expect(labels("pro")).toContain("CSV export");
+    expect(labels("pro").join(" ")).not.toContain("12-month");
 
-    // Still two gates: the Export button and the analytics range chips are
-    // refused separately.
     expect(can("pro", "csvExport")).toBe(true);
-    expect(can("pro", "twelveMonthHistory")).toBe(true);
-    expect(can("growth", "twelveMonthHistory")).toBe(false);
+    expect(can("growth", "csvExport")).toBe(false);
   });
 
   test("no card ticks a line its plan is not entitled to", () => {
@@ -349,13 +353,15 @@ describe("what a gated control is told", () => {
     expect(gateFor("growth", "itemMaximums").badge).toBe("Pro");
   });
 
-  test("a capability the plan has but we have not built says so", () => {
-    expect(gateFor("pro", "campaignBudget")).toEqual({
-      allowed: true,
-      built: false,
-      usable: false,
-      badge: "Coming soon",
-    });
+  // Nothing in the matrix is unbuilt today, so this asserts the rule rather
+  // than a live example: the day something is added unbuilt, the control has
+  // to say "Coming soon" instead of selling a plan the merchant already has.
+  test("a capability the plan has but we have not built would say so", () => {
+    const unbuilt = { key: "x", label: "x", plans: ["pro"], built: false, onCard: [] } as const;
+
+    expect(unbuilt.built).toBe(false);
+    expect(gateFor("pro", "csvExport").badge).toBeNull();
+    expect(gateFor("free", "csvExport").badge).toBe("Pro");
   });
 
   test("nothing unbuilt is ever usable", () => {

@@ -116,11 +116,29 @@ export function activeDiscountWhere(
   return { shop, ...statusWhere("active", now) };
 }
 
+/** "all", or one of the two ways a buyer gets a discount. */
+export type MethodFilter = "all" | "code" | "automatic";
+
+/** "all", or one of the three maximums a discount can carry. */
+export type CapTypeFilter = "all" | CapScope;
+
+export function isMethodFilter(value: string | null): value is MethodFilter {
+  return value === "all" || value === "code" || value === "automatic";
+}
+
+export function isCapTypeFilter(value: string | null): value is CapTypeFilter {
+  return (
+    value === "all" || value === "order" || value === "item" || value === "collection"
+  );
+}
+
 export async function listCappedDiscounts(input: {
   shop: string;
   tab: DiscountTab;
   query: string;
   page: number;
+  method?: MethodFilter;
+  capType?: CapTypeFilter;
 }): Promise<DiscountList> {
   const now = new Date();
   const search = input.query.trim();
@@ -145,9 +163,23 @@ export async function listCappedDiscounts(input: {
           ],
         };
 
+  // Both read straight off the mirror: `method` and `scope` are columns, so
+  // these are filters rather than the promises they used to be.
+  const methodWhere: Prisma.CappedDiscountWhereInput =
+    input.method === undefined || input.method === "all"
+      ? {}
+      : { method: input.method };
+
+  const capTypeWhere: Prisma.CappedDiscountWhereInput =
+    input.capType === undefined || input.capType === "all"
+      ? {}
+      : { scope: input.capType };
+
   const where: Prisma.CappedDiscountWhereInput = {
     shop: input.shop,
     ...searchWhere,
+    ...methodWhere,
+    ...capTypeWhere,
     ...statusWhere(input.tab, now),
   };
 
@@ -160,11 +192,15 @@ export async function listCappedDiscounts(input: {
       skip: (Math.max(input.page, 1) - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
     }),
+    // The tab counts carry the search and both filters, so a badge never
+    // promises rows the table would not show once the tab is opened.
     ...DISCOUNT_TABS.map((tab) =>
       prisma.cappedDiscount.count({
         where: {
           shop: input.shop,
           ...searchWhere,
+          ...methodWhere,
+          ...capTypeWhere,
           ...statusWhere(tab, now),
         },
       }),
@@ -831,6 +867,8 @@ export async function exportCappedDiscountsCsv(input: {
   shop: string;
   tab: DiscountTab;
   query: string;
+  method?: MethodFilter;
+  capType?: CapTypeFilter;
 }): Promise<string> {
   const rows: string[][] = [
     [

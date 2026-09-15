@@ -78,14 +78,11 @@ export type CapabilityKey =
   | "usageLimits"
   | "longCampaigns"
   | "minimumRequirements"
-  | "analytics"
   | "customCheckoutWording"
   | "itemMaximums"
   | "collectionMaximums"
-  | "campaignBudget"
   | "perMarketCurrency"
   | "csvExport"
-  | "twelveMonthHistory"
   | "prioritySupport";
 
 export interface Capability {
@@ -181,14 +178,6 @@ export const CAPABILITIES: readonly Capability[] = [
     onCard: [],
   },
   {
-    key: "analytics",
-    label: "Money-kept dashboard and analytics",
-    plans: ["growth", "pro"],
-    built: false,
-    onCard: [],
-    note: "Blocked on read_orders protected-customer-data approval.",
-  },
-  {
     // Built 14 Sep 2026. The Function reads `checkoutNote` from cap_config and
     // puts it after the rule on the buyer's discount line, but only when the
     // maximum is what decided the amount — below the cap the note would not be
@@ -223,19 +212,6 @@ export const CAPABILITIES: readonly Capability[] = [
     onCard: ["pro"],
   },
   {
-    // The create form has shown a Pro badge on "Stop the code once it has
-    // given away a total amount" since 11 Sep 2026 without a matching
-    // entitlement here — the UI selling something the matrix did not know
-    // about, which is the drift this module exists to prevent. Added with
-    // Arthur's plan cards on 11 Sep 2026.
-    key: "campaignBudget",
-    label: "Campaign budget — stop a code once it has given away a total",
-    plans: ["pro"],
-    built: false,
-    onCard: ["pro"],
-    note: "PRO. The create form renders the checkbox disabled with a Pro badge.",
-  },
-  {
     // Built 15 Sep 2026. Rule 5 is intact and is in fact why this shape was
     // chosen: the merchant types the number for each currency and nothing is
     // converted. `cap_config` carries `capsByCurrency`, and the Function picks
@@ -252,26 +228,19 @@ export const CAPABILITIES: readonly Capability[] = [
     // needs order history, which needs read_orders.
     key: "csvExport",
     label: "CSV export",
-    cardLabel: "CSV export and 12-month history",
     plans: ["pro"],
     built: true,
     onCard: ["pro"],
   },
   {
-    key: "twelveMonthHistory",
-    label: "12-month history",
-    plans: ["pro"],
-    built: false,
-    onCard: [],
-    note: "PRO. Analytics range chips beyond 90 days are disabled.",
-  },
-  {
+    // Not code, and so nothing has to ship for it to be true: Free and Growth
+    // get email support, Pro gets answered first. `built` is about whether the
+    // merchant has the thing today, and on Pro they do.
     key: "prioritySupport",
     label: "Priority support",
     plans: ["pro"],
-    built: false,
+    built: true,
     onCard: ["pro"],
-    note: "Not code. Free and Growth get email support.",
   },
 ];
 

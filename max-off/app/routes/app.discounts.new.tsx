@@ -478,8 +478,6 @@ export default function CreateDiscountPage() {
   /** The two Pro maximums, read from the same matrix as everything else. */
   const itemGate = gateFor(plan, "itemMaximums");
   const collectionGate = gateFor(plan, "collectionMaximums");
-  /** Entitled on Pro, not built yet — so a Pro merchant is told which it is. */
-  const budgetGate = gateFor(plan, "campaignBudget");
   /** A different maximum per market currency. Pro, and built. */
   const perMarketGate = gateFor(plan, "perMarketCurrency");
   const shopify = useAppBridge();
@@ -1227,34 +1225,20 @@ export default function CreateDiscountPage() {
         {/* One block stack, so the divider below stretches the full
             width — as a direct child of `s-section` it collapses. */}
         <s-stack direction="block" gap="base">
-          <s-choice-list
-            label="Who can use this discount"
-            name="eligibility"
-            values={["all"]}
-          >
-            <s-choice value="all">
-              All customers
-              <s-text slot="details" color="subdued">
-                {automatic
-                  ? "Everyone, with no code to enter."
-                  : "Anyone who enters the code."}
-              </s-text>
-            </s-choice>
-            <s-choice value="segments" disabled>
-              Specific customer segments
-              <s-stack
-                slot="secondary-content"
-                direction="inline"
-                gap="small-300"
-                alignItems="center"
-              >
-                <s-text color="subdued">
-                  Limit the code to chosen customer segments.
-                </s-text>
-                <s-badge>Later version</s-badge>
-              </s-stack>
-            </s-choice>
-          </s-choice-list>
+          {/* Every buyer is eligible, and there is no choice to make.
+              "Specific customer segments" was offered here as a disabled
+              option until 15 Sep 2026; it needs `read_customers`, which would
+              make MaxOff an app that reads customer data to do a job that does
+              not need it. Stated as a fact rather than shown as a control the
+              merchant cannot use. */}
+          <s-stack direction="block" gap="small-100">
+            <s-text>Who can use this discount</s-text>
+            <s-paragraph color="subdued">
+              {automatic
+                ? "Everyone, with no code to enter."
+                : "Anyone who enters the code."}
+            </s-paragraph>
+          </s-stack>
 
           {/* Usage limits belong to a code.
 
@@ -1318,25 +1302,6 @@ export default function CreateDiscountPage() {
                 checked={state.oncePerCustomer}
                 ref={onOncePerCustomerChange}
               ></s-checkbox>
-
-              {/* `s-checkbox` takes no children and its `details` is a plain
-              string, so the badge cannot go inside it. A grid puts the two side
-              by side instead: `max-content` keeps the checkbox at its natural
-              width, which an inline stack would not — a form control stretches
-              and would push the badge onto its own row. */}
-              <s-grid
-                gridTemplateColumns="max-content auto"
-                gap="small-300"
-                alignItems="baseline"
-              >
-                <s-checkbox
-                  label="Stop the code once it has given away a total amount"
-                  name="budgetCap"
-                  details="A budget for the whole campaign, not one order."
-                  disabled
-                ></s-checkbox>
-                <s-badge>{budgetGate.badge}</s-badge>
-              </s-grid>
             </>
           )}
         </s-stack>
