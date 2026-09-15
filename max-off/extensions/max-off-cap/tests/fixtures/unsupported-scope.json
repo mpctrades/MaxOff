@@ -22,7 +22,7 @@
             "percentage": 15,
             "capAmount": "150.00",
             "currencyCode": "USD",
-            "scope": "item",
+            "scope": "variant",
             "checkoutNote": "Discount capped at maximum amount",
             "code": "MAXOFF15"
           }

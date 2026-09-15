@@ -13,7 +13,7 @@
  * - `percentage` not an integer, or outside 1-100
  * - `capAmount` as a JSON number instead of a string
  * - `capAmount` in minor units ("15000" reads as 15,000.00 — a cap 100× too high)
- * - `scope` present and not "order"
+ * - `scope` present and not one of "order", "item", "collection"
  * - `appliesTo` naming a set with no ids in it
  *
  * `app/lib/cap-config.test.ts` round-trips this module's output through the
@@ -53,14 +53,36 @@ export const CAP_CONFIG_TYPE = "json";
  *
  * Version 1 was percentage + cap on the whole cart. Version 2 adds
  * `appliesTo`, its two id lists, and a `checkoutNote` the Function actually
- * puts in front of the buyer. The deployed Function still reads version 1,
- * because discounts created before 14 Sep 2026 are live and carry it — see
+ * puts in front of the buyer. Version 3 adds `scope`, the Pro per-item and
+ * per-collection maximums. The deployed Function still reads versions 1 and 2,
+ * because discounts created before each of them are live and carry them — see
  * `SUPPORTED_VERSIONS` in the Function's parser.
  */
-export const CAP_CONFIG_VERSION = 2;
+export const CAP_CONFIG_VERSION = 3;
 
-/** V1 caps the whole order. `item` and `collection` are PRO, and unbuilt. */
-export const CAP_CONFIG_SCOPE = "order";
+/**
+ * Which maximum the merchant chose.
+ *
+ * - `order`      one maximum across everything the discount applies to.
+ * - `item`       a separate maximum on each eligible line.
+ * - `collection` a separate maximum per targeted collection.
+ *
+ * The last two are Pro. That is an entitlement, checked in `plans.ts` and
+ * enforced in `discount-form.ts`, and deliberately not a rule this module
+ * knows: a config builder that refused a scope on plan grounds would be a
+ * second definition of the plan ladder, and the one that runs last rather than
+ * the one a merchant sees.
+ */
+export type CapScope = "order" | "item" | "collection";
+
+export const CAP_SCOPES: readonly CapScope[] = ["order", "item", "collection"];
+
+export function isCapScope(value: unknown): value is CapScope {
+  return (CAP_SCOPES as readonly unknown[]).includes(value);
+}
+
+/** What a discount caps when the merchant has not chosen, and all V1 did. */
+export const DEFAULT_CAP_SCOPE: CapScope = "order";
 
 /** Locked copy, BUILD-SPEC §11. The default when the merchant writes nothing. */
 export const DEFAULT_CHECKOUT_NOTE = "Discount capped at maximum amount";
@@ -88,6 +110,7 @@ export interface CapConfigInput {
   /** Null for an automatic discount, which has no code to show the buyer. */
   code: string | null;
   checkoutNote?: string;
+  scope?: CapScope;
   appliesTo?: AppliesTo;
   collectionIds?: string[];
   productIds?: string[];
@@ -99,7 +122,7 @@ export interface CapConfigJson {
   /** A decimal string in **major** units, two decimals. Never a number. */
   capAmount: string;
   currencyCode: string;
-  scope: string;
+  scope: CapScope;
   checkoutNote: string;
   code: string | null;
   appliesTo: AppliesTo;
@@ -132,6 +155,7 @@ export function buildCapConfig(input: CapConfigInput): CapConfigJson {
     );
   }
 
+  const scope = input.scope ?? DEFAULT_CAP_SCOPE;
   const appliesTo = input.appliesTo ?? "all";
   const collectionIds = appliesTo === "collections" ? cleanIds(input.collectionIds) : [];
   const productIds = appliesTo === "products" ? cleanIds(input.productIds) : [];
@@ -146,12 +170,22 @@ export function buildCapConfig(input: CapConfigInput): CapConfigJson {
     throw new Error("cap_config appliesTo 'products' needs at least one product id");
   }
 
+  // A maximum *per collection* needs collections to divide the cart into. The
+  // Function refuses this pairing, so refusing it here keeps the two halves of
+  // the contract saying the same thing — and says it where a merchant can
+  // still change the answer.
+  if (scope === "collection" && appliesTo !== "collections") {
+    throw new Error(
+      "cap_config scope 'collection' needs a discount that applies to collections",
+    );
+  }
+
   return {
     version: CAP_CONFIG_VERSION,
     percentage: input.percentage,
     capAmount: toDecimalString(input.capMinor),
     currencyCode: input.currencyCode,
-    scope: CAP_CONFIG_SCOPE,
+    scope,
     checkoutNote: normaliseCheckoutNote(input.checkoutNote),
     code: input.code,
     appliesTo,

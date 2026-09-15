@@ -6,7 +6,21 @@
 #
 # It is declared `[ID!]` and not `[ID!]!`: a discount that targets all products
 # has no collectionIds, the variable arrives null, and a required variable
-# would abort the whole function run instead.
+# would abort the whole function run instead. Both collection fields below
+# declare a default of `[]` on their argument, which is what makes a nullable
+# variable legal in a non-null position.
+#
+# Two collection fields, because they answer two different questions:
+#
+#   inAnyCollection  — is this line in the targeted set at all? Decides
+#                      eligibility, and is all the `order` and `item` scopes need.
+#   inCollections    — *which* of the targeted collections is it in? Only the
+#                      `collection` scope needs this, and only it can group
+#                      lines into one maximum per collection.
+#
+# `inCollections` is asked for unconditionally rather than in a second query:
+# a Function's input query is fixed at deploy time and cannot branch on the
+# metafield it is about to read.
 query CartInput($collectionIds: [ID!]) {
   cart {
     cost {
@@ -28,6 +42,10 @@ query CartInput($collectionIds: [ID!]) {
           product {
             id
             inAnyCollection(ids: $collectionIds)
+            inCollections(ids: $collectionIds) {
+              collectionId
+              isMember
+            }
           }
         }
       }

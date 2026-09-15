@@ -136,7 +136,7 @@ describe("the metafield round trip", () => {
         code: "SUMMER15",
       }),
     ).toEqual({
-      version: 2,
+      version: 3,
       percentage: 15,
       capAmount: "150.00",
       currencyCode: "USD",
@@ -180,8 +180,61 @@ describe("the metafield round trip", () => {
       code: "SUMMER15",
       checkoutNote: DEFAULT_CHECKOUT_NOTE,
       appliesTo: "all",
+      scope: "order",
       productIds: [],
+      collectionIds: [],
     });
+  });
+
+  // The Pro maximums cross the same wire as everything else, and the Function
+  // refuses a scope it cannot read — so the round trip is the test that says
+  // the two halves still agree about what "item" and "collection" mean.
+  test("a maximum on each item survives the round trip", () => {
+    const metafield = capConfigMetafield({
+      percentage: 15,
+      capMinor: 15000,
+      currencyCode: "USD",
+      code: "SUMMER15",
+      scope: "item",
+    });
+
+    expect(parseCapConfig(JSON.parse(metafield.value))?.scope).toBe("item");
+  });
+
+  test("a maximum per collection carries the collections to divide by", () => {
+    const collectionIds = [
+      "gid://shopify/Collection/2",
+      "gid://shopify/Collection/1",
+    ];
+
+    const metafield = capConfigMetafield({
+      percentage: 15,
+      capMinor: 15000,
+      currencyCode: "USD",
+      code: "SUMMER15",
+      scope: "collection",
+      appliesTo: "collections",
+      collectionIds,
+    });
+
+    const parsed = parseCapConfig(JSON.parse(metafield.value));
+
+    expect(parsed?.scope).toBe("collection");
+    // In the merchant's order, which is what decides where a product in two of
+    // them counts.
+    expect(parsed?.collectionIds).toEqual(collectionIds);
+  });
+
+  test("a maximum per collection is refused without collections to divide by", () => {
+    expect(() =>
+      buildCapConfig({
+        percentage: 15,
+        capMinor: 15000,
+        currencyCode: "USD",
+        code: "SUMMER15",
+        scope: "collection",
+      }),
+    ).toThrow(/applies to collections/);
   });
 
   test("a currency other than USD relabels, it does not convert", () => {

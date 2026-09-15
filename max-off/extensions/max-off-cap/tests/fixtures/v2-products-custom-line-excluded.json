@@ -22,7 +22,8 @@
               "__typename": "ProductVariant",
               "product": {
                 "id": "gid://shopify/Product/77",
-                "inAnyCollection": false
+                "inAnyCollection": false,
+                "inCollections": []
               }
             }
           },

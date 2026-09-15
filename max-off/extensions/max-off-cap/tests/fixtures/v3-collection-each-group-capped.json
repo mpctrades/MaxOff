@@ -1,0 +1,186 @@
+{
+  "payload": {
+    "export": "cart-lines-discounts-generate-run",
+    "target": "cart.lines.discounts.generate.run",
+    "input": {
+      "cart": {
+        "cost": {
+          "subtotalAmount": {
+            "amount": "2300.00",
+            "currencyCode": "USD"
+          }
+        },
+        "lines": [
+          {
+            "id": "gid://shopify/CartLine/1",
+            "cost": {
+              "subtotalAmount": {
+                "amount": "1200.00"
+              }
+            },
+            "merchandise": {
+              "__typename": "ProductVariant",
+              "product": {
+                "id": "gid://shopify/Product/1",
+                "inAnyCollection": true,
+                "inCollections": [
+                  {
+                    "collectionId": "gid://shopify/Collection/11",
+                    "isMember": true
+                  },
+                  {
+                    "collectionId": "gid://shopify/Collection/22",
+                    "isMember": false
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "gid://shopify/CartLine/2",
+            "cost": {
+              "subtotalAmount": {
+                "amount": "400.00"
+              }
+            },
+            "merchandise": {
+              "__typename": "ProductVariant",
+              "product": {
+                "id": "gid://shopify/Product/2",
+                "inAnyCollection": true,
+                "inCollections": [
+                  {
+                    "collectionId": "gid://shopify/Collection/11",
+                    "isMember": true
+                  },
+                  {
+                    "collectionId": "gid://shopify/Collection/22",
+                    "isMember": true
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "gid://shopify/CartLine/3",
+            "cost": {
+              "subtotalAmount": {
+                "amount": "200.00"
+              }
+            },
+            "merchandise": {
+              "__typename": "ProductVariant",
+              "product": {
+                "id": "gid://shopify/Product/3",
+                "inAnyCollection": true,
+                "inCollections": [
+                  {
+                    "collectionId": "gid://shopify/Collection/11",
+                    "isMember": false
+                  },
+                  {
+                    "collectionId": "gid://shopify/Collection/22",
+                    "isMember": true
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "gid://shopify/CartLine/4",
+            "cost": {
+              "subtotalAmount": {
+                "amount": "500.00"
+              }
+            },
+            "merchandise": {
+              "__typename": "ProductVariant",
+              "product": {
+                "id": "gid://shopify/Product/4",
+                "inAnyCollection": false,
+                "inCollections": [
+                  {
+                    "collectionId": "gid://shopify/Collection/11",
+                    "isMember": false
+                  },
+                  {
+                    "collectionId": "gid://shopify/Collection/22",
+                    "isMember": false
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "discount": {
+        "discountClasses": [
+          "PRODUCT"
+        ],
+        "metafield": {
+          "jsonValue": {
+            "version": 3,
+            "percentage": 15,
+            "capAmount": "150.00",
+            "currencyCode": "USD",
+            "scope": "collection",
+            "checkoutNote": "Discount capped at maximum amount",
+            "code": "MAXOFF15",
+            "appliesTo": "collections",
+            "collectionIds": [
+              "gid://shopify/Collection/11",
+              "gid://shopify/Collection/22"
+            ],
+            "productIds": []
+          }
+        }
+      }
+    },
+    "output": {
+      "operations": [
+        {
+          "productDiscountsAdd": {
+            "candidates": [
+              {
+                "message": "MAXOFF15 — 15% off (max 150.00 USD) · Discount capped at maximum amount",
+                "targets": [
+                  {
+                    "cartLine": {
+                      "id": "gid://shopify/CartLine/1"
+                    }
+                  },
+                  {
+                    "cartLine": {
+                      "id": "gid://shopify/CartLine/2"
+                    }
+                  }
+                ],
+                "value": {
+                  "fixedAmount": {
+                    "amount": "150.00"
+                  }
+                }
+              },
+              {
+                "message": "MAXOFF15 — 15% off (max 150.00 USD)",
+                "targets": [
+                  {
+                    "cartLine": {
+                      "id": "gid://shopify/CartLine/3"
+                    }
+                  }
+                ],
+                "value": {
+                  "fixedAmount": {
+                    "amount": "30.00"
+                  }
+                }
+              }
+            ],
+            "selectionStrategy": "ALL"
+          }
+        }
+      ]
+    }
+  }
+}

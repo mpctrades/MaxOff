@@ -27,7 +27,9 @@ const PARSED = {
   code: 'SUMMER15',
   checkoutNote: 'Discount capped at maximum amount',
   appliesTo: 'all',
+  scope: 'order',
   productIds: [],
+  collectionIds: [],
 };
 
 /**
@@ -63,14 +65,53 @@ describe('parseCapConfig, on config it can read', () => {
     expect(parseCapConfig({...VALID, percentage})?.percentage).toBe(percentage);
   });
 
-  test('accepts a missing scope, which has one legal value today', () => {
-    expect(parseCapConfig(withoutKey('scope'))).not.toBeNull();
+  test('a missing scope is one maximum for the order, as version 1 and 2 meant', () => {
+    expect(parseCapConfig(withoutKey('scope'))?.scope).toBe('order');
   });
 
   test('ignores fields the Function does not use', () => {
     const config = {...VALID, currencyCode: 'EUR', somethingNew: true};
 
     expect(parseCapConfig(config)).toEqual(PARSED);
+  });
+});
+
+describe('parseCapConfig, on the maximum the merchant chose', () => {
+  test('reads a maximum on each item', () => {
+    expect(parseCapConfig({...VALID, scope: 'item'})).toEqual({...PARSED, scope: 'item'});
+  });
+
+  // A per-item maximum does not care which lines it applies to: each eligible
+  // line gets its own maximum whether that is every line or a chosen few.
+  test.each([
+    ['everything', {...VALID, scope: 'item'}],
+    [
+      'chosen products',
+      {...VALID, scope: 'item', appliesTo: 'products', productIds: ['gid://shopify/Product/1']},
+    ],
+    [
+      'chosen collections',
+      {
+        ...VALID,
+        scope: 'item',
+        appliesTo: 'collections',
+        collectionIds: ['gid://shopify/Collection/1'],
+      },
+    ],
+  ])('a maximum on each item applies to %s', (_label, config) => {
+    expect(parseCapConfig(config)?.scope).toBe('item');
+  });
+
+  test('reads a maximum per collection, with the collections to divide by', () => {
+    const collectionIds = ['gid://shopify/Collection/1', 'gid://shopify/Collection/2'];
+    const config = {...VALID, scope: 'collection', appliesTo: 'collections', collectionIds};
+
+    expect(parseCapConfig(config)).toEqual({
+      ...PARSED,
+      scope: 'collection',
+      appliesTo: 'collections',
+      collectionIds,
+    });
   });
 });
 
@@ -81,7 +122,7 @@ describe('parseCapConfig, on a version 1 config still live in a shop', () => {
   });
 
   test('a version it has never seen is still refused', () => {
-    expect(parseCapConfig({...VALID, version: 3})).toBeNull();
+    expect(parseCapConfig({...VALID, version: 4})).toBeNull();
   });
 });
 
@@ -100,10 +141,19 @@ describe('parseCapConfig, on which lines the discount applies to', () => {
     });
   });
 
-  test('collection ids are Shopify\'s to resolve, so the parser drops them', () => {
-    const config = {...VALID, appliesTo: 'collections', collectionIds: ['gid://shopify/Collection/1']};
+  // Eligibility is still Shopify's to resolve through `inAnyCollection`. The
+  // ids are kept because the per-collection maximum has to group lines by
+  // which collection they are in, and only the merchant's own order of them
+  // decides where a product in two of them counts.
+  test('keeps the chosen collection ids, in the order the merchant picked them', () => {
+    const collectionIds = ['gid://shopify/Collection/2', 'gid://shopify/Collection/1'];
+    const config = {...VALID, appliesTo: 'collections', collectionIds};
 
-    expect(parseCapConfig(config)).toEqual({...PARSED, appliesTo: 'collections'});
+    expect(parseCapConfig(config)).toEqual({
+      ...PARSED,
+      appliesTo: 'collections',
+      collectionIds,
+    });
   });
 
   test.each([
@@ -165,7 +215,7 @@ describe('parseCapConfig applies no discount when', () => {
 
   test.each([
     ['version is missing', withoutKey('version')],
-    ['version is newer than this Function implements', {...VALID, version: 3}],
+    ['version is newer than this Function implements', {...VALID, version: 4}],
     ['version is a string', {...VALID, version: '1'}],
   ])('%s', (_label, config) => {
     expect(parseCapConfig(config)).toBeNull();
@@ -196,9 +246,16 @@ describe('parseCapConfig applies no discount when', () => {
   });
 
   test.each([
-    ['scope is a PRO per-item maximum', {...VALID, scope: 'item'}],
-    ['scope is a PRO per-collection maximum', {...VALID, scope: 'collection'}],
     ['scope is unrecognised', {...VALID, scope: 'ORDER'}],
+    ['scope is not a string', {...VALID, scope: 2}],
+    // A maximum per collection with no collections to divide the cart into
+    // has no honest reading, so it is refused rather than quietly becoming
+    // one maximum overall.
+    ['scope is per-collection on a discount that applies to everything', {...VALID, scope: 'collection'}],
+    [
+      'scope is per-collection on a discount that targets products',
+      {...VALID, scope: 'collection', appliesTo: 'products', productIds: ['gid://shopify/Product/1']},
+    ],
   ])('%s', (_label, config) => {
     expect(parseCapConfig(config)).toBeNull();
   });
