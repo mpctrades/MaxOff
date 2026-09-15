@@ -17,6 +17,7 @@
  */
 
 import {parseDecimalToMinor} from './cap';
+import type {RoundingMode} from './cap';
 
 /** The app-reserved namespace. `$app` resolves to this app and no other. */
 export const CAP_CONFIG_NAMESPACE = '$app';
@@ -46,11 +47,16 @@ export const CAP_CONFIG_KEY = 'cap_config';
  * older config, and absent means "no minimum" and "one maximum in whatever
  * currency the buyer pays in" — which is exactly what those configs meant.
  *
+ * Version 5 adds the shop's `rounding` rule. Absent means `cent`, which is
+ * what every earlier version did — the amount was always already an integer
+ * number of cents — so once again every live discount keeps working the day
+ * this version deploys.
+ *
  * A number that is none of them is a discount written by an admin newer than
  * this Function, and is refused rather than guessed at.
  */
-export const CAP_CONFIG_VERSION = 4;
-const SUPPORTED_VERSIONS = [1, 2, 3, 4];
+export const CAP_CONFIG_VERSION = 5;
+const SUPPORTED_VERSIONS = [1, 2, 3, 4, 5];
 
 /**
  * Which maximum the merchant bought.
@@ -65,6 +71,8 @@ const SUPPORTED_VERSIONS = [1, 2, 3, 4];
 export type CapScope = 'order' | 'item' | 'collection';
 
 const CAP_SCOPES: CapScope[] = ['order', 'item', 'collection'];
+
+const ROUNDING_MODES: RoundingMode[] = ['cent', 'down'];
 
 /** Whole percent, as the merchant types it. */
 const MIN_PERCENTAGE = 1;
@@ -95,6 +103,11 @@ export interface CapConfig {
   appliesTo: AppliesTo;
   /** Whether the maximum is one per order, per line, or per collection. */
   scope: CapScope;
+  /**
+   * How the final amount is rounded — the shop's Settings choice, stamped onto
+   * every discount so the Function needs no shop-level lookup it cannot make.
+   */
+  rounding: RoundingMode;
   /**
    * The chosen product ids, matched against each line's product.
    *
@@ -157,6 +170,17 @@ export function parseCapConfig(jsonValue: unknown): CapConfig | null {
   // a different maximum than the one the merchant configured.
   const scope = readScope(config.scope);
   if (scope === null) {
+    return null;
+  }
+
+  // Rounding decides money, so it gets the same treatment as scope rather than
+  // the forgiving treatment the note and the code get: absent is the rounding
+  // every earlier version meant, and present-but-unrecognised is refused. A
+  // rounding rule this Function does not implement would otherwise quietly
+  // become a different one, which is a different discount than the merchant
+  // configured.
+  const rounding = readRounding(config.rounding);
+  if (rounding === null) {
     return null;
   }
 
@@ -230,6 +254,7 @@ export function parseCapConfig(jsonValue: unknown): CapConfig | null {
     checkoutNote: readCheckoutNote(config.checkoutNote),
     appliesTo,
     scope,
+    rounding,
     productIds,
     collectionIds,
     minSubtotalMinor,
@@ -330,6 +355,19 @@ function readScope(value: unknown): CapScope | null {
   }
 
   return CAP_SCOPES.includes(value as CapScope) ? (value as CapScope) : null;
+}
+
+/**
+ * Absent means `cent`, because every config before version 5 produced an
+ * amount that was already an exact number of cents. Present and unrecognised
+ * is refused, for the same reason an unrecognised scope is.
+ */
+function readRounding(value: unknown): RoundingMode | null {
+  if (value === undefined || value === null) {
+    return 'cent';
+  }
+
+  return ROUNDING_MODES.includes(value as RoundingMode) ? (value as RoundingMode) : null;
 }
 
 /**

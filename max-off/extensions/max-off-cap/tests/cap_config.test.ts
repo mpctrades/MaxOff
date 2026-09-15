@@ -28,6 +28,7 @@ const PARSED = {
   checkoutNote: 'Discount capped at maximum amount',
   appliesTo: 'all',
   scope: 'order',
+  rounding: 'cent',
   productIds: [],
   collectionIds: [],
   minSubtotalMinor: null,
@@ -125,7 +126,47 @@ describe('parseCapConfig, on a version 1 config still live in a shop', () => {
   });
 
   test('a version it has never seen is still refused', () => {
-    expect(parseCapConfig({...VALID, version: 5})).toBeNull();
+    expect(parseCapConfig({...VALID, version: 6})).toBeNull();
+  });
+});
+
+/**
+ * Rounding, version 5. It decides money, so it gets the scope treatment rather
+ * than the checkout-note treatment: absent is what every earlier version did,
+ * present-and-unrecognised is refused outright.
+ */
+describe('parseCapConfig, on how the shop rounds', () => {
+  test('a missing rounding is to the cent, as every version before 5 was', () => {
+    expect(parseCapConfig(withoutKey('rounding'))?.rounding).toBe('cent');
+  });
+
+  test('reads down to the whole unit', () => {
+    expect(parseCapConfig({...VALID, version: 5, rounding: 'down'})?.rounding).toBe(
+      'down',
+    );
+  });
+
+  test('reads to the cent', () => {
+    expect(parseCapConfig({...VALID, version: 5, rounding: 'cent'})?.rounding).toBe(
+      'cent',
+    );
+  });
+
+  test.each([
+    ['a rounding rule this Function does not implement', 'up'],
+    ['a rounding rule that is not a string', 1],
+    ['a rounding rule that is an object', {mode: 'down'}],
+  ])('applies no discount for %s', (_label, rounding) => {
+    expect(parseCapConfig({...VALID, version: 5, rounding})).toBeNull();
+  });
+
+  /**
+   * An older config carrying a rounding rule is not a contradiction. Settings
+   * restamps `rounding` onto discounts that already exist without touching
+   * their `version`, so a live version 2 config can legitimately say `down`.
+   */
+  test('an older version may carry a rounding rule, because Settings restamps it', () => {
+    expect(parseCapConfig({...VALID_V1, rounding: 'down'})?.rounding).toBe('down');
   });
 });
 
@@ -218,7 +259,7 @@ describe('parseCapConfig applies no discount when', () => {
 
   test.each([
     ['version is missing', withoutKey('version')],
-    ['version is newer than this Function implements', {...VALID, version: 5}],
+    ['version is newer than this Function implements', {...VALID, version: 6}],
     ['version is a string', {...VALID, version: '1'}],
   ])('%s', (_label, config) => {
     expect(parseCapConfig(config)).toBeNull();

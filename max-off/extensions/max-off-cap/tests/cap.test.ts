@@ -101,3 +101,58 @@ describe('formatting', () => {
     expect(formatMoney(123456789)).toBe('1,234,567.89');
   });
 });
+
+/**
+ * The shop's rounding rule, version 5.
+ *
+ * The same table the admin's `app/lib/settings-rounding.test.ts` asserts, run
+ * against this runtime's own implementation — BUILD-SPEC §8: two
+ * implementations, one table.
+ */
+describe('rounding the final discount', () => {
+  // 703.45 at 15% is 105.5175.
+  const subtotalMinor = 70345;
+
+  test('to the cent is half-up, and is the default', () => {
+    expect(capDiscount(subtotalMinor, 15, 15000).givenMinor).toBe(10552);
+    expect(capDiscount(subtotalMinor, 15, 15000, 'cent').givenMinor).toBe(10552);
+  });
+
+  test('down to the whole unit drops the cents', () => {
+    expect(capDiscount(subtotalMinor, 15, 15000, 'down').givenMinor).toBe(10500);
+  });
+
+  test('rounding down never rounds up', () => {
+    for (const minor of [70345, 70000, 12399, 999, 100]) {
+      const down = capDiscount(minor, 15, 15000, 'down').givenMinor;
+      const cent = capDiscount(minor, 15, 15000, 'cent').givenMinor;
+
+      expect(down).toBeLessThanOrEqual(cent);
+      expect(down % 100).toBe(0);
+    }
+  });
+
+  /**
+   * `uncappedMinor` is what the buyer-facing "would have been" strikethrough
+   * reads, and what the run target compares against the maximum to decide
+   * whether to append the note. Rounding must not touch it.
+   */
+  test('the percentage it would have given is never rounded', () => {
+    expect(capDiscount(subtotalMinor, 15, 15000, 'down').uncappedMinor).toBe(10552);
+  });
+
+  test('the maximum still decides when the cart is big enough', () => {
+    // 1,400 at 15% is 210.00, above the 150.00 maximum.
+    for (const mode of ['cent', 'down'] as const) {
+      expect(capDiscount(140000, 15, 15000, mode).givenMinor).toBe(15000);
+    }
+  });
+
+  test('a discount smaller than one unit rounds to nothing', () => {
+    expect(capDiscount(500, 15, 15000, 'down').givenMinor).toBe(0);
+  });
+
+  test('what the merchant keeps grows by what was rounded away', () => {
+    expect(capDiscount(subtotalMinor, 15, 15000, 'down').keptMinor).toBe(52);
+  });
+});

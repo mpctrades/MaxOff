@@ -1,0 +1,63 @@
+{
+  "payload": {
+    "export": "cart-lines-discounts-generate-run",
+    "target": "cart.lines.discounts.generate.run",
+    "input": {
+      "cart": {
+        "cost": {
+          "subtotalAmount": {
+            "amount": "703.45",
+            "currencyCode": "USD"
+          }
+        },
+        "lines": []
+      },
+      "discount": {
+        "discountClasses": [
+          "ORDER"
+        ],
+        "metafield": {
+          "jsonValue": {
+            "version": 5,
+            "percentage": 15,
+            "capAmount": "150.00",
+            "currencyCode": "USD",
+            "scope": "order",
+            "checkoutNote": "Discount capped at maximum amount",
+            "code": "MAXOFF15",
+            "appliesTo": "all",
+            "collectionIds": [],
+            "productIds": [],
+            "rounding": "down"
+          }
+        }
+      }
+    },
+    "output": {
+      "operations": [
+        {
+          "orderDiscountsAdd": {
+            "candidates": [
+              {
+                "message": "MAXOFF15 — 15% off (max 150.00 USD)",
+                "targets": [
+                  {
+                    "orderSubtotal": {
+                      "excludedCartLineIds": []
+                    }
+                  }
+                ],
+                "value": {
+                  "fixedAmount": {
+                    "amount": "105.00"
+                  }
+                }
+              }
+            ],
+            "selectionStrategy": "FIRST"
+          }
+        }
+      ]
+    }
+  }
+}

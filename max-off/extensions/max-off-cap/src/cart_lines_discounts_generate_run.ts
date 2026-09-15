@@ -168,10 +168,18 @@ function orderScopeResult(
     basis.subtotalMinor,
     config.percentage,
     capMinor,
+    config.rounding,
   );
   if (givenMinor <= 0) {
     return {operations: []};
   }
+
+  // Against the maximum, not against the amount given. Since version 5 the
+  // given amount can also be smaller than the percentage because the shop
+  // rounds down, and telling a buyer their discount was "capped at maximum
+  // amount" when all that happened was the loss of 52 cents would be a lie
+  // about the one thing this app exists to be honest about.
+  const capped = uncappedMinor > capMinor;
 
   return {
     operations: [
@@ -179,7 +187,7 @@ function orderScopeResult(
         orderDiscountsAdd: {
           candidates: [
             {
-              message: buildMessage(config, capMinor, currencyCode, uncappedMinor > givenMinor),
+              message: buildMessage(config, capMinor, currencyCode, capped),
               // `excludedCartLineIds` is how a whole-order discount is narrowed
               // to some of the cart. The alternative — a PRODUCT-class discount
               // with one candidate per line — would split MaxOff's single
@@ -236,13 +244,16 @@ function perGroupResult(
       group.subtotalMinor,
       config.percentage,
       capMinor,
+      config.rounding,
     );
     if (givenMinor <= 0) {
       continue;
     }
 
     candidates.push({
-      message: buildMessage(config, capMinor, currencyCode, uncappedMinor > givenMinor),
+      // Per group, and against the maximum rather than the amount given — see
+      // the note in `orderScopeResult`.
+      message: buildMessage(config, capMinor, currencyCode, uncappedMinor > capMinor),
       // `appliesToEachItem` is left at its default of false, so the amount is
       // applied once across the group rather than once per unit in it. That is
       // what makes this a maximum on the line — or on the collection — and not

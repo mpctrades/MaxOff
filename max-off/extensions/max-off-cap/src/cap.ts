@@ -65,23 +65,52 @@ export function parseDecimalToMinor(value: string): number | null {
 }
 
 /**
+ * How the shop rounds the final discount amount.
+ *
+ * The twin of `ROUNDING_MODES` in `app/lib/rounding.ts` — the two halves of a
+ * contract that crosses the `cap_config` metafield, the same way `CapScope`
+ * is. `app/lib/cap-config.test.ts` round-trips the admin's config through this
+ * Function's parser, which is what holds them together.
+ */
+export type RoundingMode = 'cent' | 'down';
+
+/**
  * Apply the cap. `percentage` is a whole percent (1-100) and `capMinor` is the
  * maximum discount in minor units. Both are integers, so the whole calculation
  * is integer arithmetic with a single half-up rounding at the end.
+ *
+ * The shop's own rounding is applied **after** the minimum, to the amount that
+ * actually leaves the merchant's pocket. Rounding the percentage first would
+ * let a rounded-down figure slip under a maximum it had already passed, and
+ * `uncappedMinor` — which is what tells the buyer "15% would have been 210.00"
+ * — must stay the unrounded percentage or that sentence stops being true.
  */
 export function capDiscount(
   subtotalMinor: number,
   percentage: number,
   capMinor: number,
+  rounding: RoundingMode = 'cent',
 ): CapResult {
   const uncappedMinor = roundHalfUp(subtotalMinor * percentage, 100);
-  const givenMinor = Math.min(uncappedMinor, capMinor);
+  const givenMinor = applyRounding(Math.min(uncappedMinor, capMinor), rounding);
 
   return {
     uncappedMinor,
     givenMinor,
     keptMinor: uncappedMinor - givenMinor,
   };
+}
+
+/**
+ * The shop's rounding, applied once.
+ *
+ * `cent` is the identity: nothing in this file ever leaves integer cents.
+ * `down` drops the cents entirely, so a 105.52 discount becomes 105.00 — the
+ * merchant's choice to round in their own favour rather than the buyer's, and
+ * the only direction a *maximum* discount app can honestly offer.
+ */
+export function applyRounding(minor: number, rounding: RoundingMode): number {
+  return rounding === 'down' ? Math.floor(minor / MINOR_UNITS) * MINOR_UNITS : minor;
 }
 
 /**
