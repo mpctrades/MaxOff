@@ -127,3 +127,39 @@ describe("displayStatusLabel", () => {
     expect(displayStatusLabel("expired")).toBe("Expired");
   });
 });
+
+/**
+ * Cancelling deletes the discount in Shopify and leaves MaxOff's row behind as
+ * a record. The row must never read as active again: the plan's discount limit
+ * counts active rows, so a cancelled one that still looked active would refuse
+ * a merchant a discount they are entitled to.
+ */
+describe("a cancelled discount", () => {
+  const now = new Date("2026-09-15T12:00:00Z");
+  const yesterday = new Date("2026-09-14T00:00:00Z");
+  const tomorrow = new Date("2026-09-16T00:00:00Z");
+
+  test("reads as cancelled whatever its dates say", () => {
+    for (const dates of [
+      { startsAt: yesterday, endsAt: null },
+      { startsAt: yesterday, endsAt: tomorrow },
+      { startsAt: tomorrow, endsAt: null },
+      { startsAt: yesterday, endsAt: yesterday },
+    ]) {
+      expect(displayStatus({ status: "cancelled", ...dates }, now)).toBe("cancelled");
+    }
+  });
+
+  test("is never read as active, scheduled or expired", () => {
+    const status = displayStatus(
+      { status: "cancelled", startsAt: yesterday, endsAt: null },
+      now,
+    );
+
+    expect(["active", "scheduled", "expired"]).not.toContain(status);
+  });
+
+  test("has a label like every other status", () => {
+    expect(displayStatusLabel("cancelled")).toBe("Cancelled");
+  });
+});

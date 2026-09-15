@@ -140,10 +140,25 @@ function roundHalfUp(numerator: number, denominator: number): number {
   return Math.floor((numerator + Math.floor(denominator / 2)) / denominator);
 }
 
-/** The four states a merchant sees. Only two of them are ever stored. */
-export type DisplayStatus = "active" | "scheduled" | "paused" | "expired";
+/**
+ * The states a merchant sees.
+ *
+ * "Paused" and "cancelled" are stored, because both are things a human did.
+ * "Scheduled" and "expired" are facts about the clock and are derived — see
+ * `displayStatus`.
+ */
+export type TabbableStatus = "active" | "scheduled" | "paused" | "expired";
 
-export const DISPLAY_STATUSES: DisplayStatus[] = [
+export type DisplayStatus = TabbableStatus | "cancelled";
+
+/**
+ * The statuses the tab strip offers, which is deliberately not every status.
+ *
+ * Cancelled discounts no longer exist in Shopify; MaxOff keeps the row so a
+ * merchant does not lose the record, but a tab for them would put a filter on
+ * the shelf that most shops would never press. They appear under "All".
+ */
+export const DISPLAY_STATUSES: TabbableStatus[] = [
   "active",
   "scheduled",
   "paused",
@@ -157,7 +172,7 @@ export const DISPLAY_STATUSES: DisplayStatus[] = [
  * component renders them, and a route component that imports a value from a
  * `.server` module cannot be split from it — the client build fails outright.
  */
-export type DiscountTab = "all" | DisplayStatus;
+export type DiscountTab = "all" | TabbableStatus;
 
 export const DISCOUNT_TABS: DiscountTab[] = ["all", ...DISPLAY_STATUSES];
 
@@ -198,6 +213,13 @@ export function displayStatus(
   discount: StatusInput,
   now: Date,
 ): DisplayStatus {
+  // Checked before anything derived from the clock: a cancelled discount is
+  // gone from Shopify, so no date can make it active again. Getting this order
+  // wrong would let a cancelled row count against the plan's active limit.
+  if (discount.status === "cancelled") {
+    return "cancelled";
+  }
+
   if (discount.status === "paused") {
     return "paused";
   }

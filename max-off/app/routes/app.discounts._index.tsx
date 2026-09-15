@@ -9,7 +9,13 @@ import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 
 import { authenticate } from "../shopify.server";
-import { listCappedDiscounts, setDiscountPaused } from "../models/discounts.server";
+import {
+  cancelCappedDiscount,
+  exportCappedDiscountsCsv,
+  listCappedDiscounts,
+  setDiscountPaused,
+} from "../models/discounts.server";
+import { getPlanForGate } from "../models/plan.server";
 import type { DiscountListRow } from "../models/discounts.server";
 import { ensureShopSettings } from "../models/settings.server";
 import {
@@ -25,7 +31,7 @@ import {
 } from "../components/InternalNavigation";
 import type { DisplayStatus } from "../lib/cap";
 import { formatMoney, formatPercent } from "../lib/format";
-import { gateFor } from "../lib/plans";
+import { gateFor, hasNow } from "../lib/plans";
 
 /** How long to wait after the last keystroke before searching. */
 const SEARCH_DEBOUNCE_MS = 400;
@@ -36,7 +42,16 @@ const STATUS_TONES: Record<DisplayStatus, "success" | "info" | "warning" | "neut
     scheduled: "info",
     paused: "warning",
     expired: "neutral",
+    // Neutral, like expired: a cancelled discount is a record, not a warning.
+    cancelled: "neutral",
   };
+
+export const EXPORT_NOT_ON_PLAN = "Export is part of the Pro plan.";
+
+/** `maxoff-capped-discounts-2026-09-15.csv`, dated in UTC. */
+function exportFilename(): string {
+  return `maxoff-capped-discounts-${new Date().toISOString().slice(0, 10)}.csv`;
+}
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
@@ -80,14 +95,52 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
 
   const form = await request.formData();
-  if (form.get("intent") !== "set-paused") {
-    return { ok: false as const, message: "Unknown action." };
+  const intent = form.get("intent");
+
+  if (intent === "export") {
+    // Checked against the plan Shopify reports, not the one the page was
+    // rendered with: the button is the affordance, this is the gate.
+    const plan = await getPlanForGate({ shop: session.shop, admin });
+    if (!hasNow(plan, "csvExport")) {
+      return { intent: "export" as const, ok: false as const, message: EXPORT_NOT_ON_PLAN };
+    }
+
+    const url = new URL(request.url);
+    const tabParam = url.searchParams.get("tab");
+
+    const csv = await exportCappedDiscountsCsv({
+      shop: session.shop,
+      tab: isDiscountTab(tabParam) ? tabParam : "all",
+      query: url.searchParams.get("q") ?? "",
+    });
+
+    // Returned as text rather than as a file response because this route is
+    // an embedded app inside Shopify's iframe: a fetcher carries the session
+    // token, where a plain link navigation would not. The browser end of the
+    // download is done in the component.
+    return { intent: "export" as const, ok: true as const, csv, filename: exportFilename() };
+  }
+
+  if (intent === "cancel") {
+    const result = await cancelCappedDiscount({
+      shop: session.shop,
+      id: String(form.get("id") ?? ""),
+      admin,
+    });
+
+    return { intent: "cancel" as const, ...result };
+  }
+
+  if (intent !== "set-paused") {
+    return { intent: "unknown" as const, ok: false as const, message: "Unknown action." };
   }
 
   const id = String(form.get("id") ?? "");
   const paused = form.get("paused") === "true";
 
-  return setDiscountPaused({ shop: session.shop, id, paused, admin });
+  const result = await setDiscountPaused({ shop: session.shop, id, paused, admin });
+
+  return { intent: "set-paused" as const, ...result };
 };
 
 export default function DiscountsListPage() {
@@ -95,6 +148,57 @@ export default function DiscountsListPage() {
   const shopify = useAppBridge();
   const submit = useSubmit();
   const debounce = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  /**
+   * The export runs through a fetcher because an embedded app lives in
+   * Shopify's iframe: a fetcher request carries the App Bridge session token,
+   * where a plain link to a file route would arrive unauthenticated. The
+   * server hands back the CSV as text and the browser end happens here.
+   */
+  const exportFetcher = useFetcher<typeof action>();
+  const exporting = exportFetcher.state !== "idle";
+  const exported = useRef<unknown>(null);
+
+  const exportCsv = () =>
+    exportFetcher.submit(
+      { intent: "export" },
+      { method: "post", action: `?${new URLSearchParams({ tab, q: query })}` },
+    );
+
+  useEffect(() => {
+    const data = exportFetcher.data;
+    if (!data || data === exported.current || exportFetcher.state !== "idle") {
+      return;
+    }
+    exported.current = data;
+
+    // Narrowed on the action's own discriminant rather than by guessing which
+    // keys are present: one fetcher type covers three intents.
+    if (data.intent !== "export") {
+      return;
+    }
+
+    if (!data.ok) {
+      shopify.toast.show(data.message, { isError: true });
+      return;
+    }
+
+    // A BOM, because Excel reads a UTF-8 CSV as the system code page without
+    // one and turns every non-ASCII product name into mojibake.
+    const blob = new Blob([`\uFEFF${data.csv}`], {
+      type: "text/csv;charset=utf-8",
+    });
+    const href = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = href;
+    link.download = data.filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(href);
+
+    shopify.toast.show("Export downloaded");
+  }, [exportFetcher.data, exportFetcher.state, shopify]);
 
   const go = (next: { tab?: string; q?: string; page?: number }) => {
     const params: Record<string, string> = {
@@ -133,18 +237,18 @@ export default function DiscountsListPage() {
 
   return (
     <s-page heading="Capped discounts">
-      {/* Not built yet either way. The toast says which of the two reasons
-          applies, so a merchant who already pays for Pro is told it is coming
-          rather than sold what they have. */}
+      {/* Exports what the merchant is looking at — the current tab and search,
+          every page of it, not the 25 rows on screen. Off-plan the button
+          stays visible and says why, so a Free merchant can see what Pro adds
+          rather than meeting a control that is not there. */}
       <s-button
         slot="secondary-actions"
-        onClick={() =>
-          shopify.toast.show(
-            exportGate.allowed
-              ? "Export is coming soon"
-              : "Export is a Pro feature",
-          )
+        onClick={
+          exportGate.usable
+            ? exportCsv
+            : () => shopify.toast.show(EXPORT_NOT_ON_PLAN)
         }
+        {...(exporting ? { loading: true } : {})}
       >
         Export
       </s-button>
@@ -308,11 +412,23 @@ function DiscountRow({ row }: { row: DiscountListRow }) {
     }
     seen.current = fetcher.data;
 
-    if (fetcher.data.ok) {
+    // This row's fetcher answers two of the page's intents, so each is read
+    // by name rather than by whichever keys happen to be on the result.
+    if (fetcher.data.ok && fetcher.data.intent === "cancel") {
+      const named = fetcher.data.code ?? fetcher.data.title ?? "Discount";
+      shopify.toast.show(`${named} cancelled`);
+      return;
+    }
+
+    if (fetcher.data.ok && fetcher.data.intent === "set-paused") {
       const label = fetcher.data.status === "paused" ? "paused" : "activated";
       // A code discount is named by its code, an automatic one by its title.
       const named = fetcher.data.code ?? fetcher.data.title ?? "Discount";
       shopify.toast.show(`${named} ${label}`);
+      return;
+    }
+
+    if (fetcher.data.ok) {
       return;
     }
 
@@ -337,6 +453,20 @@ function DiscountRow({ row }: { row: DiscountListRow }) {
       { intent: "set-paused", id: row.id, paused: String(paused) },
       { method: "post" },
     );
+
+  // Cancelling deletes the discount in Shopify and cannot be undone, so it
+  // asks first. `window.confirm` is the one blocking dialog available without
+  // App Bridge's modal, and §4.3 reserves that for the create form's save bar.
+  const cancel = () => {
+    const named = row.code ?? row.title ?? "this discount";
+    if (
+      window.confirm(
+        `Cancel ${named}? It is deleted in Shopify and cannot be used again. MaxOff keeps the record.`,
+      )
+    ) {
+      fetcher.submit({ intent: "cancel", id: row.id }, { method: "post" });
+    }
+  };
 
   const busy = fetcher.state !== "idle";
 
@@ -365,7 +495,13 @@ function DiscountRow({ row }: { row: DiscountListRow }) {
         <s-badge tone={STATUS_TONES[status]}>{displayStatusLabel(status)}</s-badge>
       </s-table-cell>
       <s-table-cell>
-        <RowAction status={status} busy={busy} onSetPaused={setPaused} />
+        <RowAction
+          status={status}
+          busy={busy}
+          onSetPaused={setPaused}
+          onCancel={cancel}
+          duplicateHref={`/app/discounts/new?duplicate=${encodeURIComponent(row.id)}`}
+        />
       </s-table-cell>
     </s-table-row>
   );
@@ -377,14 +513,28 @@ function DiscountRow({ row }: { row: DiscountListRow }) {
  * Cancel and Duplicate have no implementation yet, so they are disabled with
  * the reason in their accessibility label rather than live buttons that throw.
  */
+/**
+ * One action per state, per BUILD-SPEC §12.3 — the mockup offers "Pause" on
+ * expired and scheduled rows, which is the bug this table does not port.
+ *
+ * Cancel deletes the discount in Shopify and keeps MaxOff's row marked
+ * cancelled, so the merchant does not lose the record of a campaign that ran.
+ * Duplicate opens the create form filled in from this discount rather than
+ * writing a second one straight away: codes are unique, so the merchant has to
+ * choose a new one, and a form is where that decision belongs.
+ */
 function RowAction({
   status,
   busy,
   onSetPaused,
+  onCancel,
+  duplicateHref,
 }: {
   status: DisplayStatus;
   busy: boolean;
   onSetPaused: (paused: boolean) => void;
+  onCancel: () => void;
+  duplicateHref: string;
 }) {
   if (status === "active") {
     return (
@@ -414,22 +564,20 @@ function RowAction({
     return (
       <s-button
         variant="tertiary"
-        disabled
-        accessibilityLabel="Cancel is not available yet — cancelling a scheduled discount comes with the create form"
+        onClick={onCancel}
+        {...(busy ? { loading: true } : {})}
       >
         Cancel
       </s-button>
     );
   }
 
+  // Expired and cancelled rows have nothing left to stop, so the useful thing
+  // is to run the campaign again.
   return (
-    <s-button
-      variant="tertiary"
-      disabled
-      accessibilityLabel="Duplicate is not available yet — it needs the create form"
-    >
+    <InternalButtonLink variant="tertiary" href={duplicateHref}>
       Duplicate
-    </s-button>
+    </InternalButtonLink>
   );
 }
 
