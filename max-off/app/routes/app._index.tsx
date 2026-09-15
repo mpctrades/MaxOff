@@ -176,7 +176,14 @@ function NewInstallCard() {
  * the figure is, and the same total is drawn again in the chart below.
  *
  * Every tile has something honest to say before a single order has been
- * capped: "No capped orders yet" rather than a zero that reads as a loss.
+ * capped — an em dash and a reason, never a zero that reads as a loss.
+ *
+ * The reason is deliberately not "no capped orders yet". Nothing writes a
+ * `CapEvent`: the orders/paid handler exists but is inert until `read_orders`
+ * is approved (see `app/routes/webhooks.orders.paid.tsx`). "Not yet" would
+ * tell a merchant the figure is on its way, and it is not. So these tiles say
+ * the tracking is off rather than implying it is running and merely waiting —
+ * App Store requirement 1.1.4 is that an app only claims what it does.
  */
 function StatTiles({ home }: { home: HomeData }) {
   const { currencyCode } = home;
@@ -224,7 +231,9 @@ function StatTiles({ home }: { home: HomeData }) {
             </span>
           </>
         ) : (
-          <span className="maxoff-tile__note">No capped orders yet</span>
+          <span className="maxoff-tile__note">
+            Per-order tracking is not switched on yet
+          </span>
         )}
       </div>
 
@@ -241,7 +250,9 @@ function StatTiles({ home }: { home: HomeData }) {
             </span>
           </>
         ) : (
-          <span className="maxoff-tile__note">No capped orders yet</span>
+          <span className="maxoff-tile__note">
+            Per-order tracking is not switched on yet
+          </span>
         )}
       </div>
 
@@ -267,7 +278,9 @@ function StatTiles({ home }: { home: HomeData }) {
             </span>
           </>
         ) : (
-          <span className="maxoff-tile__note">No capped orders yet</span>
+          <span className="maxoff-tile__note">
+            Per-order tracking is not switched on yet
+          </span>
         )}
       </div>
     </s-grid>
@@ -292,8 +305,9 @@ function MoneyKeptCard({ home }: { home: HomeData }) {
         <WeeklyChart weeks={home.weeks} currencyCode={home.currencyCode} />
       ) : (
         <s-paragraph color="subdued">
-          No capped orders yet. This chart fills in once an order uses one of
-          your capped discounts.
+          MaxOff does not read your orders yet, so it cannot show what your
+          maximums saved you. Your discounts are capping normally — this is the
+          reporting, not the cap.
         </s-paragraph>
       )}
     </s-section>
