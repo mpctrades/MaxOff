@@ -77,6 +77,7 @@ export type CapabilityKey =
   | "activeDates"
   | "usageLimits"
   | "longCampaigns"
+  | "minimumRequirements"
   | "analytics"
   | "customCheckoutWording"
   | "itemMaximums"
@@ -169,6 +170,17 @@ export const CAPABILITIES: readonly Capability[] = [
     onCard: ["growth"],
   },
   {
+    // Built 15 Sep 2026. A standard discount control rather than something to
+    // sell: the published pricing does not mention it, and the mockup showed
+    // it with no plan badge, so it stays on every plan. The Function reads
+    // `minSubtotal` and `minQuantity` and applies nothing at all below them.
+    key: "minimumRequirements",
+    label: "Minimum subtotal or quantity",
+    plans: ["free", "growth", "pro"],
+    built: true,
+    onCard: [],
+  },
+  {
     key: "analytics",
     label: "Money-kept dashboard and analytics",
     plans: ["growth", "pro"],
@@ -224,21 +236,26 @@ export const CAPABILITIES: readonly Capability[] = [
     note: "PRO. The create form renders the checkbox disabled with a Pro badge.",
   },
   {
+    // Built 15 Sep 2026. Rule 5 is intact and is in fact why this shape was
+    // chosen: the merchant types the number for each currency and nothing is
+    // converted. `cap_config` carries `capsByCurrency`, and the Function picks
+    // by the cart's own currency, falling back to the base maximum relabelled.
     key: "perMarketCurrency",
     label: "A different maximum per market currency",
     plans: ["pro"],
-    built: false,
+    built: true,
     onCard: ["pro"],
-    note: "PRO. Amounts relabel and never convert, so this needs real per-market caps.",
   },
   {
+    // Built 15 Sep 2026, from our own mirror rather than a Shopify query, so
+    // it needs no scope. The 12-month range below is a different matter: it
+    // needs order history, which needs read_orders.
     key: "csvExport",
     label: "CSV export",
     cardLabel: "CSV export and 12-month history",
     plans: ["pro"],
-    built: false,
+    built: true,
     onCard: ["pro"],
-    note: "PRO. The list's Export button toasts 'Export is a Pro feature'.",
   },
   {
     key: "twelveMonthHistory",

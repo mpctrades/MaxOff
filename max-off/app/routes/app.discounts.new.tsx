@@ -9,7 +9,11 @@ import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 
 import { authenticate } from "../shopify.server";
-import { createCappedDiscount, isCodeTaken } from "../models/discounts.server";
+import {
+  createCappedDiscount,
+  isCodeTaken,
+  readCapConfigFor,
+} from "../models/discounts.server";
 import { ensureShopSettings } from "../models/settings.server";
 import { getPlanForGate } from "../models/plan.server";
 import { CheckoutPreviewModal } from "../components/CheckoutPreviewModal";
@@ -18,10 +22,12 @@ import {
   capDiscountMinor,
   capStartsAboveMinor,
   parseDecimalToMinor,
+  toDecimalString,
 } from "../lib/cap";
 import {
   CHECKOUT_NOTE_MAX_LENGTH,
   DEFAULT_CHECKOUT_NOTE,
+  isAppliesTo,
   isCapScope,
 } from "../lib/cap-config";
 import type { AppliesTo, CapScope } from "../lib/cap-config";
@@ -30,6 +36,7 @@ import {
   CHECKOUT_NOTE_NOT_ON_PLAN,
   COLLECTION_SCOPE_NEEDS_COLLECTIONS,
   combineDateTime,
+  isMinimumKind,
   discountFormStateFrom,
   initialDiscountFormState,
   defaultEndDate,
@@ -40,6 +47,7 @@ import {
 import { can, gateFor, maxCampaignDays } from "../lib/plans";
 import type { CapabilityGate } from "../lib/plans";
 import type {
+  CurrencyCap,
   DiscountFieldErrors,
   DiscountFormState,
   PickedResource,
@@ -134,12 +142,99 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     getPlanForGate({ shop: session.shop, admin }),
   ]);
 
+  // "Duplicate" on the list lands here with the id of the discount to copy.
+  // The form is prefilled from it and nothing is written until the merchant
+  // saves — codes are unique, so they have to choose a new one anyway, and a
+  // silent second discount is not what pressing Duplicate should do.
+  const duplicateId = new URL(request.url).searchParams.get("duplicate");
+  const duplicate =
+    duplicateId === null
+      ? null
+      : await readCapConfigFor({ shop: session.shop, id: duplicateId, admin });
+
   return {
     currencyCode: settings.currencyCode,
     checkoutNote: settings.defaultCheckoutNote || DEFAULT_CHECKOUT_NOTE,
     plan,
+    duplicateFrom: duplicate === null ? null : duplicateFormState(duplicate),
   };
 };
+
+/**
+ * A discount, as the create form's own state.
+ *
+ * The mirror carries what the list renders; the targeting, the minimums and
+ * the per-market maximums live in the `cap_config` metafield, which is why
+ * both are read. The code is deliberately *not* copied: codes are unique in
+ * Shopify, so carrying it over would prefill the one field guaranteed to fail.
+ */
+function duplicateFormState(source: {
+  row: {
+    method: string;
+    title: string | null;
+    percentage: number;
+    capMinor: number;
+    checkoutNote: string | null;
+    oncePerCustomer: boolean;
+    usageLimit: number | null;
+    combinesProduct: boolean;
+    combinesOrder: boolean;
+    combinesShipping: boolean;
+  };
+  config: unknown;
+}): Partial<DiscountFormState> {
+  const { row } = source;
+  const config =
+    typeof source.config === "object" && source.config !== null
+      ? (source.config as Record<string, unknown>)
+      : {};
+
+  const text = (value: unknown) => (typeof value === "string" ? value : "");
+  const ids = (value: unknown): PickedResource[] =>
+    Array.isArray(value)
+      ? value
+          .filter((id): id is string => typeof id === "string" && id.trim() !== "")
+          // The titles are not in the metafield, so the picker shows the id
+          // until the merchant opens it. An id that resolves is better than a
+          // title we invented.
+          .map((id) => ({ id, title: id }))
+      : [];
+
+  const minSubtotal = text(config.minSubtotal);
+  const minQuantity =
+    typeof config.minQuantity === "number" ? String(config.minQuantity) : "";
+
+  const capsByCurrency =
+    typeof config.capsByCurrency === "object" && config.capsByCurrency !== null
+      ? Object.entries(config.capsByCurrency as Record<string, unknown>).flatMap(
+          ([currencyCode, amount]) =>
+            typeof amount === "string" ? [{ currencyCode, amount }] : [],
+        )
+      : [];
+
+  return {
+    method: row.method === "automatic" ? "automatic" : "code",
+    title: row.title ? `${row.title} copy` : "",
+    percentage: String(row.percentage),
+    capAmount: toDecimalString(row.capMinor),
+    checkoutNote: row.checkoutNote ?? DEFAULT_CHECKOUT_NOTE,
+    scope: isCapScope(config.scope) ? config.scope : "order",
+    appliesTo: isAppliesTo(config.appliesTo) ? config.appliesTo : "all",
+    collections: ids(config.collectionIds),
+    products: ids(config.productIds),
+    minimumKind:
+      minSubtotal !== "" ? "subtotal" : minQuantity !== "" ? "quantity" : "none",
+    minSubtotal,
+    minQuantity,
+    currencyCaps: capsByCurrency,
+    oncePerCustomer: row.oncePerCustomer,
+    usageLimitOn: row.usageLimit !== null,
+    usageLimit: row.usageLimit === null ? "" : String(row.usageLimit),
+    combinesProduct: row.combinesProduct,
+    combinesOrder: row.combinesOrder,
+    combinesShipping: row.combinesShipping,
+  };
+}
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
@@ -165,7 +260,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // — and against the plan Shopify reports, not the one the form was rendered
   // with, so a stale tab cannot save what the plan no longer allows.
   const plan = await getPlanForGate({ shop: session.shop, admin });
-  const parsed = validateDiscountForm(discountFormStateFrom(form), plan);
+  const settingsForPlan = await ensureShopSettings(session.shop);
+  const parsed = validateDiscountForm(
+    discountFormStateFrom(form),
+    plan,
+    settingsForPlan.currencyCode,
+  );
   if ("errors" in parsed) {
     return {
       intent: "create" as const,
@@ -174,12 +274,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     };
   }
 
-  const settings = await ensureShopSettings(session.shop);
-
   const result = await createCappedDiscount({
     shop: session.shop,
     admin,
-    currencyCode: settings.currencyCode,
+    currencyCode: settingsForPlan.currencyCode,
     ...parsed.value,
   });
 
@@ -257,8 +355,120 @@ function ScopeChoice({
   );
 }
 
+/**
+ * "A different maximum per market currency" — the Pro entitlement, and the one
+ * feature rule 5 is most often misread as forbidding.
+ *
+ * It forbids *converting*: MaxOff never multiplies a maximum by an exchange
+ * rate. The merchant types the number for each currency, and the Function
+ * picks by the cart's own currency. A market with no row keeps the maximum
+ * above, relabelled — which is exactly what happened before this existed.
+ *
+ * The store's own currency is deliberately not offerable: its maximum is the
+ * field above, and two inputs for one number is how they come to disagree.
+ */
+function MarketMaximums({
+  gate,
+  rows,
+  storeCurrency,
+  error,
+  onChange,
+}: {
+  gate: CapabilityGate;
+  rows: CurrencyCap[];
+  storeCurrency: string;
+  error?: string;
+  onChange: (rows: CurrencyCap[]) => void;
+}) {
+  if (!gate.usable) {
+    return (
+      <s-grid
+        gridTemplateColumns="max-content auto"
+        gap="small-300"
+        alignItems="baseline"
+      >
+        <s-text color="subdued">A different maximum per market currency</s-text>
+        <s-badge>{gate.badge}</s-badge>
+      </s-grid>
+    );
+  }
+
+  const update = (index: number, patch: Partial<CurrencyCap>) =>
+    onChange(rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+
+  return (
+    <s-stack direction="block" gap="small-300">
+      <s-text>Maximums in other currencies</s-text>
+
+      {rows.map((row, index) => (
+        <s-grid
+          key={index}
+          gridTemplateColumns="@container (inline-size <= 500px) 1fr, 1fr 1fr max-content"
+          gap="small-300"
+          alignItems="end"
+        >
+          <s-text-field
+            label="Currency"
+            labelAccessibilityVisibility={index === 0 ? undefined : "exclusive"}
+            name={`currency-${index}`}
+            value={row.currencyCode}
+            placeholder="EUR"
+            maxLength={3}
+            onInput={(event) =>
+              update(index, {
+                currencyCode: event.currentTarget.value.toUpperCase(),
+              })
+            }
+          ></s-text-field>
+
+          <s-text-field
+            label="Maximum discount"
+            labelAccessibilityVisibility={index === 0 ? undefined : "exclusive"}
+            name={`currency-amount-${index}`}
+            value={row.amount}
+            placeholder="120.00"
+            onInput={(event) => update(index, { amount: event.currentTarget.value })}
+          ></s-text-field>
+
+          <s-button
+            variant="tertiary"
+            accessibilityLabel={`Remove the maximum for ${
+              row.currencyCode || "this currency"
+            }`}
+            onClick={() => onChange(rows.filter((_, i) => i !== index))}
+          >
+            Remove
+          </s-button>
+        </s-grid>
+      ))}
+
+      {/* `s-text` has no critical tone in this Polaris version, and the two
+          fields above are a pair rather than one field with an error slot, so
+          the message belongs to the group. A banner is the component that
+          carries a tone here. */}
+      {error && (
+        <s-banner tone="critical">
+          <s-text>{error}</s-text>
+        </s-banner>
+      )}
+
+      <s-stack direction="inline" gap="small-300" alignItems="center">
+        <s-button
+          variant="tertiary"
+          onClick={() => onChange([...rows, { currencyCode: "", amount: "" }])}
+        >
+          Add a currency
+        </s-button>
+        <s-text color="subdued">
+          {storeCurrency} uses the maximum above. Amounts are never converted.
+        </s-text>
+      </s-stack>
+    </s-stack>
+  );
+}
+
 export default function CreateDiscountPage() {
-  const { currencyCode, plan } = useLoaderData<typeof loader>();
+  const { currencyCode, plan, duplicateFrom } = useLoaderData<typeof loader>();
 
   /** The plan's run-length ceiling in days, and whether it may cap uses. */
   const maxDays = maxCampaignDays(plan);
@@ -270,15 +480,21 @@ export default function CreateDiscountPage() {
   const collectionGate = gateFor(plan, "collectionMaximums");
   /** Entitled on Pro, not built yet — so a Pro merchant is told which it is. */
   const budgetGate = gateFor(plan, "campaignBudget");
+  /** A different maximum per market currency. Pro, and built. */
+  const perMarketGate = gateFor(plan, "perMarketCurrency");
   const shopify = useAppBridge();
   const navigate = useNavigate();
 
   const saveFetcher = useFetcher<typeof action>();
   const codeFetcher = useFetcher<typeof action>();
 
-  const [state, setState] = useState<DiscountFormState>(() =>
-    initialDiscountFormState(new Date(), maxDays),
-  );
+  const [state, setState] = useState<DiscountFormState>(() => ({
+    ...initialDiscountFormState(new Date(), maxDays),
+    // A duplicate starts from the discount it copies. The dates are not
+    // carried over — the copy is a new campaign, and a start date in the past
+    // is the one field the form would immediately reject.
+    ...(duplicateFrom ?? {}),
+  }));
   const [dirty, setDirty] = useState(false);
   const [errors, setErrors] = useState<DiscountFieldErrors>({});
 
@@ -473,6 +689,13 @@ export default function CreateDiscountPage() {
     }
   });
 
+  const onMinimumKindChange = useNativeChange<ValuesElement>((element) => {
+    const picked = element.values?.[0];
+    if (isMinimumKind(picked)) {
+      set("minimumKind", picked);
+    }
+  });
+
   const onAppliesToChange = useNativeChange<ValuesElement>((element) => {
     const picked = element.values?.[0];
     if (picked === "all" || picked === "collections" || picked === "products") {
@@ -587,6 +810,10 @@ export default function CreateDiscountPage() {
         checkoutNote: state.checkoutNote,
         percentage: state.percentage,
         capAmount: state.capAmount,
+        minimumKind: state.minimumKind,
+        minSubtotal: state.minSubtotal,
+        minQuantity: state.minQuantity,
+        currencyCaps: JSON.stringify(state.currencyCaps),
         startDate: state.startDate,
         startTime: state.startTime,
         endDateOn: String(state.endDateOn),
@@ -762,6 +989,14 @@ export default function CreateDiscountPage() {
             ></s-money-field>
           </s-grid>
 
+          <MarketMaximums
+            gate={perMarketGate}
+            rows={state.currencyCaps}
+            storeCurrency={currencyCode}
+            error={errors.currencyCaps}
+            onChange={(rows) => set("currencyCaps", rows)}
+          />
+
           {ready && startsAboveMinor !== null ? (
             <div className="maxoff-cap-callout">
               <span>
@@ -918,58 +1153,73 @@ export default function CreateDiscountPage() {
 
       {/* ---------------- 4 · Minimum requirements ---------------- */}
       <s-section heading="Minimum requirements">
-        <s-banner tone="info" heading="Not available yet">
-          Shopify&apos;s app-discount API has no field for a minimum subtotal or
-          quantity, so a minimum can only be enforced inside the cap engine
-          itself. That is a change to the Function, not to this form.
-        </s-banner>
-
-        <s-choice-list
-          label="Minimum requirements"
-          labelAccessibilityVisibility="exclusive"
-          name="minimum"
-          values={["none"]}
-        >
-          <s-choice value="none">
-            No minimum requirements
-            <s-text slot="details" color="subdued">
-              {automatic
-                ? "Every cart gets the discount."
-                : "Every cart that uses the code gets the discount."}
-            </s-text>
-          </s-choice>
-          {/* Badge beside description, not beside the label — see the note
-              in the "Applies to" section. The description says what the
-              option would do; the badge says why it cannot yet. */}
-          <s-choice value="subtotal" disabled>
-            Minimum purchase amount
-            <s-stack
-              slot="secondary-content"
-              direction="inline"
-              gap="small-300"
-              alignItems="center"
-            >
-              <s-text color="subdued">
+        <s-stack direction="block" gap="base">
+          {/* The minimum is enforced by the Function, which returns no
+              operations at all below it — there is no Shopify field for this
+              on an app discount, so the cap engine is the only place it can
+              live. Measured on the part of the cart the percentage is taken
+              on, so a discount on one collection is judged by that
+              collection and not by the whole basket. */}
+          <s-choice-list
+            label="Minimum requirements"
+            labelAccessibilityVisibility="exclusive"
+            name="minimumKind"
+            values={[state.minimumKind]}
+            ref={onMinimumKindChange}
+          >
+            <s-choice value="none">
+              No minimum requirements
+              <s-text slot="details" color="subdued">
+                {automatic
+                  ? "Every cart gets the discount."
+                  : "Every cart that uses the code gets the discount."}
+              </s-text>
+            </s-choice>
+            <s-choice value="subtotal">
+              Minimum purchase amount
+              <s-text slot="details" color="subdued">
                 A minimum subtotal before the discount applies.
               </s-text>
-              <s-badge>Needs the cap engine</s-badge>
-            </s-stack>
-          </s-choice>
-          <s-choice value="quantity" disabled>
-            Minimum quantity of items
-            <s-stack
-              slot="secondary-content"
-              direction="inline"
-              gap="small-300"
-              alignItems="center"
-            >
-              <s-text color="subdued">
+            </s-choice>
+            <s-choice value="quantity">
+              Minimum quantity of items
+              <s-text slot="details" color="subdued">
                 A minimum number of items before the discount applies.
               </s-text>
-              <s-badge>Needs the cap engine</s-badge>
-            </s-stack>
-          </s-choice>
-        </s-choice-list>
+            </s-choice>
+          </s-choice-list>
+
+          {state.minimumKind === "subtotal" && (
+            <s-money-field
+              label="Minimum purchase amount"
+              name="minSubtotal"
+              currencyCode="auto"
+              min={0}
+              value={state.minSubtotal}
+              onInput={(event) => set("minSubtotal", event.currentTarget.value)}
+              {...(errors.minSubtotal ? { error: errors.minSubtotal } : {})}
+            ></s-money-field>
+          )}
+
+          {state.minimumKind === "quantity" && (
+            <s-number-field
+              label="Minimum quantity of items"
+              name="minQuantity"
+              min={1}
+              step={1}
+              value={state.minQuantity}
+              onInput={(event) => set("minQuantity", event.currentTarget.value)}
+              {...(errors.minQuantity ? { error: errors.minQuantity } : {})}
+            ></s-number-field>
+          )}
+
+          {state.minimumKind !== "none" && (
+            <s-paragraph color="subdued">
+              Below the minimum the discount does not apply at all, and the
+              buyer sees no discount line.
+            </s-paragraph>
+          )}
+        </s-stack>
       </s-section>
 
       {/* ---------------- 5 · Customers and usage limits ---------------- */}

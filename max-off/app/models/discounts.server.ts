@@ -9,7 +9,12 @@
 import type { Prisma } from "@prisma/client";
 
 import prisma from "../db.server";
-import { capStartsAboveMinor, displayStatus, DISCOUNT_TABS } from "../lib/cap";
+import {
+  capStartsAboveMinor,
+  displayStatus,
+  displayStatusLabel,
+  DISCOUNT_TABS,
+} from "../lib/cap";
 import type { DiscountTab, DisplayStatus } from "../lib/cap";
 import { capConfigMetafield } from "../lib/cap-config";
 import type { CapScope } from "../lib/cap-config";
@@ -73,20 +78,28 @@ export function statusWhere(
   tab: DiscountTab,
   now: Date,
 ): Prisma.CappedDiscountWhereInput {
+  // A cancelled discount is gone from Shopify, so it is none of the four
+  // states below — not even "expired", which is a discount that ran. It is
+  // excluded from every tab but "All", and above all from "active", which is
+  // what the plan's discount limit counts.
+  const live: Prisma.CappedDiscountWhereInput = {
+    status: { notIn: ["paused", "cancelled"] },
+  };
+
   switch (tab) {
     case "paused":
       return { status: "paused" };
     case "scheduled":
-      return { status: { not: "paused" }, startsAt: { gt: now } };
+      return { ...live, startsAt: { gt: now } };
     case "expired":
       return {
-        status: { not: "paused" },
+        ...live,
         startsAt: { lte: now },
         endsAt: { lte: now },
       };
     case "active":
       return {
-        status: { not: "paused" },
+        ...live,
         startsAt: { lte: now },
         OR: [{ endsAt: null }, { endsAt: { gt: now } }],
       };
@@ -518,6 +531,12 @@ export interface CreateDiscountInput {
   checkoutNote: string;
   percentage: number;
   capMinor: number;
+  /** The least the eligible cart must come to. Null is no minimum. */
+  minSubtotalMinor: number | null;
+  /** The least number of eligible items. Null is no minimum. */
+  minQuantity: number | null;
+  /** A maximum per market currency, in minor units, keyed by ISO code. */
+  capsByCurrency: Record<string, number>;
   currencyCode: string;
   startsAt: Date;
   endsAt: Date | null;
@@ -627,6 +646,9 @@ export async function createCappedDiscount(
       code: automatic ? null : input.code,
       checkoutNote: input.checkoutNote,
       scope: input.scope,
+      minSubtotalMinor: input.minSubtotalMinor,
+      minQuantity: input.minQuantity,
+      capsByCurrency: input.capsByCurrency,
       appliesTo: input.appliesTo,
       collectionIds: input.collectionIds,
       productIds: input.productIds,
@@ -789,3 +811,262 @@ function fieldErrorsFrom(errors: UserError[]): Record<string, string> {
 
   return mapped;
 }
+
+/**
+ * Every capped discount in the shop, as CSV — the Pro export.
+ *
+ * Read from our own mirror rather than from Shopify, which is why it needs no
+ * scope: §3.1 already keeps these rows in step with Shopify, and a merchant
+ * exporting a list is exporting the list they are looking at.
+ *
+ * Unpaginated on purpose. The list pages at 25 because a table is read a
+ * screen at a time; a spreadsheet is not, and an export that stopped at the
+ * first 25 rows would be a quiet way to lose a merchant's data.
+ *
+ * Money is written in major units with two decimals and no thousands
+ * separator, and no currency symbol — the currency has its own column. That
+ * is the one format a spreadsheet reads back as a number in every locale.
+ */
+export async function exportCappedDiscountsCsv(input: {
+  shop: string;
+  tab: DiscountTab;
+  query: string;
+}): Promise<string> {
+  const rows: string[][] = [
+    [
+      "Code",
+      "Name",
+      "Method",
+      "Percentage",
+      "Maximum discount",
+      "Cap starts above",
+      "Currency",
+      "Status",
+      "Times used",
+      "Money you kept",
+      "Starts at",
+      "Ends at",
+    ],
+  ];
+
+  // One page at a time rather than one query, so a shop with a great many
+  // discounts does not build the whole result set in memory at once.
+  for (let page = 1; ; page += 1) {
+    const list = await listCappedDiscounts({ ...input, page });
+
+    // The list rows carry everything but the dates, so those are fetched for
+    // the whole page in one query rather than one per row.
+    const dates = new Map<string, { startsAt: Date; endsAt: Date | null }>();
+    if (list.rows.length > 0) {
+      const records = await prisma.cappedDiscount.findMany({
+        where: { id: { in: list.rows.map((row) => row.id) } },
+        select: { id: true, startsAt: true, endsAt: true },
+      });
+      for (const record of records) {
+        dates.set(record.id, { startsAt: record.startsAt, endsAt: record.endsAt });
+      }
+    }
+
+    for (const row of list.rows) {
+      const record = dates.get(row.id);
+
+      rows.push([
+        row.code ?? "",
+        row.title ?? "",
+        row.method === "automatic" ? "Automatic" : "Code",
+        String(row.percentage),
+        decimalString(row.capMinor),
+        row.capStartsAboveMinor === null ? "" : decimalString(row.capStartsAboveMinor),
+        row.currencyCode,
+        displayStatusLabel(row.status),
+        String(row.timesUsed),
+        decimalString(row.keptMinor),
+        isoDate(record?.startsAt ?? null),
+        isoDate(record?.endsAt ?? null),
+      ]);
+    }
+
+    if (list.rows.length === 0 || page >= list.pageCount) {
+      break;
+    }
+  }
+
+  return rows.map((row) => row.map(csvCell).join(",")).join("\r\n");
+}
+
+/** Minor units as a bare decimal, which is what a spreadsheet reads as a number. */
+function decimalString(minor: number): string {
+  const whole = Math.floor(minor / 100);
+  const cents = minor % 100;
+  return `${whole}.${String(cents).padStart(2, "0")}`;
+}
+
+/** `2026-09-15`, in UTC, so a VPS in another zone cannot shift a date by a day. */
+function isoDate(value: Date | null): string {
+  return value === null ? "" : value.toISOString().slice(0, 10);
+}
+
+/**
+ * One CSV cell, quoted the way RFC 4180 says.
+ *
+ * The leading apostrophe on anything that starts with `=`, `+`, `-` or `@` is
+ * not decoration: a spreadsheet treats those as the start of a formula, and a
+ * discount code is merchant-supplied text. Prefixing them is the standard
+ * defence against a CSV injection that runs when the merchant opens the file.
+ */
+function csvCell(value: string): string {
+  const risky = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+  return /[",\r\n]/.test(risky) ? `"${risky.replace(/"/g, '""')}"` : risky;
+}
+
+/**
+ * Cancelling a capped discount.
+ *
+ * Deletes it in Shopify, then marks our row `cancelled` rather than removing
+ * it. The mirror is what the list, the counts and the money-kept total are
+ * read from, and deleting the row would take a merchant's own history away to
+ * tidy up a table — §3.1 makes Shopify the source of truth for the discount,
+ * not for the record that it existed.
+ *
+ * Shopify first, mirror second, and the mirror is only touched if Shopify
+ * accepted: a row marked cancelled beside a discount still running is the one
+ * failure that would actually cost a merchant money.
+ */
+const DELETE_CODE_MUTATION = `#graphql
+  mutation MaxOffDeleteCodeDiscount($id: ID!) {
+    discountCodeDelete(id: $id) {
+      deletedCodeDiscountId
+      userErrors { field code message }
+    }
+  }`;
+
+const DELETE_AUTOMATIC_MUTATION = `#graphql
+  mutation MaxOffDeleteAutomaticDiscount($id: ID!) {
+    discountAutomaticDelete(id: $id) {
+      deletedAutomaticDiscountId
+      userErrors { field code message }
+    }
+  }`;
+
+interface DeleteResponse {
+  data?: {
+    discountCodeDelete?: {
+      deletedCodeDiscountId?: string | null;
+      userErrors?: { field?: string[] | null; message: string }[] | null;
+    } | null;
+    discountAutomaticDelete?: {
+      deletedAutomaticDiscountId?: string | null;
+      userErrors?: { field?: string[] | null; message: string }[] | null;
+    } | null;
+  } | null;
+  errors?: { message: string }[];
+}
+
+export async function cancelCappedDiscount(input: {
+  shop: string;
+  id: string;
+  admin: AdminGraphqlClient;
+}): Promise<
+  | { ok: true; code: string | null; title: string | null }
+  | { ok: false; message: string }
+> {
+  const row = await prisma.cappedDiscount.findFirst({
+    where: { id: input.id, shop: input.shop },
+  });
+
+  if (row === null) {
+    return { ok: false, message: "That capped discount is no longer in MaxOff." };
+  }
+
+  const automatic = row.method === "automatic";
+
+  const response = await input.admin.graphql(
+    automatic ? DELETE_AUTOMATIC_MUTATION : DELETE_CODE_MUTATION,
+    { variables: { id: row.discountGid } },
+  );
+  const body = (await response.json()) as DeleteResponse;
+
+  const transportError = body.errors?.[0]?.message;
+  if (transportError) {
+    return { ok: false, message: transportError };
+  }
+
+  const payload = automatic
+    ? body.data?.discountAutomaticDelete
+    : body.data?.discountCodeDelete;
+
+  const userError = payload?.userErrors?.[0];
+  if (userError) {
+    return { ok: false, message: userError.message };
+  }
+
+  const deleted = automatic
+    ? body.data?.discountAutomaticDelete?.deletedAutomaticDiscountId
+    : body.data?.discountCodeDelete?.deletedCodeDiscountId;
+
+  if (!deleted) {
+    return {
+      ok: false,
+      message:
+        "Shopify did not confirm the discount was cancelled, so MaxOff left its record alone.",
+    };
+  }
+
+  await prisma.cappedDiscount.update({
+    where: { id: row.id },
+    data: { status: "cancelled" },
+  });
+
+  return { ok: true, code: row.code, title: row.title };
+}
+
+/**
+ * The configuration behind a discount, read back from Shopify for Duplicate.
+ *
+ * Our mirror carries what the list renders and no more — it has no targeting,
+ * no minimums and no per-market maximums. Those live in the `cap_config`
+ * metafield, which is the source of truth for them, so a duplicate that is
+ * actually a duplicate has to read it rather than guess from the columns.
+ */
+const READ_CAP_CONFIG_QUERY = `#graphql
+  query MaxOffReadCapConfig($id: ID!) {
+    discountNode(id: $id) {
+      id
+      metafield(namespace: "$app", key: "cap_config") {
+        jsonValue
+      }
+    }
+  }`;
+
+export async function readCapConfigFor(input: {
+  shop: string;
+  id: string;
+  admin: AdminGraphqlClient;
+}): Promise<{ row: CappedDiscountRecord; config: unknown } | null> {
+  const row = await prisma.cappedDiscount.findFirst({
+    where: { id: input.id, shop: input.shop },
+  });
+
+  if (row === null) {
+    return null;
+  }
+
+  try {
+    const response = await input.admin.graphql(READ_CAP_CONFIG_QUERY, {
+      variables: { id: row.discountGid },
+    });
+    const body = (await response.json()) as {
+      data?: { discountNode?: { metafield?: { jsonValue?: unknown } | null } | null } | null;
+    };
+
+    return { row, config: body.data?.discountNode?.metafield?.jsonValue ?? null };
+  } catch {
+    // A duplicate that loses the targeting is worse than one that says so, but
+    // the columns we do hold are still worth prefilling. The caller decides.
+    return { row, config: null };
+  }
+}
+
+type CappedDiscountRecord = NonNullable<
+  Awaited<ReturnType<typeof prisma.cappedDiscount.findFirst>>
+>;

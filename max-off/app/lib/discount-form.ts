@@ -39,6 +39,28 @@ export interface PickedResource {
   title: string;
 }
 
+/**
+ * Which minimum a cart must meet, as one choice rather than two checkboxes.
+ *
+ * Shopify's own discount form offers exactly one of amount or quantity, and a
+ * merchant who sets both has written a rule they cannot state in a sentence.
+ */
+export type MinimumKind = "none" | "subtotal" | "quantity";
+
+export const MINIMUM_KINDS: readonly MinimumKind[] = ["none", "subtotal", "quantity"];
+
+export function isMinimumKind(value: unknown): value is MinimumKind {
+  return (MINIMUM_KINDS as readonly unknown[]).includes(value);
+}
+
+/** One row of "in this currency, the maximum is this instead". */
+export interface CurrencyCap {
+  /** ISO 4217, upper case. */
+  currencyCode: string;
+  /** As the merchant typed it, in major units. */
+  amount: string;
+}
+
 export interface DiscountFormState {
   method: DiscountMethod;
   code: string;
@@ -52,6 +74,12 @@ export interface DiscountFormState {
   checkoutNote: string;
   percentage: string;
   capAmount: string;
+  /** "none", "subtotal" or "quantity" — the minimum a cart must meet. */
+  minimumKind: MinimumKind;
+  minSubtotal: string;
+  minQuantity: string;
+  /** A maximum per market currency. The store's own currency is not in here. */
+  currencyCaps: CurrencyCap[];
   usageLimitOn: boolean;
   usageLimit: string;
   oncePerCustomer: boolean;
@@ -83,6 +111,11 @@ export interface DiscountFormValue {
   checkoutNote: string;
   percentage: number;
   capMinor: number;
+  /** Null when there is no minimum. Only one of the two is ever set. */
+  minSubtotalMinor: number | null;
+  minQuantity: number | null;
+  /** Minor units per ISO code. Empty when the merchant set none. */
+  capsByCurrency: Record<string, number>;
   startsAt: Date;
   endsAt: Date | null;
   usageLimit: number | null;
@@ -121,6 +154,10 @@ export function initialDiscountFormState(
     checkoutNote: DEFAULT_CHECKOUT_NOTE,
     percentage: "15",
     capAmount: "",
+    minimumKind: "none",
+    minSubtotal: "",
+    minQuantity: "",
+    currencyCaps: [],
     usageLimitOn: false,
     usageLimit: "",
     oncePerCustomer: true,
@@ -227,6 +264,25 @@ export const CHECKOUT_NOTE_TOO_LONG = `Keep the note to ${CHECKOUT_NOTE_MAX_LENG
  * Function refuses that config, so the form has to refuse it first, where the
  * merchant can still fix it.
  */
+export const MIN_SUBTOTAL_INVALID =
+  "Enter a minimum amount greater than zero, or choose no minimum.";
+
+export const MIN_QUANTITY_INVALID =
+  "Enter a whole number of items greater than zero, or choose no minimum.";
+
+export const PER_MARKET_NOT_ON_PLAN =
+  "A different maximum per market currency is part of the Pro plan.";
+
+export const CURRENCY_CAP_INVALID =
+  "Give every market a three-letter currency code and an amount greater than zero.";
+
+export const CURRENCY_CAP_DUPLICATE =
+  "Each currency can have only one maximum.";
+
+export function currencyCapIsStoreCurrency(code: string): string {
+  return `${code} is your store currency, so its maximum is the one above.`;
+}
+
 export const NO_COLLECTIONS_CHOSEN = "Choose at least one collection.";
 export const NO_PRODUCTS_CHOSEN = "Choose at least one product.";
 
@@ -267,6 +323,13 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export function validateDiscountForm(
   state: DiscountFormState,
   plan: string,
+  /**
+   * The store's own currency. A per-market row naming it is refused rather
+   * than silently dropped: the maximum for that currency is the one the
+   * merchant already typed above, and two fields for one number is how they
+   * end up disagreeing.
+   */
+  storeCurrency = "",
 ): DiscountFormResult {
   const errors: DiscountFieldErrors = {};
 
@@ -336,6 +399,34 @@ export function validateDiscountForm(
     errors.capAmount = "Enter a maximum greater than zero.";
   }
 
+  // One minimum or none, never both: the merchant picked which kind, and the
+  // other field is not read at all rather than quietly carried along.
+  const minimumKind: MinimumKind = isMinimumKind(state.minimumKind)
+    ? state.minimumKind
+    : "none";
+
+  let minSubtotalMinor: number | null = null;
+  if (minimumKind === "subtotal") {
+    minSubtotalMinor = parseDecimalToMinor(state.minSubtotal);
+    if (minSubtotalMinor === null || minSubtotalMinor < 1) {
+      errors.minSubtotal = MIN_SUBTOTAL_INVALID;
+      minSubtotalMinor = null;
+    }
+  }
+
+  let minQuantity: number | null = null;
+  if (minimumKind === "quantity") {
+    const raw = state.minQuantity.trim();
+    const parsed = Number(raw);
+    if (raw === "" || !/^\d+$/.test(raw) || !Number.isInteger(parsed) || parsed < 1) {
+      errors.minQuantity = MIN_QUANTITY_INVALID;
+    } else {
+      minQuantity = parsed;
+    }
+  }
+
+  const capsByCurrency = readCurrencyCaps(state, plan, storeCurrency, errors);
+
   const startsAt = combineDateTime(state.startDate, state.startTime);
   if (startsAt === null) {
     errors.startDate = "Enter a start date and a time as HH:MM.";
@@ -398,6 +489,9 @@ export function validateDiscountForm(
       checkoutNote,
       percentage,
       capMinor: capMinor as number,
+      minSubtotalMinor,
+      minQuantity,
+      capsByCurrency,
       startsAt: startsAt as Date,
       endsAt,
       usageLimit,
@@ -429,6 +523,12 @@ export function discountFormStateFrom(form: FormData): DiscountFormState {
     checkoutNote: text("checkoutNote"),
     percentage: text("percentage"),
     capAmount: text("capAmount"),
+    minimumKind: isMinimumKind(form.get("minimumKind"))
+      ? (form.get("minimumKind") as MinimumKind)
+      : "none",
+    minSubtotal: text("minSubtotal"),
+    minQuantity: text("minQuantity"),
+    currencyCaps: currencyCaps(form.get("currencyCaps")),
     usageLimitOn: flag("usageLimitOn"),
     usageLimit: text("usageLimit"),
     oncePerCustomer: flag("oncePerCustomer"),
@@ -443,6 +543,59 @@ export function discountFormStateFrom(form: FormData): DiscountFormState {
   };
 }
 
+/**
+ * The per-market maximums, checked against the plan and against each other.
+ *
+ * Pro-only, and enforced here rather than in the form: §6 says the server
+ * revalidates instead of trusting that the UI disabled anything.
+ */
+function readCurrencyCaps(
+  state: DiscountFormState,
+  plan: string,
+  storeCurrency: string,
+  errors: DiscountFieldErrors,
+): Record<string, number> {
+  const rows = (state.currencyCaps ?? []).filter(
+    (row) => (row?.currencyCode ?? "").trim() !== "" || (row?.amount ?? "").trim() !== "",
+  );
+
+  if (rows.length === 0) {
+    return {};
+  }
+
+  if (!can(plan, "perMarketCurrency")) {
+    errors.currencyCaps = PER_MARKET_NOT_ON_PLAN;
+    return {};
+  }
+
+  const caps: Record<string, number> = {};
+  const store = storeCurrency.trim().toUpperCase();
+
+  for (const row of rows) {
+    const code = (row.currencyCode ?? "").trim().toUpperCase();
+    const minor = parseDecimalToMinor(row.amount ?? "");
+
+    if (!/^[A-Z]{3}$/.test(code) || minor === null || minor < 1) {
+      errors.currencyCaps = CURRENCY_CAP_INVALID;
+      return {};
+    }
+
+    if (store !== "" && code === store) {
+      errors.currencyCaps = currencyCapIsStoreCurrency(code);
+      return {};
+    }
+
+    if (caps[code] !== undefined) {
+      errors.currencyCaps = CURRENCY_CAP_DUPLICATE;
+      return {};
+    }
+
+    caps[code] = minor;
+  }
+
+  return caps;
+}
+
 /** Unique, non-empty ids, in the order the merchant picked them. */
 function idsOf(picked: PickedResource[]): string[] {
   return [
@@ -452,6 +605,44 @@ function idsOf(picked: PickedResource[]): string[] {
         .filter((id) => id !== ""),
     ),
   ];
+}
+
+/**
+ * The per-market maximums, as the form posts them: one JSON field, for the
+ * same reason the picked resources are one — a row is a pair, and FormData
+ * has no way to keep a pair together without inventing a delimiter.
+ */
+function currencyCaps(value: FormDataEntryValue | null): CurrencyCap[] {
+  if (typeof value !== "string" || value.trim() === "") {
+    return [];
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.flatMap((entry): CurrencyCap[] => {
+      if (typeof entry !== "object" || entry === null) {
+        return [];
+      }
+
+      const { currencyCode, amount } = entry as {
+        currencyCode?: unknown;
+        amount?: unknown;
+      };
+
+      return [
+        {
+          currencyCode: typeof currencyCode === "string" ? currencyCode : "",
+          amount: typeof amount === "string" ? amount : "",
+        },
+      ];
+    });
+  } catch {
+    return [];
+  }
 }
 
 /**

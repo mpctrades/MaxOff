@@ -30,6 +30,7 @@ const TABLE: Record<CapabilityKey, PlanKey[]> = {
   activeDates: ["free", "growth", "pro"],
   usageLimits: ["growth", "pro"],
   longCampaigns: ["growth", "pro"],
+  minimumRequirements: ["free", "growth", "pro"],
   analytics: ["growth", "pro"],
   customCheckoutWording: ["growth", "pro"],
   itemMaximums: ["pro"],
@@ -126,11 +127,12 @@ describe("built versus entitled", () => {
       expect(includedNow(plan).every((entry) => entry.built)).toBe(true);
     }
 
-    // Every plan can do the three built things today.
+    // What every plan can do today.
     expect(includedNow("free").map((entry) => entry.key)).toEqual([
       "orderMaximum",
       "previewAndTester",
       "activeDates",
+      "minimumRequirements",
     ]);
     expect(includedNow("pro").map((entry) => entry.key)).toEqual([
       "orderMaximum",
@@ -138,9 +140,12 @@ describe("built versus entitled", () => {
       "activeDates",
       "usageLimits",
       "longCampaigns",
+      "minimumRequirements",
       "customCheckoutWording",
       "itemMaximums",
       "collectionMaximums",
+      "perMarketCurrency",
+      "csvExport",
     ]);
   });
 

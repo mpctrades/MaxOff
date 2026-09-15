@@ -2,7 +2,12 @@ import { describe, expect, test } from "vitest";
 
 import {
   campaignTooLongError,
+  CURRENCY_CAP_DUPLICATE,
+  CURRENCY_CAP_INVALID,
   COLLECTION_SCOPE_NEEDS_COLLECTIONS,
+  MIN_QUANTITY_INVALID,
+  MIN_SUBTOTAL_INVALID,
+  PER_MARKET_NOT_ON_PLAN,
   combineDateTime,
   defaultEndDate,
   discountFormStateFrom,
@@ -50,6 +55,9 @@ describe("a valid form", () => {
         checkoutNote: "Discount capped at maximum amount",
         percentage: 15,
         capMinor: 15000,
+        minSubtotalMinor: null,
+        minQuantity: null,
+        capsByCurrency: {},
         startsAt: new Date("2026-09-10T00:00:00Z"),
         endsAt: null,
         usageLimit: null,
@@ -682,5 +690,123 @@ describe("which maximum the plan allows", () => {
     const result = validateDiscountForm(state, OPEN_PLAN);
 
     expect("value" in result && result.value.scope).toBe("order");
+  });
+});
+
+describe("the minimum a cart must meet", () => {
+  test("no minimum is the default and writes nothing", () => {
+    const result = validateDiscountForm(valid(), OPEN_PLAN);
+
+    expect("value" in result && result.value.minSubtotalMinor).toBeNull();
+    expect("value" in result && result.value.minQuantity).toBeNull();
+  });
+
+  test("a minimum subtotal becomes minor units", () => {
+    const state = valid({ minimumKind: "subtotal", minSubtotal: "75.50" });
+    const result = validateDiscountForm(state, OPEN_PLAN);
+
+    expect("value" in result && result.value.minSubtotalMinor).toBe(7550);
+  });
+
+  test("a minimum quantity becomes a whole number", () => {
+    const state = valid({ minimumKind: "quantity", minQuantity: "3" });
+    const result = validateDiscountForm(state, OPEN_PLAN);
+
+    expect("value" in result && result.value.minQuantity).toBe(3);
+  });
+
+  // One minimum or none. The other field is not read, so a merchant who typed
+  // in it and then changed their mind does not silently ship it.
+  test("only the chosen kind is read", () => {
+    const state = valid({
+      minimumKind: "quantity",
+      minQuantity: "3",
+      minSubtotal: "500.00",
+    });
+    const result = validateDiscountForm(state, OPEN_PLAN);
+
+    expect("value" in result && result.value.minSubtotalMinor).toBeNull();
+    expect("value" in result && result.value.minQuantity).toBe(3);
+  });
+
+  test.each([
+    ["empty", ""],
+    ["zero", "0.00"],
+    ["not a number", "lots"],
+  ])("refuses a minimum subtotal that is %s", (_label, minSubtotal) => {
+    const state = valid({ minimumKind: "subtotal", minSubtotal });
+    expect(errorsOf(state).minSubtotal).toBe(MIN_SUBTOTAL_INVALID);
+  });
+
+  test.each([
+    ["empty", ""],
+    ["zero", "0"],
+    ["fractional", "2.5"],
+  ])("refuses a minimum quantity that is %s", (_label, minQuantity) => {
+    const state = valid({ minimumKind: "quantity", minQuantity });
+    expect(errorsOf(state).minQuantity).toBe(MIN_QUANTITY_INVALID);
+  });
+});
+
+describe("a maximum per market currency", () => {
+  const rows = [{ currencyCode: "EUR", amount: "120.00" }];
+
+  test.each(["free", "growth"])("%s cannot set one", (plan) => {
+    expect(errorsOf(valid({ currencyCaps: rows }), plan).currencyCaps).toBe(
+      PER_MARKET_NOT_ON_PLAN,
+    );
+  });
+
+  test("Pro sets one per currency, in minor units", () => {
+    const state = valid({
+      currencyCaps: [
+        { currencyCode: "eur", amount: "120.00" },
+        { currencyCode: "GBP", amount: "110.50" },
+      ],
+    });
+    const result = validateDiscountForm(state, "pro", "USD");
+
+    expect("value" in result && result.value.capsByCurrency).toEqual({
+      EUR: 12000,
+      GBP: 11050,
+    });
+  });
+
+  test("an empty row is not a row", () => {
+    const state = valid({ currencyCaps: [{ currencyCode: "", amount: "" }] });
+    const result = validateDiscountForm(state, "pro", "USD");
+
+    expect("value" in result && result.value.capsByCurrency).toEqual({});
+  });
+
+  test.each([
+    ["a code that is not three letters", [{ currencyCode: "EURO", amount: "120.00" }]],
+    ["an amount of zero", [{ currencyCode: "EUR", amount: "0.00" }]],
+    ["an amount that is not a number", [{ currencyCode: "EUR", amount: "lots" }]],
+    ["a missing amount", [{ currencyCode: "EUR", amount: "" }]],
+  ])("refuses %s", (_label, currencyCaps) => {
+    expect(errorsOf(valid({ currencyCaps }), "pro").currencyCaps).toBe(
+      CURRENCY_CAP_INVALID,
+    );
+  });
+
+  test("refuses the same currency twice", () => {
+    const state = valid({
+      currencyCaps: [
+        { currencyCode: "EUR", amount: "120.00" },
+        { currencyCode: "eur", amount: "130.00" },
+      ],
+    });
+
+    expect(errorsOf(state, "pro").currencyCaps).toBe(CURRENCY_CAP_DUPLICATE);
+  });
+
+  // The store currency's maximum is the field above. Two inputs for one number
+  // is how they come to disagree.
+  test("refuses the store's own currency", () => {
+    const state = valid({ currencyCaps: [{ currencyCode: "USD", amount: "200.00" }] });
+    const result = validateDiscountForm(state, "pro", "USD");
+
+    expect("errors" in result && result.errors.currencyCaps).toContain("USD");
   });
 });
