@@ -1526,54 +1526,74 @@ export default function CreateDiscountPage() {
                   )}
                 </div>
 
-                <s-stack direction="block" gap="small-200">
-                  {/* A code discount is known by its code; an automatic one
-                      has none, so the row names what it actually has. */}
-                  {automatic ? (
-                    <SummaryRow label="Name" value={state.title || "—"} />
-                  ) : (
-                    <SummaryRow label="Code" value={state.code || "—"} />
-                  )}
-                  <SummaryRow
-                    label="Method"
-                    value={automatic ? "Automatic" : "Discount code"}
-                  />
-                  <SummaryRow label="Type" value="Percentage, capped" />
-                  <SummaryRow
-                    label="Maximum"
-                    value={capMinor === null ? "—" : money(capMinor)}
-                  />
-                  <SummaryRow
-                    label="Cap starts above"
-                    value={
-                      startsAboveMinor === null ? "—" : money(startsAboveMinor)
-                    }
-                  />
-                  <SummaryRow
-                    label="Applies to"
-                    value={appliesToLabel(state)}
-                  />
-                  <SummaryRow label="Customers" value="All customers" />
-                  {!automatic && (
-                    <SummaryRow label="Uses" value={usesLabel(state)} />
-                  )}
-                  <SummaryRow
-                    label="Combines with"
-                    value={combinesLabel(state)}
-                  />
-                  <SummaryRow
-                    label="Starts"
-                    value={summaryMoment(startsAt, state.startTime)}
-                  />
-                  <SummaryRow
-                    label="Ends"
-                    value={
-                      state.endDateOn
-                        ? summaryMoment(endsAt, state.endTime)
-                        : "No end date"
-                    }
-                  />
-                </s-stack>
+                {/* Eleven rows of equal weight is a wall, not a summary: the
+                    two numbers that decide the money read the same as "Type:
+                    Percentage, capped". Three groups, and weight on the two
+                    amounts, so the card can be scanned rather than read.
+
+                    Weight and not colour. The headline above owns the orange
+                    in this card, and that is the only reason it still means
+                    "this is the offer" — a second orange here would spend it. */}
+                <div className="maxoff-summary">
+                  <SummaryGroup caption="The offer">
+                    {/* A code discount is known by its code; an automatic one
+                        has none, so the row names what it actually has. */}
+                    {automatic ? (
+                      <SummaryRow label="Name" value={state.title || "—"} />
+                    ) : (
+                      <SummaryRow label="Code" value={state.code || "—"} />
+                    )}
+                    <SummaryRow
+                      label="Method"
+                      value={automatic ? "Automatic" : "Discount code"}
+                    />
+                    <SummaryRow label="Type" value="Percentage, capped" />
+                    <SummaryRow
+                      strong
+                      label="Maximum"
+                      value={capMinor === null ? "—" : money(capMinor)}
+                    />
+                    {/* The number no competitor surfaces, so it is not buried
+                        in the middle of a list at body weight. */}
+                    <SummaryRow
+                      strong
+                      label="Cap starts above"
+                      value={
+                        startsAboveMinor === null ? "—" : money(startsAboveMinor)
+                      }
+                    />
+                  </SummaryGroup>
+
+                  <SummaryGroup caption="Who gets it">
+                    <SummaryRow
+                      label="Applies to"
+                      value={appliesToLabel(state)}
+                    />
+                    <SummaryRow label="Customers" value="All customers" />
+                    {!automatic && (
+                      <SummaryRow label="Uses" value={usesLabel(state)} />
+                    )}
+                    <SummaryRow
+                      label="Combines with"
+                      value={combinesLabel(state)}
+                    />
+                  </SummaryGroup>
+
+                  <SummaryGroup caption="When it runs">
+                    <SummaryRow
+                      label="Starts"
+                      value={summaryMoment(startsAt, state.startTime)}
+                    />
+                    <SummaryRow
+                      label="Ends"
+                      value={
+                        state.endDateOn
+                          ? summaryMoment(endsAt, state.endTime)
+                          : "No end date"
+                      }
+                    />
+                  </SummaryGroup>
+                </div>
               </s-stack>
             </s-section>
 
@@ -1863,12 +1883,60 @@ function PickedList({
   );
 }
 
-function SummaryRow({ label, value }: { label: string; value: string }) {
+/**
+ * A titled run of summary rows.
+ *
+ * The caption is sentence case like every other label in the app — an
+ * uppercase micro-heading would be the one piece of typography here shouting,
+ * on the calmest card on the page.
+ */
+function SummaryGroup({
+  caption,
+  children,
+}: {
+  caption: string;
+  children: React.ReactNode;
+}) {
   return (
-    <s-grid gridTemplateColumns="1fr auto" gap="base">
-      <s-text color="subdued">{label}</s-text>
-      <s-text>{value}</s-text>
-    </s-grid>
+    <div className="maxoff-summary__group">
+      <p className="maxoff-summary__caption">{caption}</p>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * One summary row, drawn rather than composed from `s-grid` and `s-text`.
+ *
+ * `s-text` sets its own font inside its shadow DOM, so neither the tabular
+ * figures nor the emphasis on the two amounts reaches it — the same wall the
+ * receipt lines hit, and the same answer. Nothing here is Polaris chrome.
+ *
+ * An em dash is a value the merchant has not supplied yet, so it is drawn as
+ * absence rather than as content (§8 requires the dash itself, never `NaN`).
+ */
+function SummaryRow({
+  label,
+  value,
+  strong = false,
+}: {
+  label: string;
+  value: string;
+  strong?: boolean;
+}) {
+  const className = [
+    "maxoff-summary__value",
+    strong ? "maxoff-summary__value--strong" : "",
+    value === "—" ? "maxoff-summary__value--empty" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return (
+    <div className="maxoff-summary__row">
+      <span className="maxoff-summary__label">{label}</span>
+      <span className={className}>{value}</span>
+    </div>
   );
 }
 

@@ -232,6 +232,77 @@
 }
 
 /**
+ * The rows under the headline.
+ *
+ * Drawn rather than composed from `s-grid` and `s-text`, for the reason the
+ * receipt lines already give: `s-text` sets its own font inside its shadow
+ * DOM, so neither tabular figures nor the emphasis on the two amounts reaches
+ * it. Nothing here is Polaris chrome.
+ *
+ * Grouped because eleven rows of equal weight is a wall a merchant reads
+ * top to bottom instead of a summary they scan. The groups answer three
+ * different questions — what the offer is, who gets it, when it runs — and a
+ * hairline between them is enough to say so without boxing each one.
+ */
+.maxoff-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.maxoff-summary__group + .maxoff-summary__group {
+  border-block-start: 1px solid var(--maxoff-chart-grid);
+  padding-block-start: 12px;
+}
+
+/* Sentence case, like every other label in the app. An uppercase
+   micro-heading would be the one piece of type shouting on the calmest card
+   on the page. */
+.maxoff-summary__caption {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  color: var(--maxoff-text-subdued);
+}
+
+.maxoff-summary__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding-block: 3px;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.maxoff-summary__label {
+  color: var(--maxoff-text-subdued);
+}
+
+/* `text-align: end` so a wrapped value stays right-aligned with the ones
+   above it, and tabular figures so the amounts line up digit for digit. */
+.maxoff-summary__value {
+  color: var(--maxoff-text);
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The maximum and the cart size it starts biting at — the two numbers that
+   decide the money. Weight, never colour: the headline above owns the orange
+   in this card, and a second one here would spend what makes it mean
+   "this is the offer". */
+.maxoff-summary__value--strong {
+  font-weight: 600;
+}
+
+/* An em dash is a value not supplied yet, so it reads as absence rather than
+   as something the merchant typed. */
+.maxoff-summary__value--empty {
+  color: var(--maxoff-text-subdued);
+}
+
+/**
  * Plans & billing — the plan strip and the comparison table.
  *
  * Both are our own markup. Polaris has no comparison table and no meter, and
