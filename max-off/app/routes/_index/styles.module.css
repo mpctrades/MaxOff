@@ -16,6 +16,28 @@
  * 22px-and-up case that ramp sanctions.
  */
 
+/*
+ * The two global rules this route sets, and the reason each is unavoidable.
+ *
+ * The Shopify template ships no reset, so the browser's default 8px body
+ * margin leaves a strip of canvas around the page. And `color-scheme` only
+ * reaches the scrollbar from the root element — scoped to `.page` it paints
+ * the page white but leaves a dark scrollbar down the side on a dark OS,
+ * which is exactly the thing this page is pinned to white to avoid.
+ *
+ * Scoped to this route's stylesheet, which is emitted as its own chunk and
+ * loaded only here. Were it ever bundled app-wide it would still be benign:
+ * §5 is a light-only design, and a body reset is what the admin assumes.
+ */
+:global(html) {
+  color-scheme: light;
+  background: #ffffff;
+}
+
+:global(body) {
+  margin: 0;
+}
+
 .page {
   --ink: #141210;
   --body: #4a4644;
