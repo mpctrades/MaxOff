@@ -1,19 +1,31 @@
-import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { useLoaderData } from "react-router";
+import type {
+  ActionFunctionArgs,
+  HeadersFunction,
+  LoaderFunctionArgs,
+} from "react-router";
+import { useEffect } from "react";
+import { isRouteErrorResponse, useFetcher, useLoaderData, useRouteError } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
+import { useAppBridge } from "@shopify/app-bridge-react";
 
 import { authenticate } from "../shopify.server";
-import { readCapConfigFor } from "../models/discounts.server";
+import { readDiscountDetail, setDiscountPaused } from "../models/discounts.server";
 import { ensureShopSettings } from "../models/settings.server";
-import { InternalButtonLink, InternalLink } from "../components/InternalNavigation";
+import { getPlanSummary } from "../models/plan.server";
+import {
+  InternalButtonLink,
+  InternalLink,
+} from "../components/InternalNavigation";
 import {
   capStartsAboveMinor,
   displayStatus,
   displayStatusLabel,
 } from "../lib/cap";
 import type { DisplayStatus } from "../lib/cap";
-import { capAmountToMinor, DEFAULT_CHECKOUT_NOTE } from "../lib/cap-config";
+import { capAmountToMinor, parseCapConfig } from "../lib/cap-config";
+import type { CapConfigProblem } from "../lib/cap-config";
 import { formatDate, formatMoney, formatPercent } from "../lib/format";
+import { maxCampaignDays, PLAN_LABELS } from "../lib/plans";
 import { toTimeZone } from "../lib/timezone";
 
 const STATUS_TONES: Record<DisplayStatus, "success" | "info" | "warning" | "neutral"> =
@@ -25,22 +37,30 @@ const STATUS_TONES: Record<DisplayStatus, "success" | "info" | "warning" | "neut
     cancelled: "neutral",
   };
 
+/** No data, rather than nothing. §6: an em dash, never a zero. */
+const NO_DATA = "—";
+
 /**
- * One capped discount, read-only.
+ * One capped discount.
  *
- * The row is our mirror; the targeting, the minimums and the per-market
- * maximums live in the discount's own `cap_config` metafield, so both are
- * read — the same pair Duplicate reads, for the same reason.
+ * The cap on this screen is read from the discount's own `cap_config`
+ * metafield, which is the only copy the Function reads and therefore the only
+ * copy that is *in force* (§3.1). Our Prisma row supplies the things Shopify
+ * does not hold — which shop owns it, our own id, the merchant's pause intent —
+ * and nothing else. When the metafield cannot be read the screen says so and
+ * shows no numbers at all: a maximum that came from the mirror could differ
+ * from the one a buyer is about to get, and a confidently wrong figure is
+ * worse here than an honest blank.
  *
- * There is no edit here. Changing a live discount's percentage or maximum
- * changes what every cart already in flight will be charged, and MaxOff has
- * no answer yet for what that should do to a buyer part-way through checkout.
- * Pausing and duplicating are the two safe things, and both are offered.
+ * Editing is not offered. Changing a live discount's percentage or maximum
+ * changes what every cart already in flight will be charged, and MaxOff has no
+ * answer yet for what that should do to a buyer part-way through checkout.
+ * Duplicate is the safe shape of the same intent, and it is offered.
  */
 export const loader = async ({ params, request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
 
-  const found = await readCapConfigFor({
+  const found = await readDiscountDetail({
     shop: session.shop,
     id: params.id ?? "",
     admin,
@@ -50,56 +70,110 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
     throw new Response("Not found", { status: 404 });
   }
 
-  const { row } = found;
+  const { row, live } = found;
 
-  // Dates are stored as instants and read back on the shop's own calendar: a
-  // discount that ends at the merchant's 23:59 must not be labelled with the
-  // following day because UTC has rolled over.
   const settings = await ensureShopSettings(session.shop);
-  const config =
-    typeof found.config === "object" && found.config !== null
-      ? (found.config as Record<string, unknown>)
-      : {};
+  const timeZone = toTimeZone(settings.timezone);
 
-  const text = (value: unknown) => (typeof value === "string" ? value : "");
-  const list = (value: unknown) =>
-    Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : [];
-
-  const minSubtotal = text(config.minSubtotal);
-
-  return {
+  // What the screen can say without the metafield: which discount this is, and
+  // how to get back. Everything else waits on a config we can actually read.
+  const identity = {
     id: row.id,
-    name: row.code ?? row.title ?? "Capped discount",
+    name: row.code ?? row.title ?? live?.title ?? "Capped discount",
     method: row.method === "automatic" ? "Automatic" : "Discount code",
     status: displayStatus(row, new Date()),
-    percentage: row.percentage,
-    capMinor: row.capMinor,
-    currencyCode: row.currencyCode,
-    timeZone: toTimeZone(settings.timezone),
-    startsAboveMinor: capStartsAboveMinor(row.percentage, row.capMinor),
-    scope: text(config.scope) || row.scope,
-    appliesTo: text(config.appliesTo) || "all",
-    collectionCount: list(config.collectionIds).length,
-    productCount: list(config.productIds).length,
-    minSubtotalMinor: minSubtotal === "" ? null : capAmountToMinor(minSubtotal),
-    minQuantity: typeof config.minQuantity === "number" ? config.minQuantity : null,
-    marketMaximums:
-      typeof config.capsByCurrency === "object" && config.capsByCurrency !== null
-        ? Object.entries(config.capsByCurrency as Record<string, unknown>).flatMap(
-            ([code, amount]) => (typeof amount === "string" ? [{ code, amount }] : []),
-          )
-        : [],
-    checkoutNote: row.checkoutNote || DEFAULT_CHECKOUT_NOTE,
-    startsAt: row.startsAt.toISOString(),
-    endsAt: row.endsAt?.toISOString() ?? null,
-    usageLimit: row.usageLimit,
-    oncePerCustomer: row.oncePerCustomer,
+    timeZone,
+  };
+
+  if (found.unreachable) {
+    return { ok: false as const, problem: "unreachable" as const, version: null, ...identity };
+  }
+
+  const read = parseCapConfig(found.config);
+
+  if (!read.ok) {
+    return {
+      ok: false as const,
+      problem: read.problem satisfies CapConfigProblem,
+      version: read.version,
+      ...identity,
+    };
+  }
+
+  const { config } = read;
+
+  // Non-null: `parseCapConfig` refuses a config whose capAmount will not parse.
+  const capMinor = capAmountToMinor(config.capAmount) as number;
+
+  const plan = await getPlanSummary({ shop: session.shop, admin });
+
+  // Shopify's dates are the live ones. The mirror's are what we last wrote, and
+  // after a pause they are the only record of the end date the merchant chose
+  // — Shopify overwrites it on deactivate. Live where we have it; ours as the
+  // memory of intent while paused.
+  const paused = identity.status === "paused";
+  const startsAt = (paused ? null : live?.startsAt) ?? row.startsAt.toISOString();
+  const endsAt = paused
+    ? (row.endsAt?.toISOString() ?? null)
+    : (live?.endsAt ?? row.endsAt?.toISOString() ?? null);
+
+  return {
+    ok: true as const,
+    ...identity,
+    percentage: config.percentage,
+    capMinor,
+    currencyCode: config.currencyCode,
+    startsAboveMinor: capStartsAboveMinor(config.percentage, capMinor),
+    scope: config.scope,
+    appliesTo: config.appliesTo,
+    collectionCount: config.collectionIds.length,
+    productCount: config.productIds.length,
+    minSubtotalMinor:
+      config.minSubtotal === undefined ? null : capAmountToMinor(config.minSubtotal),
+    minQuantity: config.minQuantity ?? null,
+    marketMaximums: Object.entries(config.capsByCurrency ?? {}).map(
+      ([code, amount]) => ({ code, amount }),
+    ),
+    checkoutNote: config.checkoutNote,
+    startsAt,
+    endsAt,
+    // Shopify's own count of how many times a buyer used this. Our `timesUsed`
+    // column is not used here: nothing writes it until the orders webhook is
+    // approved, so it would read 0 on a discount with a hundred uses.
+    timesUsed: live?.asyncUsageCount ?? null,
+    usageLimit: live?.usageLimit ?? row.usageLimit,
+    oncePerCustomer: live?.appliesOncePerCustomer ?? row.oncePerCustomer,
     combinesProduct: row.combinesProduct,
     combinesOrder: row.combinesOrder,
     combinesShipping: row.combinesShipping,
-    timesUsed: row.timesUsed,
-    keptMinor: row.keptMinor,
+    plan: plan.plan,
+    maxCampaignDays: plan.plan === null ? null : maxCampaignDays(plan.plan),
+    // Shopify has no "paused": deactivating sets the status to EXPIRED. So a
+    // live EXPIRED against our "paused" is agreement, not a conflict — only a
+    // discount we think is running and Shopify does not is worth flagging.
+    liveDisagrees:
+      identity.status === "active" && live?.status != null && live.status !== "ACTIVE",
+    liveStatus: live?.status ?? null,
   };
+};
+
+export const action = async ({ params, request }: ActionFunctionArgs) => {
+  const { admin, session } = await authenticate.admin(request);
+
+  const form = await request.formData();
+
+  if (form.get("intent") !== "set-paused") {
+    return { ok: false as const, message: "Unknown action." };
+  }
+
+  const result = await setDiscountPaused({
+    shop: session.shop,
+    id: params.id ?? "",
+    paused: form.get("paused") === "true",
+    admin,
+  });
+
+  return result;
 };
 
 /** The scope, said the way the create form says it. */
@@ -109,9 +183,110 @@ const SCOPE_LABELS: Record<string, string> = {
   collection: "Each collection",
 };
 
+/** What went wrong, and what the merchant can do about it. */
+const PROBLEM_COPY: Record<
+  CapConfigProblem | "unreachable",
+  { heading: string; body: string }
+> = {
+  missing: {
+    heading: "This discount has no MaxOff settings",
+    body: "The discount still exists in Shopify, but the maximum MaxOff stores on it is gone. Nothing is being capped. Create a replacement, then delete this one in Shopify.",
+  },
+  unreadable: {
+    heading: "This discount's settings could not be read",
+    body: "MaxOff stores the percentage and the maximum on the discount itself, and this copy is not in a shape MaxOff understands. Nothing on this screen would be trustworthy, so nothing is shown. Contact support with the discount name.",
+  },
+  "unsupported-version": {
+    heading: "This discount was set up by a newer version of MaxOff",
+    body: "Its settings are in a format this version cannot read. Reload the page — if you keep seeing this, contact support.",
+  },
+  unreachable: {
+    heading: "We could not reach Shopify",
+    body: "The discount is fine. MaxOff just could not read its settings this time, and will not show a maximum it has not confirmed. Try again in a moment.",
+  },
+};
+
 export default function CappedDiscountDetailPage() {
   const data = useLoaderData<typeof loader>();
+
+  if (!data.ok) {
+    return <UnreadableDiscount data={data} />;
+  }
+
+  return <ReadableDiscount data={data} />;
+}
+
+type LoaderData = Awaited<ReturnType<typeof loader>>;
+type ReadableData = Extract<LoaderData, { ok: true }>;
+type UnreadableData = Extract<LoaderData, { ok: false }>;
+
+/**
+ * The screen with no numbers on it.
+ *
+ * It still names the discount and still offers the way back, because a
+ * merchant who clicked a row needs to know which row they are looking at even
+ * when the thing behind it is broken.
+ */
+function UnreadableDiscount({ data }: { data: UnreadableData }) {
+  const copy = PROBLEM_COPY[data.problem];
+
+  return (
+    <s-page heading={data.name}>
+      <s-link slot="breadcrumb-actions" href="/app/discounts">
+        Capped discounts
+      </s-link>
+
+      <s-banner tone="critical" heading={copy.heading}>
+        {copy.body}
+      </s-banner>
+
+      <s-section>
+        <s-stack direction="block" gap="base">
+          <s-stack direction="inline" gap="small-300" alignItems="center">
+            <s-badge tone={STATUS_TONES[data.status]}>
+              {displayStatusLabel(data.status)}
+            </s-badge>
+            <s-text color="subdued">{data.method}</s-text>
+          </s-stack>
+
+          <s-paragraph color="subdued">
+            MaxOff shows a percentage and a maximum only when it has read them
+            from the discount itself. It has not, so it is showing neither.
+          </s-paragraph>
+
+          <s-stack direction="inline" gap="base" alignItems="center">
+            <InternalButtonLink href="/app/discounts">
+              Back to capped discounts
+            </InternalButtonLink>
+          </s-stack>
+        </s-stack>
+      </s-section>
+    </s-page>
+  );
+}
+
+function ReadableDiscount({ data }: { data: ReadableData }) {
+  const shopify = useAppBridge();
+  const fetcher = useFetcher<typeof action>();
+
   const money = (minor: number) => formatMoney(minor, data.currencyCode);
+  const paused = data.status === "paused";
+  const busy = fetcher.state !== "idle";
+
+  useEffect(() => {
+    if (!fetcher.data || busy) {
+      return;
+    }
+
+    if (fetcher.data.ok) {
+      shopify.toast.show(
+        `${data.name} ${fetcher.data.status === "paused" ? "paused" : "activated"}`,
+      );
+      return;
+    }
+
+    shopify.toast.show(fetcher.data.message, { isError: true });
+  }, [fetcher.data, busy, shopify, data.name]);
 
   const appliesTo =
     data.appliesTo === "collections"
@@ -128,14 +303,47 @@ export default function CappedDiscountDetailPage() {
 
   return (
     <s-page heading={data.name}>
-      {/* `InternalButtonLink`, not a bare href: a plain link navigates the
-          embedded iframe out of the App Bridge session. */}
+      <s-link slot="breadcrumb-actions" href="/app/discounts">
+        Capped discounts
+      </s-link>
+
+      {/* Pause is the one action here that changes anything, so it is the one
+          that gets the header. Duplicate and the tester are ways out to other
+          screens. Polaris allows three secondary actions; these are the three. */}
+      <s-button
+        slot="secondary-actions"
+        loading={busy}
+        onClick={() =>
+          fetcher.submit(
+            { intent: "set-paused", paused: String(!paused) },
+            { method: "post" },
+          )
+        }
+      >
+        {paused ? "Activate" : "Pause"}
+      </s-button>
+
       <InternalButtonLink
         slot="secondary-actions"
         href={`/app/discounts/new?duplicate=${encodeURIComponent(data.id)}`}
       >
         Duplicate
       </InternalButtonLink>
+
+      <InternalButtonLink
+        slot="secondary-actions"
+        href={`/app/test?discount=${encodeURIComponent(data.id)}`}
+      >
+        Test a cart
+      </InternalButtonLink>
+
+      {data.liveDisagrees && (
+        <s-banner tone="warning" heading="Shopify and MaxOff disagree about this discount">
+          MaxOff has this discount as running. Shopify reports it as{" "}
+          {(data.liveStatus ?? "something else").toLowerCase()}. Pause and
+          activate it again to put the two back in step.
+        </s-banner>
+      )}
 
       <s-section>
         <s-stack direction="block" gap="base">
@@ -146,8 +354,10 @@ export default function CappedDiscountDetailPage() {
             <s-text color="subdued">{data.method}</s-text>
           </s-stack>
 
+          {/* The rule, in the words the merchant set it in. */}
           <s-heading>
-            {formatPercent(data.percentage)} off, maximum {money(data.capMinor)}
+            {formatPercent(data.percentage)} off, never more than{" "}
+            {money(data.capMinor)}
           </s-heading>
 
           {data.startsAboveMinor !== null && (
@@ -156,10 +366,54 @@ export default function CappedDiscountDetailPage() {
               <strong className="maxoff-cap-callout__value maxoff-tabular">
                 {money(data.startsAboveMinor)}
               </strong>
+              <span className="maxoff-cap-callout__working">
+                Below that, customers get the full{" "}
+                {formatPercent(data.percentage)}.
+              </span>
             </div>
           )}
         </s-stack>
       </s-section>
+
+      {/* Three tiles, not the mockup's four. "Orders that hit the cap" and
+          "Average order with this code" both need per-order data, and MaxOff
+          does not have it — see the Usage section below. A tile that can only
+          ever show an em dash is not a tile. */}
+      <s-grid
+        gridTemplateColumns="@container (inline-size <= 720px) 1fr 1fr, 1fr 1fr 1fr"
+        gap="base"
+        paddingBlock="base"
+      >
+        <div className="maxoff-tile maxoff-tile--hero">
+          <span className="maxoff-tile__label">Money you kept</span>
+          <span className="maxoff-tile__value">{NO_DATA}</span>
+          <span className="maxoff-tile__note">Needs per-order tracking</span>
+        </div>
+
+        <div className="maxoff-tile">
+          <span className="maxoff-tile__label">Times used</span>
+          <span className="maxoff-tile__value">
+            {data.timesUsed === null ? NO_DATA : data.timesUsed}
+          </span>
+          <span className="maxoff-tile__note">
+            {data.usageLimit === null
+              ? "No limit set"
+              : `of ${data.usageLimit} allowed`}
+          </span>
+        </div>
+
+        <div className="maxoff-tile">
+          <span className="maxoff-tile__label">Cap starts above</span>
+          <span className="maxoff-tile__value">
+            {data.startsAboveMinor === null
+              ? NO_DATA
+              : money(data.startsAboveMinor)}
+          </span>
+          <span className="maxoff-tile__note">
+            {money(data.capMinor)} ÷ {formatPercent(data.percentage)}
+          </span>
+        </div>
+      </s-grid>
 
       <s-section heading="How it applies">
         <s-stack direction="block" gap="small-300">
@@ -200,13 +454,32 @@ export default function CappedDiscountDetailPage() {
                 : formatDate(new Date(data.endsAt), data.timeZone)
             }
           />
+          {data.maxCampaignDays !== null && data.plan !== null && (
+            <s-text color="subdued">
+              The {PLAN_LABELS[data.plan]} plan runs one discount for up to{" "}
+              {data.maxCampaignDays} days.{" "}
+              <InternalLink href="/app/billing">See plans</InternalLink>
+            </s-text>
+          )}
+          {paused && data.endsAt !== null && (
+            <s-text color="subdued">
+              Shopify clears the end date when a discount is paused. MaxOff puts
+              this one back when you activate it again.
+            </s-text>
+          )}
         </s-stack>
       </s-section>
 
       <s-section heading="Usage">
         <s-stack direction="block" gap="small-300">
-          <Row label="Times used" value={String(data.timesUsed)} />
-          <Row label="Money you kept" value={money(data.keptMinor)} />
+          <Row
+            label="Times used"
+            value={data.timesUsed === null ? NO_DATA : String(data.timesUsed)}
+          />
+          <Row
+            label="Money you kept"
+            value={NO_DATA}
+          />
           <Row
             label="Total uses allowed"
             value={data.usageLimit === null ? "No limit" : String(data.usageLimit)}
@@ -215,6 +488,10 @@ export default function CappedDiscountDetailPage() {
             label="One use per customer"
             value={data.oncePerCustomer ? "Yes" : "No"}
           />
+          <s-text color="subdued">
+            Times used comes from Shopify. Money you kept needs per-order
+            tracking, which MaxOff does not do yet.
+          </s-text>
         </s-stack>
       </s-section>
 
@@ -233,18 +510,6 @@ export default function CappedDiscountDetailPage() {
           </s-text>
         </s-stack>
       </s-section>
-
-      <s-section>
-        <s-stack direction="inline" gap="base" alignItems="center">
-          <InternalButtonLink href="/app/discounts">
-            Back to capped discounts
-          </InternalButtonLink>
-          <s-text color="subdued">
-            Pausing and cancelling are on the{" "}
-            <InternalLink href="/app/discounts">list</InternalLink>.
-          </s-text>
-        </s-stack>
-      </s-section>
     </s-page>
   );
 }
@@ -260,6 +525,43 @@ function Row({ label, value }: { label: string; value: string }) {
       <s-text>{value}</s-text>
     </s-grid>
   );
+}
+
+/**
+ * A discount id that is not ours.
+ *
+ * Reached by an old bookmark, or by a discount deleted in Shopify. Either way
+ * it is a dead end without this, because the route throws a bare 404 and the
+ * app-level boundary would render Shopify's own error frame.
+ */
+export function ErrorBoundary() {
+  const error = useRouteError();
+
+  if (isRouteErrorResponse(error) && error.status === 404) {
+    return (
+      <s-page heading="Discount not found">
+        <s-link slot="breadcrumb-actions" href="/app/discounts">
+          Capped discounts
+        </s-link>
+
+        <s-section>
+          <s-stack direction="block" gap="base">
+            <s-paragraph>
+              MaxOff has no capped discount with this address. It may have been
+              deleted, or the link may be out of date.
+            </s-paragraph>
+            <s-stack direction="inline" gap="base" alignItems="center">
+              <InternalButtonLink href="/app/discounts">
+                Back to capped discounts
+              </InternalButtonLink>
+            </s-stack>
+          </s-stack>
+        </s-section>
+      </s-page>
+    );
+  }
+
+  return boundary.error(error);
 }
 
 export const headers: HeadersFunction = (headersArgs) => {

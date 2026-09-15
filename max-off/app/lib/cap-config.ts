@@ -38,7 +38,7 @@
  */
 
 import { parseDecimalToMinor, toDecimalString } from "./cap";
-import { toRoundingMode } from "./rounding";
+import { isRoundingMode, toRoundingMode } from "./rounding";
 import type { RoundingMode } from "./rounding";
 
 /**
@@ -319,4 +319,116 @@ export function capConfigMetafield(input: CapConfigInput) {
  */
 export function capAmountToMinor(capAmount: string): number | null {
   return parseDecimalToMinor(capAmount);
+}
+
+/* ------------------------------- reading one back ------------------------- */
+
+/**
+ * Why a `cap_config` could not be read.
+ *
+ * Each value is a different fix, so they stay apart rather than collapsing
+ * into one "invalid": `missing` means the discount has no config at all (it
+ * was created outside MaxOff, or the metafield was deleted), `unreadable`
+ * means it is there but not the shape we write, and `unsupported-version`
+ * means it was written by a newer MaxOff than this one.
+ */
+export type CapConfigProblem = "missing" | "unreadable" | "unsupported-version";
+
+export type CapConfigRead =
+  | { ok: true; config: CapConfigJson }
+  | { ok: false; problem: CapConfigProblem; version: number | null };
+
+/**
+ * Parse a `cap_config` metafield value read back from Shopify.
+ *
+ * Strict on purpose. The detail screen shows a merchant the percentage and the
+ * maximum that are *in force*, and the only copy of those in force is this
+ * metafield — the Function reads nothing else. Falling back to our Prisma
+ * mirror when the config will not parse would print a maximum that is not the
+ * one being applied at checkout, which is the single worst thing this screen
+ * could do. So a config that does not parse is an error state, never a
+ * default.
+ *
+ * `capAmount` is validated by converting it: a string that is not a decimal
+ * amount comes back null from `capAmountToMinor`, and a config whose maximum
+ * cannot be read is not a config.
+ */
+export function parseCapConfig(value: unknown): CapConfigRead {
+  if (value === null || value === undefined) {
+    return { ok: false, problem: "missing", version: null };
+  }
+
+  if (typeof value !== "object" || Array.isArray(value)) {
+    return { ok: false, problem: "unreadable", version: null };
+  }
+
+  const raw = value as Record<string, unknown>;
+  const version = typeof raw.version === "number" ? raw.version : null;
+
+  if (version === null) {
+    return { ok: false, problem: "unreadable", version: null };
+  }
+
+  // Newer than we know how to read. Not corrupt — just not ours to interpret,
+  // and guessing at a shape we have never seen is how a wrong maximum gets
+  // printed with total confidence.
+  if (version > CAP_CONFIG_VERSION) {
+    return { ok: false, problem: "unsupported-version", version };
+  }
+
+  const percentage = raw.percentage;
+  const capAmount = raw.capAmount;
+
+  if (
+    typeof percentage !== "number" ||
+    !Number.isFinite(percentage) ||
+    typeof capAmount !== "string" ||
+    capAmountToMinor(capAmount) === null ||
+    typeof raw.currencyCode !== "string" ||
+    raw.currencyCode === ""
+  ) {
+    return { ok: false, problem: "unreadable", version };
+  }
+
+  const strings = (input: unknown): string[] =>
+    Array.isArray(input)
+      ? input.filter((entry): entry is string => typeof entry === "string")
+      : [];
+
+  // Every field below this line has a defined meaning when absent, because
+  // versions 1 and 2 are still live on real discounts and simply do not carry
+  // them. Their defaults are the behaviour those versions had.
+  return {
+    ok: true,
+    config: {
+      version,
+      percentage,
+      capAmount,
+      currencyCode: raw.currencyCode,
+      scope: isCapScope(raw.scope) ? raw.scope : DEFAULT_CAP_SCOPE,
+      rounding: isRoundingMode(raw.rounding) ? raw.rounding : "cent",
+      checkoutNote:
+        typeof raw.checkoutNote === "string" && raw.checkoutNote !== ""
+          ? raw.checkoutNote
+          : DEFAULT_CHECKOUT_NOTE,
+      code: typeof raw.code === "string" ? raw.code : null,
+      appliesTo: isAppliesTo(raw.appliesTo) ? raw.appliesTo : "all",
+      collectionIds: strings(raw.collectionIds),
+      productIds: strings(raw.productIds),
+      ...(typeof raw.minSubtotal === "string" && raw.minSubtotal !== ""
+        ? { minSubtotal: raw.minSubtotal }
+        : {}),
+      ...(typeof raw.minQuantity === "number" ? { minQuantity: raw.minQuantity } : {}),
+      ...(typeof raw.capsByCurrency === "object" && raw.capsByCurrency !== null
+        ? {
+            capsByCurrency: Object.fromEntries(
+              Object.entries(raw.capsByCurrency as Record<string, unknown>).flatMap(
+                ([code, amount]) =>
+                  typeof amount === "string" ? [[code, amount] as const] : [],
+              ),
+            ),
+          }
+        : {}),
+    },
+  };
 }

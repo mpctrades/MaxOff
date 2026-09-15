@@ -1388,3 +1388,123 @@ async function readCapConfigJson(
     return null;
   }
 }
+
+/* ------------------------------- the detail screen ------------------------ */
+
+/**
+ * Everything the detail screen needs, read from Shopify in one round trip.
+ *
+ * The mirror is not the authority for any of it (§3.1). The cap lives in the
+ * metafield, and the live status, dates and usage count live on the discount
+ * node — `asyncUsageCount` in particular is the real number of times a buyer
+ * used the code, which our `timesUsed` column has no way to know, because
+ * nothing writes it until the orders webhook is approved.
+ *
+ * Validated against the 2026-10 schema on 15 Sep 2026. Needs `read_discounts`,
+ * which MaxOff already holds.
+ */
+const READ_DISCOUNT_DETAIL_QUERY = `#graphql
+  query MaxOffReadDiscountDetail($id: ID!) {
+    discountNode(id: $id) {
+      id
+      metafield(namespace: "$app", key: "cap_config") {
+        jsonValue
+      }
+      discount {
+        ... on DiscountCodeApp {
+          title
+          status
+          startsAt
+          endsAt
+          asyncUsageCount
+          usageLimit
+          appliesOncePerCustomer
+        }
+        ... on DiscountAutomaticApp {
+          title
+          status
+          startsAt
+          endsAt
+          asyncUsageCount
+        }
+      }
+    }
+  }`;
+
+/** What Shopify says about the discount right now. Null where it stayed quiet. */
+export interface LiveDiscountState {
+  title: string | null;
+  /** `ACTIVE` | `EXPIRED` | `SCHEDULED` — Shopify has no paused status. */
+  status: string | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  /** Real uses, straight from Shopify. Null when it did not report one. */
+  asyncUsageCount: number | null;
+  usageLimit: number | null;
+  appliesOncePerCustomer: boolean | null;
+}
+
+export interface DiscountDetail {
+  row: CappedDiscountRecord;
+  /** The raw metafield value. Hand it to `parseCapConfig` — never read it raw. */
+  config: unknown;
+  /** Null when Shopify could not be reached at all. */
+  live: LiveDiscountState | null;
+  /** True when the round trip itself failed, as opposed to returning nothing. */
+  unreachable: boolean;
+}
+
+export async function readDiscountDetail(input: {
+  shop: string;
+  id: string;
+  admin: AdminGraphqlClient;
+}): Promise<DiscountDetail | null> {
+  const row = await prisma.cappedDiscount.findFirst({
+    where: { id: input.id, shop: input.shop },
+  });
+
+  if (row === null) {
+    return null;
+  }
+
+  try {
+    const response = await input.admin.graphql(READ_DISCOUNT_DETAIL_QUERY, {
+      variables: { id: row.discountGid },
+    });
+
+    const body = (await response.json()) as {
+      data?: {
+        discountNode?: {
+          metafield?: { jsonValue?: unknown } | null;
+          discount?: Partial<LiveDiscountState> | null;
+        } | null;
+      } | null;
+    };
+
+    const node = body.data?.discountNode;
+    const discount = node?.discount ?? null;
+
+    return {
+      row,
+      config: node?.metafield?.jsonValue ?? null,
+      live:
+        discount === null
+          ? null
+          : {
+              title: discount.title ?? null,
+              status: discount.status ?? null,
+              startsAt: discount.startsAt ?? null,
+              endsAt: discount.endsAt ?? null,
+              asyncUsageCount: discount.asyncUsageCount ?? null,
+              usageLimit: discount.usageLimit ?? null,
+              appliesOncePerCustomer: discount.appliesOncePerCustomer ?? null,
+            },
+      unreachable: false,
+    };
+  } catch {
+    // The row exists, so the screen can still say which discount this is and
+    // offer a way back. It must not print a cap, though — that is the one
+    // number only Shopify holds.
+    return { row, config: null, live: null, unreachable: true };
+  }
+}
