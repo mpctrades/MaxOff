@@ -10,6 +10,9 @@
  * preview all import this file.
  */
 
+import { toRoundingMode } from "./rounding";
+import type { RoundingMode } from "./rounding";
+
 /**
  * Whether MaxOff's cap engine is live.
  *
@@ -113,19 +116,32 @@ export interface CapPreview {
 /**
  * The one formula, for the admin's previews:
  *
- *     given = min(round(subtotal × percentage / 100), cap)
+ *     given = round(min(subtotal × percentage / 100, cap))
  *
  * Integer arithmetic, half-up, once, at the end (rule 4). The Function decides
  * money at checkout; this only has to agree with it, and the §8 test table is
  * what holds the two together.
+ *
+ * `rounding` is the shop's own setting, and it is applied **after** the
+ * minimum, not before: the merchant's rule is "round the amount I give away",
+ * and rounding the percentage first would let a rounded-down figure sit under
+ * a maximum that never applied.
+ *
+ * `capped` deliberately ignores the rounding. It decides whether the buyer is
+ * shown "capped at maximum amount", and rounding down a discount that never
+ * reached the maximum would otherwise announce a maximum that did nothing.
  */
 export function capDiscountMinor(
   subtotalMinor: number,
   percentage: number,
   capMinor: number,
+  rounding?: string | null,
 ): CapPreview {
   const uncappedMinor = roundHalfUp(subtotalMinor * percentage, MINOR_UNITS);
-  const givenMinor = Math.min(uncappedMinor, capMinor);
+  const givenMinor = applyRounding(
+    Math.min(uncappedMinor, capMinor),
+    toRoundingMode(rounding),
+  );
 
   return {
     uncappedMinor,
@@ -133,6 +149,23 @@ export function capDiscountMinor(
     keptMinor: uncappedMinor - givenMinor,
     capped: uncappedMinor > capMinor,
   };
+}
+
+/**
+ * The shop's rounding, applied once to the final amount.
+ *
+ * "To the cent" is the identity: every amount here is already an integer
+ * number of cents, because nothing in this file ever leaves integer
+ * arithmetic. "Down to the whole unit" drops the cents — a merchant who wants
+ * their checkout to read 105.00 rather than 105.52, and who would rather round
+ * in the buyer's disfavour than their own.
+ *
+ * The admin twin of `applyRounding` in `extensions/max-off-cap/src/cap.ts`.
+ */
+export function applyRounding(minor: number, rounding: RoundingMode): number {
+  return rounding === "down"
+    ? Math.floor(minor / MINOR_UNITS) * MINOR_UNITS
+    : minor;
 }
 
 function roundHalfUp(numerator: number, denominator: number): number {

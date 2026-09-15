@@ -26,6 +26,7 @@ import {
 import { BrandButton } from "../components/BrandButton";
 import type { BasketLine, PickedVariant } from "../lib/basket";
 import { capDiscountMinor } from "../lib/cap";
+import { toRoundingMode } from "../lib/rounding";
 import { DEFAULT_CHECKOUT_NOTE } from "../lib/cap-config";
 import { formatMoney, formatPercent } from "../lib/format";
 import { useNativeChange } from "../lib/polaris-events";
@@ -49,6 +50,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return {
     currencyCode: settings.currencyCode,
     checkoutNote: settings.defaultCheckoutNote || DEFAULT_CHECKOUT_NOTE,
+    // The shop's Settings choice. The tester exists to show what checkout
+    // does, so it has to round the way checkout rounds.
+    rounding: toRoundingMode(settings.rounding),
     discounts: active.rows.map((row) => ({
       id: row.id,
       code: row.code,
@@ -89,7 +93,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function TestACartPage() {
-  const { currencyCode, checkoutNote, discounts } =
+  const { currencyCode, checkoutNote, rounding, discounts } =
     useLoaderData<typeof loader>();
   const shopify = useAppBridge();
   const recordFetcher = useFetcher<typeof action>();
@@ -110,8 +114,13 @@ export default function TestACartPage() {
     () =>
       discount === null
         ? null
-        : capDiscountMinor(subtotalMinor, discount.percentage, discount.capMinor),
-    [discount, subtotalMinor],
+        : capDiscountMinor(
+            subtotalMinor,
+            discount.percentage,
+            discount.capMinor,
+            rounding,
+          ),
+    [discount, subtotalMinor, rounding],
   );
 
   const money = (minor: number) => formatMoney(minor, currencyCode);
@@ -349,6 +358,7 @@ export default function TestACartPage() {
           currencyCode={currencyCode}
           subtotalMinor={subtotalMinor}
           checkoutNote={checkoutNote}
+          rounding={rounding}
         />
       )}
     </s-page>

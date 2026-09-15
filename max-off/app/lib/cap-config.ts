@@ -38,6 +38,8 @@
  */
 
 import { parseDecimalToMinor, toDecimalString } from "./cap";
+import { toRoundingMode } from "./rounding";
+import type { RoundingMode } from "./rounding";
 
 /**
  * `$app`, not `$app:maxoff` — corrected in BUILD-SPEC §3.1 on 8 Sep 2026. The
@@ -55,11 +57,17 @@ export const CAP_CONFIG_TYPE = "json";
  * `appliesTo`, its two id lists, and a `checkoutNote` the Function actually
  * puts in front of the buyer. Version 3 adds `scope`, the Pro per-item and
  * per-collection maximums. Version 4 adds the minimum a cart must meet and a
- * maximum per market currency. The deployed Function still reads versions 1 and 2,
+ * maximum per market currency. Version 5 adds the shop's `rounding` rule from
+ * Settings. The deployed Function still reads versions 1 and 2,
  * because discounts created before each of them are live and carry them — see
  * `SUPPORTED_VERSIONS` in the Function's parser.
+ *
+ * **Bumping this number is a deploy, not an edit.** A config the deployed
+ * Function does not list in `SUPPORTED_VERSIONS` is refused outright, so an
+ * admin that writes version 5 against a Function that only knows 4 creates
+ * discounts that silently do not discount. Ship both halves together.
  */
-export const CAP_CONFIG_VERSION = 4;
+export const CAP_CONFIG_VERSION = 5;
 
 /**
  * Which maximum the merchant chose.
@@ -121,6 +129,12 @@ export interface CapConfigInput {
    */
   capsByCurrency?: Record<string, number>;
   currencyCode: string;
+  /**
+   * How the final amount is rounded. The shop's Settings choice, stamped onto
+   * each discount because the Function has no way to read a shop-level row —
+   * it sees the discount's own metafield and nothing else.
+   */
+  rounding?: RoundingMode;
   /** Null for an automatic discount, which has no code to show the buyer. */
   code: string | null;
   checkoutNote?: string;
@@ -137,6 +151,8 @@ export interface CapConfigJson {
   capAmount: string;
   currencyCode: string;
   scope: CapScope;
+  /** Always written, so what a discount rounds to is readable off the config. */
+  rounding: RoundingMode;
   checkoutNote: string;
   code: string | null;
   /** Absent rather than null when there is no minimum, so an older Function
@@ -221,6 +237,7 @@ export function buildCapConfig(input: CapConfigInput): CapConfigJson {
     capAmount: toDecimalString(input.capMinor),
     currencyCode: input.currencyCode,
     scope,
+    rounding: toRoundingMode(input.rounding),
     checkoutNote: normaliseCheckoutNote(input.checkoutNote),
     code: input.code,
     // Omitted entirely when unset. The Function reads an absent key as "no

@@ -27,6 +27,8 @@ export interface CheckoutReceiptProps {
   subtotalMinor: number;
   /** The locked note the buyer reads under the discount line (§11). */
   checkoutNote: string;
+  /** The shop's rounding rule, so the receipt shows the amount checkout gives. */
+  rounding?: string;
 }
 
 export function CheckoutReceipt({
@@ -36,11 +38,13 @@ export function CheckoutReceipt({
   currencyCode,
   subtotalMinor,
   checkoutNote,
+  rounding,
 }: CheckoutReceiptProps) {
   const { uncappedMinor, givenMinor, capped } = capDiscountMinor(
     subtotalMinor,
     percentage,
     capMinor,
+    rounding,
   );
 
   return (

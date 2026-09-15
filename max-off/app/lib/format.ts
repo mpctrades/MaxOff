@@ -12,6 +12,12 @@
  * one place.
  */
 
+import {
+  DEFAULT_TIME_ZONE,
+  formatDateInZone,
+  zonedParts,
+} from "./timezone";
+
 /** Minor units per major unit. §6 fixes money at two decimals. */
 const MINOR_UNITS = 100;
 
@@ -101,16 +107,18 @@ export function formatPercent(percentage: number): string {
 }
 
 /**
- * `10 Sep 2026`.
+ * `10 Sep 2026`, on the shop's own calendar.
  *
- * Rendered in UTC, not the server's timezone, so a VPS in another zone cannot
- * shift a merchant's date by a day.
- * TODO(sophea): switch to the shop's timezone once it is stored on
- * ShopSettings — same drift as the month boundaries in `home.server.ts`.
+ * `timeZone` is the shop's IANA zone from `ShopSettings`. It defaults to UTC
+ * rather than to the server's zone, so a caller that has not been given one
+ * still cannot be moved by relocating the VPS.
+ *
+ * Was UTC-only until 15 Sep 2026, which put a discount starting at the
+ * merchant's midnight on the previous day's label for anyone east of
+ * Greenwich. See `app/lib/timezone.ts`.
  */
-export function formatDate(date: Date): string {
-  const month = MONTHS[date.getUTCMonth()];
-  return `${date.getUTCDate()} ${month} ${date.getUTCFullYear()}`;
+export function formatDate(date: Date, timeZone = DEFAULT_TIME_ZONE): string {
+  return formatDateInZone(date, timeZone);
 }
 
 /**
@@ -121,12 +129,13 @@ export function formatDate(date: Date): string {
  * where `7/7` has to be decoded, and where `7 Jul` puts eight different digits
  * in the column the eye scans first.
  *
- * Rendered in UTC for the same reason as `formatDate` — the week buckets in
- * `home.server.ts` are UTC weeks, and a server in another zone must not shift
- * a bar's label onto the wrong day.
+ * Takes the shop's zone for the same reason `formatDate` does: the week
+ * buckets in `home.server.ts` are the shop's weeks now, so a bar labelled
+ * `Sep 14` has to be the Monday the merchant would call the 14th.
  */
-export function formatMonthDay(date: Date): string {
-  return `${MONTHS[date.getUTCMonth()]} ${date.getUTCDate()}`;
+export function formatMonthDay(date: Date, timeZone = DEFAULT_TIME_ZONE): string {
+  const { month, day } = zonedParts(date, timeZone);
+  return `${MONTHS[month - 1]} ${day}`;
 }
 
 /**

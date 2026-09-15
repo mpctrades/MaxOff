@@ -22,6 +22,7 @@ import {
 import type { AppliesTo, CapScope } from "./cap-config";
 import { can, maxCampaignDays } from "./plans";
 import type { CapabilityKey } from "./plans";
+import { DEFAULT_TIME_ZONE, isoDateInZone, zonedTimeToUtc } from "./timezone";
 
 /** How a buyer gets the discount. */
 export type DiscountMethod = "code" | "automatic";
@@ -130,28 +131,56 @@ export type DiscountFormResult =
   | { errors: DiscountFieldErrors };
 
 /**
+ * The shop's own starting point for a new discount, from Settings.
+ *
+ * Every field here is a *prefill*. Nothing in this object reaches a discount
+ * that already exists, and anything the merchant changes on a single discount
+ * wins — which is the whole difference between these and `rounding`.
+ *
+ * Every property is optional and every fallback is the value the form used
+ * before Settings could set it, so a shop that never opens Settings gets the
+ * form it always had.
+ */
+export interface DiscountDefaults {
+  scope?: CapScope;
+  checkoutNote?: string;
+  oncePerCustomer?: boolean;
+  combinesProduct?: boolean;
+  combinesOrder?: boolean;
+  combinesShipping?: boolean;
+  /** The shop's IANA zone, so "today" is the merchant's today. */
+  timeZone?: string;
+}
+
+/**
  * The form as it opens.
  *
  * `maxDays` is the plan's run-length ceiling. A plan that has one opens with
  * the end date already on and filled to that ceiling — the date is not
  * optional on those plans, and a checkbox the merchant must tick before the
  * form can be saved is a puzzle, not a choice.
+ *
+ * `defaults` is the shop's Settings block. The start date is the merchant's
+ * own today rather than UTC's: a shop in Phnom Penh opening this form at 9am
+ * on the 11th used to be handed the 10th, because UTC had not caught up yet.
  */
 export function initialDiscountFormState(
   today = new Date(),
   maxDays: number | null = null,
+  defaults: DiscountDefaults = {},
 ): DiscountFormState {
-  const startDate = today.toISOString().slice(0, 10);
+  const timeZone = defaults.timeZone ?? DEFAULT_TIME_ZONE;
+  const startDate = isoDateInZone(today, timeZone);
 
   return {
     method: "code",
     code: "",
     title: "",
-    scope: DEFAULT_CAP_SCOPE,
+    scope: defaults.scope ?? DEFAULT_CAP_SCOPE,
     appliesTo: "all",
     collections: [],
     products: [],
-    checkoutNote: DEFAULT_CHECKOUT_NOTE,
+    checkoutNote: defaults.checkoutNote ?? DEFAULT_CHECKOUT_NOTE,
     percentage: "15",
     capAmount: "",
     minimumKind: "none",
@@ -160,10 +189,10 @@ export function initialDiscountFormState(
     currencyCaps: [],
     usageLimitOn: false,
     usageLimit: "",
-    oncePerCustomer: true,
-    combinesProduct: false,
-    combinesOrder: false,
-    combinesShipping: true,
+    oncePerCustomer: defaults.oncePerCustomer ?? true,
+    combinesProduct: defaults.combinesProduct ?? false,
+    combinesOrder: defaults.combinesOrder ?? false,
+    combinesShipping: defaults.combinesShipping ?? true,
     startDate,
     startTime: "00:00",
     endDateOn: maxDays !== null,
@@ -172,8 +201,27 @@ export function initialDiscountFormState(
   };
 }
 
-/** `2026-09-10` + `09:00` → a Date in UTC. Null when either half is unusable. */
-export function combineDateTime(date: string, time: string): Date | null {
+/**
+ * `2026-09-10` + `09:00`, **as the merchant's own clock reads it** → the UTC
+ * instant Shopify stores. Null when either half is unusable.
+ *
+ * `timeZone` is the shop's, from `ShopSettings`. This is the function the
+ * timezone fix of 15 Sep 2026 was really about: it used to append a literal
+ * `Z`, so a merchant in Phnom Penh who set a discount to start on 10 Sep at
+ * 00:00 got a discount that went live at 07:00 local — seven hours into the
+ * day they picked — and an end date of 30 Sep 23:59 that expired at 06:59 on
+ * 1 October. Nothing was malformed; the instant was simply not the one the
+ * merchant meant.
+ *
+ * Defaults to UTC, which is exactly what it did before, so a caller that has
+ * not been given a zone behaves as it always did rather than picking up the
+ * server's.
+ */
+export function combineDateTime(
+  date: string,
+  time: string,
+  timeZone = DEFAULT_TIME_ZONE,
+): Date | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return null;
   }
@@ -182,9 +230,24 @@ export function combineDateTime(date: string, time: string): Date | null {
     return null;
   }
 
-  const parsed = new Date(`${date}T${time === "" ? "00:00" : time}:00Z`);
+  const [year, month, day] = date.split("-").map(Number);
+  const [hour, minute] = (time === "" ? "00:00" : time).split(":").map(Number);
 
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+  // The regex above admits 2026-02-31. `Date.UTC` rolls it into 3 March rather
+  // than refusing, and a start date the merchant never typed is worse than a
+  // field error, so the roll-over is detected and refused here.
+  const civil = new Date(Date.UTC(year, month - 1, day));
+  if (
+    civil.getUTCFullYear() !== year ||
+    civil.getUTCMonth() !== month - 1 ||
+    civil.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  const at = zonedTimeToUtc({ year, month, day, hour, minute }, timeZone);
+
+  return Number.isNaN(at.getTime()) ? null : at;
 }
 
 /** How far out an end date is prefilled when a merchant switches one on. */
@@ -330,6 +393,13 @@ export function validateDiscountForm(
    * end up disagreeing.
    */
   storeCurrency = "",
+  /**
+   * The shop's IANA zone. Every date on this form is a wall-clock reading in
+   * the merchant's own day, so the validator has to convert with the same zone
+   * the form displayed — otherwise "ends before it starts" is decided against
+   * an instant the merchant never chose.
+   */
+  timeZone = DEFAULT_TIME_ZONE,
 ): DiscountFormResult {
   const errors: DiscountFieldErrors = {};
 
@@ -427,7 +497,7 @@ export function validateDiscountForm(
 
   const capsByCurrency = readCurrencyCaps(state, plan, storeCurrency, errors);
 
-  const startsAt = combineDateTime(state.startDate, state.startTime);
+  const startsAt = combineDateTime(state.startDate, state.startTime, timeZone);
   if (startsAt === null) {
     errors.startDate = "Enter a start date and a time as HH:MM.";
   }
@@ -436,7 +506,7 @@ export function validateDiscountForm(
 
   let endsAt: Date | null = null;
   if (state.endDateOn) {
-    endsAt = combineDateTime(state.endDate, state.endTime);
+    endsAt = combineDateTime(state.endDate, state.endTime, timeZone);
     if (endsAt === null) {
       errors.endDate = "Enter an end date, or turn the end date off.";
     } else if (startsAt !== null && endsAt.getTime() <= startsAt.getTime()) {

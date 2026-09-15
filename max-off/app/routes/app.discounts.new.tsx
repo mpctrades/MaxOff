@@ -14,7 +14,10 @@ import {
   isCodeTaken,
   readCapConfigFor,
 } from "../models/discounts.server";
-import { ensureShopSettings } from "../models/settings.server";
+import {
+  ensureShopSettings,
+  refreshShopProfile,
+} from "../models/settings.server";
 import { getPlanForGate } from "../models/plan.server";
 import { CheckoutPreviewModal } from "../components/CheckoutPreviewModal";
 import { CheckoutReceipt } from "../components/CheckoutReceipt";
@@ -45,9 +48,12 @@ import {
   validateDiscountForm,
 } from "../lib/discount-form";
 import { can, gateFor, maxCampaignDays } from "../lib/plans";
+import { toRoundingMode } from "../lib/rounding";
+import { toTimeZone } from "../lib/timezone";
 import type { CapabilityGate } from "../lib/plans";
 import type {
   CurrencyCap,
+  DiscountDefaults,
   DiscountFieldErrors,
   DiscountFormState,
   PickedResource,
@@ -121,8 +127,12 @@ const TEMPLATES: { label: string; percentage: string; capAmount: string }[] = [
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
 
-  const [settings, plan] = await Promise.all([
-    ensureShopSettings(session.shop),
+  const [{ settings }, plan] = await Promise.all([
+    // The profile, not just the row: this form is where a merchant types the
+    // dates, so it must not be the screen still holding a stale UTC because
+    // nobody had opened Settings since installing. Runs alongside the plan
+    // read, which was already a round trip.
+    refreshShopProfile({ shop: session.shop, admin }),
     /**
      * The plan decides what this form may offer: which maximums, how long a
      * discount may run, and whether it may carry a usage limit.
@@ -155,6 +165,22 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return {
     currencyCode: settings.currencyCode,
     checkoutNote: settings.defaultCheckoutNote || DEFAULT_CHECKOUT_NOTE,
+    // The shop's Settings choice, so the live preview and the receipt below it
+    // show the amount the Function will actually give.
+    rounding: toRoundingMode(settings.rounding),
+    timeZone: toTimeZone(settings.timezone),
+    // The rest of the Settings "Defaults for new discounts" block. Prefills
+    // only: `initialDiscountFormState` starts from them and the merchant
+    // overrides whatever they like, which is what that section promises.
+    defaults: {
+      scope: isCapScope(settings.defaultScope) ? settings.defaultScope : undefined,
+      checkoutNote: settings.defaultCheckoutNote || DEFAULT_CHECKOUT_NOTE,
+      oncePerCustomer: settings.defaultOncePerCustomer,
+      combinesProduct: settings.defaultCombinesProduct,
+      combinesOrder: settings.defaultCombinesOrder,
+      combinesShipping: settings.defaultCombinesShipping,
+      timeZone: toTimeZone(settings.timezone),
+    } satisfies DiscountDefaults,
     plan,
     duplicateFrom: duplicate === null ? null : duplicateFormState(duplicate),
   };
@@ -265,6 +291,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     discountFormStateFrom(form),
     plan,
     settingsForPlan.currencyCode,
+    // The dates arrive as the merchant's wall clock, so they are converted
+    // with the merchant's zone. Validating in UTC would judge "ends before it
+    // starts" against instants the merchant never chose.
+    toTimeZone(settingsForPlan.timezone),
   );
   if ("errors" in parsed) {
     return {
@@ -468,7 +498,8 @@ function MarketMaximums({
 }
 
 export default function CreateDiscountPage() {
-  const { currencyCode, plan, duplicateFrom } = useLoaderData<typeof loader>();
+  const { currencyCode, rounding, timeZone, defaults, plan, duplicateFrom } =
+    useLoaderData<typeof loader>();
 
   /** The plan's run-length ceiling in days, and whether it may cap uses. */
   const maxDays = maxCampaignDays(plan);
@@ -487,7 +518,7 @@ export default function CreateDiscountPage() {
   const codeFetcher = useFetcher<typeof action>();
 
   const [state, setState] = useState<DiscountFormState>(() => ({
-    ...initialDiscountFormState(new Date(), maxDays),
+    ...initialDiscountFormState(new Date(), maxDays, defaults),
     // A duplicate starts from the discount it copies. The dates are not
     // carried over — the copy is a new campaign, and a start date in the past
     // is the one field the form would immediately reject.
@@ -522,9 +553,9 @@ export default function CreateDiscountPage() {
     [ready, capMinor, percentage],
   );
 
-  const startsAt = combineDateTime(state.startDate, state.startTime);
+  const startsAt = combineDateTime(state.startDate, state.startTime, timeZone);
   const endsAt = state.endDateOn
-    ? combineDateTime(state.endDate, state.endTime)
+    ? combineDateTime(state.endDate, state.endTime, timeZone)
     : null;
 
   /**
@@ -560,7 +591,7 @@ export default function CreateDiscountPage() {
 
   /** `11 Sep 2026, 00:00` for the summary, or a dash when it does not parse. */
   const summaryMoment = (at: Date | null, time: string) =>
-    at === null ? "—" : `${formatDate(at)}, ${time}`;
+    at === null ? "—" : `${formatDate(at, timeZone)}, ${time}`;
 
   /**
    * `150 ÷ 15% = 1,000` is only an equals sign when the division comes out
@@ -572,8 +603,10 @@ export default function CreateDiscountPage() {
 
   const preview = useMemo(
     () =>
-      ready ? capDiscountMinor(simSubtotalMinor, percentage, capMinor!) : null,
-    [ready, simSubtotalMinor, percentage, capMinor],
+      ready
+        ? capDiscountMinor(simSubtotalMinor, percentage, capMinor!, rounding)
+        : null,
+    [ready, simSubtotalMinor, percentage, capMinor, rounding],
   );
 
   const money = (minor: number) => formatMoney(minor, currencyCode);
@@ -776,7 +809,7 @@ export default function CreateDiscountPage() {
   };
 
   const validate = (): boolean => {
-    const result = validateDiscountForm(state, plan);
+    const result = validateDiscountForm(state, plan, currencyCode, timeZone);
 
     if ("errors" in result) {
       setErrors(result.errors);
@@ -853,7 +886,7 @@ export default function CreateDiscountPage() {
   };
 
   const discard = () => {
-    setState(initialDiscountFormState());
+    setState(initialDiscountFormState(new Date(), maxDays, defaults));
     setErrors({});
     setDirty(false);
   };
@@ -1403,6 +1436,7 @@ export default function CreateDiscountPage() {
               currencyCode={currencyCode}
               subtotalMinor={simSubtotalMinor}
               checkoutNote={noteForPreview}
+              rounding={rounding}
             />
           ) : (
             <s-paragraph color="subdued">
@@ -1702,6 +1736,7 @@ export default function CreateDiscountPage() {
         currencyCode={currencyCode}
         subtotalMinor={simSubtotalMinor}
         checkoutNote={noteForPreview}
+        rounding={rounding}
       />
     </s-page>
   );

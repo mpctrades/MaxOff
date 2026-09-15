@@ -4,6 +4,7 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 
 import { authenticate } from "../shopify.server";
 import { readCapConfigFor } from "../models/discounts.server";
+import { ensureShopSettings } from "../models/settings.server";
 import { InternalButtonLink, InternalLink } from "../components/InternalNavigation";
 import {
   capStartsAboveMinor,
@@ -13,6 +14,7 @@ import {
 import type { DisplayStatus } from "../lib/cap";
 import { capAmountToMinor, DEFAULT_CHECKOUT_NOTE } from "../lib/cap-config";
 import { formatDate, formatMoney, formatPercent } from "../lib/format";
+import { toTimeZone } from "../lib/timezone";
 
 const STATUS_TONES: Record<DisplayStatus, "success" | "info" | "warning" | "neutral"> =
   {
@@ -49,6 +51,11 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
   }
 
   const { row } = found;
+
+  // Dates are stored as instants and read back on the shop's own calendar: a
+  // discount that ends at the merchant's 23:59 must not be labelled with the
+  // following day because UTC has rolled over.
+  const settings = await ensureShopSettings(session.shop);
   const config =
     typeof found.config === "object" && found.config !== null
       ? (found.config as Record<string, unknown>)
@@ -68,6 +75,7 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
     percentage: row.percentage,
     capMinor: row.capMinor,
     currencyCode: row.currencyCode,
+    timeZone: toTimeZone(settings.timezone),
     startsAboveMinor: capStartsAboveMinor(row.percentage, row.capMinor),
     scope: text(config.scope) || row.scope,
     appliesTo: text(config.appliesTo) || "all",
@@ -180,10 +188,17 @@ export default function CappedDiscountDetailPage() {
 
       <s-section heading="Active dates">
         <s-stack direction="block" gap="small-300">
-          <Row label="Starts" value={formatDate(new Date(data.startsAt))} />
+          <Row
+            label="Starts"
+            value={formatDate(new Date(data.startsAt), data.timeZone)}
+          />
           <Row
             label="Ends"
-            value={data.endsAt === null ? "No end date" : formatDate(new Date(data.endsAt))}
+            value={
+              data.endsAt === null
+                ? "No end date"
+                : formatDate(new Date(data.endsAt), data.timeZone)
+            }
           />
         </s-stack>
       </s-section>

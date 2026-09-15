@@ -616,12 +616,35 @@ products cheaply from the Admin API, do that instead and say so.
 
 ### 4.7 Settings
 
-- Checkout wording (V2, disabled input showing the default).
-- Currency and rounding (V1) — store currency select, rounding select ("To the cent (recommended)"
-  / "Down to the whole unit"), plus the PRO nudge banner about per-market maximums.
+The page is ordered by **what a setting reaches**, and that ordering is the point: "Currency and
+rounding" changes discounts that already exist, everything in "Defaults for new discounts" only
+prefills a form. A merchant cannot tell those apart if they are scattered, which is why the checkout
+note sits with the other prefills rather than in a section of its own.
+
+- Currency and rounding (V1) — store currency select (read-only; Shopify owns it, MaxOff never
+  converts), rounding select ("To the cent" / "Down to the whole unit"), plus the PRO nudge banner
+  about per-market maximums.
+
+  Rounding is a statement about the **store**, so saving it rewrites the `cap_config` metafield of
+  every capped discount the shop already has (`restampRounding`), not only the next one. The
+  Function reads its rounding off each discount's own metafield — it has no way to reach a
+  shop-level row — so "one store, one rounding rule" has to be written onto each of them.
+- **Defaults for new discounts** (V1 since 15 Sep 2026) — checkout note, uses per customer, which
+  maximum applies, and the three combination checkboxes. Every one is a *prefill*: it seeds
+  `initialDiscountFormState` and nothing more. Closing copy, verbatim: "These only prefill the
+  Create new form. Anything you change on a single discount still wins."
+
+  Rewording the note is Growth; a default of "Each item" or "Each collection" is Pro. Both are gated
+  from the one matrix in `plans.ts`, and the out-of-plan maximums are listed **disabled with their
+  plan name** rather than hidden — a merchant cannot ask for a plan whose features they never saw,
+  and a default the create form would then refuse is worse than no default.
+
+  Column defaults match what the form used before this block existed, so a shop that never opens
+  Settings sees the form it always saw.
 - Email alerts (V2, disabled) — weekly summary, expiry warning, big-cap alert.
 - **How MaxOff runs** (V1) — a plain-language transparency panel. Rows: Engine (Shopify Function ·
-  Active pill) · Storefront code ("None. MaxOff adds nothing to your theme.") · Where caps are
+  Active pill) · Plan · Dates and times ("Asia/Phnom_Penh — start and end dates use your store's
+  timezone") · Storefront code ("None. MaxOff adds nothing to your theme.") · Where caps are
   stored ("On the discount itself, in your Shopify store.") · If you uninstall ("Capped discounts
   stop capping and can be deleted from Shopify's own Discounts page. Nothing is left behind in your
   theme."). This panel is a trust feature — do not cut it.
@@ -681,8 +704,18 @@ alternative, and colour is never the only signal.
 - Money: `1,234.50 USD` — two decimals, thousands separators, currency code after the number and a
   space. Not `$1,234.50`. The prototype uses `en-US` grouping for both USD and EUR; keep that.
 - Percentages: whole numbers, `15%`.
-- Dates: `10 Sep – 30 Sep 2026`.
-- Rounding: half-up to the cent, applied once, on the final discount amount.
+- Dates: `10 Sep – 30 Sep 2026`, on the **shop's** calendar. Every date a merchant types or reads is
+  a wall-clock reading in the store's IANA zone, cached on `ShopSettings.timezone` from
+  `shop.ianaTimezone` and converted in `app/lib/timezone.ts`. Until 15 Sep 2026 all of it was UTC,
+  which started a Phnom Penh merchant's midnight discount at 07:00 and turned Home's "this month"
+  over seven hours late. The fallback is UTC and never the server's zone, which would move if the
+  VPS did.
+- Rounding: half-up to the cent, applied once, on the final discount amount — the default, and what
+  every discount did before 15 Sep 2026. A shop may instead choose "down to the whole unit" in
+  Settings, which drops the cents from the final amount. Either way it is applied **after** the
+  minimum against the maximum, never before: the figure the buyer sees struck through ("15% would
+  have been 210.00") stays the unrounded percentage, and "capped at maximum amount" is decided by
+  the maximum, never by rounding having shaved a few cents.
 - When the store currency changes, every amount **relabels**. Nothing is converted. Say so in the
   settings copy.
 

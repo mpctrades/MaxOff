@@ -14,6 +14,12 @@ import type { DisplayStatus } from "../lib/cap";
 import { formatMoney, formatPercent } from "../lib/format";
 import { statusWhere } from "./discounts.server";
 import { ensureShopSettings } from "./settings.server";
+import {
+  isoDateInZone,
+  startOfMonthInZone,
+  startOfWeekInZone,
+  toTimeZone,
+} from "../lib/timezone";
 
 /** How many weeks the "Money you kept" chart shows. §4.1: eight bars. */
 const CHART_WEEKS = 8;
@@ -91,9 +97,12 @@ export async function getHomeData(shop: string): Promise<HomeData> {
   const settings = await ensureShopSettings(shop);
 
   const now = new Date();
-  const thisMonthStart = startOfUtcMonth(now);
-  const lastMonthStart = startOfUtcMonth(thisMonthStart, -1);
-  const chartStart = startOfUtcWeek(now, -(CHART_WEEKS - 1));
+  // The shop's own calendar, not the server's and not Greenwich's. A merchant
+  // in Phnom Penh used to see "this month" turn over seven hours late.
+  const timeZone = toTimeZone(settings.timezone);
+  const thisMonthStart = startOfMonthInZone(now, timeZone);
+  const lastMonthStart = startOfMonthInZone(thisMonthStart, timeZone, -1);
+  const chartStart = startOfWeekInZone(now, timeZone, -(CHART_WEEKS - 1));
 
   const [
     activeCount,
@@ -186,7 +195,7 @@ export async function getHomeData(shop: string): Promise<HomeData> {
           code: biggestSaveRow.discount.code,
         }
       : null,
-    weeks: bucketByWeek(chartRows, chartStart),
+    weeks: bucketByWeek(chartRows, chartStart, timeZone),
     discounts: activeDiscounts.map((discount) => ({
       id: discount.id,
       code: discount.code,
@@ -344,11 +353,16 @@ function planResult(plan: string): string | null {
 function bucketByWeek(
   rows: { occurredAt: Date; keptMinor: number }[],
   chartStart: Date,
+  timeZone: string,
 ): HomeWeek[] {
   const weeks: HomeWeek[] = [];
   for (let index = 0; index < CHART_WEEKS; index++) {
-    const start = addUtcDays(chartStart, index * 7);
-    weeks.push({ weekStartISO: start.toISOString().slice(0, 10), keptMinor: 0 });
+    const start = addDays(chartStart, index * 7);
+    // The shop's civil date for that Monday, not the instant's UTC date —
+    // 14 Sep 00:00 in Phnom Penh is still 13 Sep in UTC, and the bar would be
+    // labelled a day early. The chart parses this back as a civil date, so the
+    // two ends agree without either needing the zone again.
+    weeks.push({ weekStartISO: isoDateInZone(start, timeZone), keptMinor: 0 });
   }
 
   const MS_PER_WEEK = 7 * 24 * 60 * 60 * 1000;
@@ -366,30 +380,15 @@ function bucketByWeek(
 }
 
 /**
- * Month and week boundaries are UTC.
+ * Month and week boundaries used to be UTC, with a `TODO(sophea)` naming the
+ * drift. They are the shop's own now — see `app/lib/timezone.ts`, where the
+ * arithmetic lives so that Home and the create form cannot disagree about when
+ * a day starts.
  *
- * TODO(sophea): they should be the shop's, which means storing the shop's
- * timezone on `ShopSettings`. A merchant in Phnom Penh (UTC+7) sees "this
- * month" turn over seven hours late; nothing is lost or double-counted, the
- * boundary is just in the wrong place. Naming the drift rather than using the
- * VPS's local time, which would move with the server.
+ * `addDays` stays here because it is plain elapsed time: the week buckets are
+ * seven-day windows from `chartStart`, and `chartStart` is already the shop's
+ * Monday midnight.
  */
-function startOfUtcMonth(from: Date, monthOffset = 0): Date {
-  return new Date(
-    Date.UTC(from.getUTCFullYear(), from.getUTCMonth() + monthOffset, 1),
-  );
-}
-
-/** Monday of the week containing `from`, offset by whole weeks. */
-function startOfUtcWeek(from: Date, weekOffset = 0): Date {
-  const midnight = new Date(
-    Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate()),
-  );
-  // getUTCDay() is 0 on Sunday, which is six days into a Monday-start week.
-  const daysSinceMonday = (midnight.getUTCDay() + 6) % 7;
-  return addUtcDays(midnight, -daysSinceMonday + weekOffset * 7);
-}
-
-function addUtcDays(from: Date, days: number): Date {
+function addDays(from: Date, days: number): Date {
   return new Date(from.getTime() + days * 24 * 60 * 60 * 1000);
 }

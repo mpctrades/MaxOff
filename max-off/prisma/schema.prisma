@@ -93,10 +93,27 @@ model CapEvent {
 model ShopSettings {
   shop                String   @id
   currencyCode        String   @default("USD")
+  // The shop's IANA zone, e.g. "Asia/Phnom_Penh". Cached from Shopify like
+  // currencyCode is; the store is the authority. Every date a merchant types
+  // or reads is interpreted in this zone — see app/lib/timezone.ts.
+  timezone            String   @default("UTC")
   rounding            String   @default("cent")   // "cent" | "down"
   defaultCheckoutNote String   @default("Discount capped at maximum amount")
   plan                String   @default("free")   // "free" | "growth" | "pro"
+  createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
+
+  // --- Defaults for new discounts ---
+  // These only prefill the Create new form. Nothing here reaches a discount
+  // that already exists, which is the whole difference between this block and
+  // `rounding` above. The column defaults are the same values
+  // `initialDiscountFormState` used before this block existed, so a shop that
+  // never opens Settings sees the form it always saw.
+  defaultScope            String  @default("order")   // "order" | "item" | "collection"
+  defaultOncePerCustomer  Boolean @default(true)
+  defaultCombinesProduct  Boolean @default(false)
+  defaultCombinesOrder    Boolean @default(false)
+  defaultCombinesShipping Boolean @default(true)
 
   // Beyond BUILD-SPEC §3.4 — added 10 Sep 2026 so the Home setup guide can be stateful.
   // All nullable and additive; no destructive migration. Flagged to Sophea for sign-off.

@@ -16,11 +16,18 @@ import {
   DISCOUNT_TABS,
 } from "../lib/cap";
 import type { DiscountTab, DisplayStatus } from "../lib/cap";
-import { capConfigMetafield } from "../lib/cap-config";
+import {
+  CAP_CONFIG_KEY,
+  CAP_CONFIG_NAMESPACE,
+  CAP_CONFIG_TYPE,
+  capConfigMetafield,
+} from "../lib/cap-config";
 import type { CapScope } from "../lib/cap-config";
 import { formatMoney } from "../lib/format";
 import { activeDiscountLimit } from "../lib/plans";
+import { toRoundingMode } from "../lib/rounding";
 import { getPlanForGate } from "./plan.server";
+import { ensureShopSettings } from "./settings.server";
 
 /** §4 of docs/PROMPT-DISCOUNTS.md. Offset pagination is fine at this scale:
  * a shop with more capped discounts than a few pages does not exist yet, and
@@ -659,6 +666,12 @@ export async function createCappedDiscount(
 ): Promise<CreateDiscountResult> {
   const now = new Date();
 
+  // The shop's rounding is read here rather than passed in from the form,
+  // because it is not a decision about this discount — it is a decision about
+  // this store, made on Settings, and a create form that carried it would be a
+  // second place for it to be set.
+  const { rounding } = await ensureShopSettings(input.shop);
+
   const refusal = await planLimitRefusal({
     shop: input.shop,
     id: null,
@@ -677,6 +690,7 @@ export async function createCappedDiscount(
       percentage: input.percentage,
       capMinor: input.capMinor,
       currencyCode: input.currencyCode,
+      rounding: toRoundingMode(rounding),
       // An automatic discount has no code, and a null here is what stops the
       // Function prefixing the buyer's line with one.
       code: automatic ? null : input.code,
@@ -1108,3 +1122,168 @@ export async function readCapConfigFor(input: {
 type CappedDiscountRecord = NonNullable<
   Awaited<ReturnType<typeof prisma.cappedDiscount.findFirst>>
 >;
+
+/* ------------------------------------------------- the shop's rounding rule */
+
+/**
+ * Write a new `cap_config` onto a discount that already exists.
+ *
+ * `metafieldsSet` takes at most 25 metafields per call, and needs the same
+ * access as mutating the owner — `write_discounts`, which MaxOff already has
+ * because it creates discounts. Validated against the 2026-10 admin schema on
+ * 15 Sep 2026.
+ */
+const REWRITE_CAP_CONFIG_MUTATION = `#graphql
+  mutation MaxOffRewriteCapConfig($metafields: [MetafieldsSetInput!]!) {
+    metafieldsSet(metafields: $metafields) {
+      metafields {
+        key
+      }
+      userErrors {
+        field
+        message
+      }
+    }
+  }`;
+
+/** How many metafields `metafieldsSet` accepts in one call. */
+const METAFIELDS_PER_CALL = 25;
+
+/** How many configs we read at once. Small enough not to burst the API. */
+const READS_AT_A_TIME = 5;
+
+export interface RestampRoundingResult {
+  /** Discounts whose stored configuration now carries the new rounding. */
+  updated: number;
+  /**
+   * Discounts MaxOff could not rewrite — unreadable config, or Shopify
+   * refusing the write. Never silently zero: the caller tells the merchant.
+   */
+  failed: number;
+}
+
+/**
+ * Apply the shop's rounding to every capped discount it already has.
+ *
+ * Rounding is a statement about how *this store* discounts, so it has to be
+ * true of the discounts already running and not only of the next one. The
+ * Function reads its rounding off each discount's own `cap_config` — it has no
+ * way to reach a shop-level row — so "a store setting" means writing the same
+ * value onto every one of them.
+ *
+ * Read-modify-write, never rebuild: `cap_config` carries targeting, minimums
+ * and per-market maximums that our mirror does not have, so a config built
+ * from the columns would quietly delete them. Only the `rounding` key is
+ * touched, and `version` is deliberately left alone — an older config keeps
+ * saying which shape it is, and the Function reads `rounding` on every version
+ * it supports.
+ *
+ * Cancelled discounts are skipped: they no longer exist in Shopify, and the
+ * mutation would fail on every one of them.
+ *
+ * Failures are counted, not thrown. The setting is already saved by the time
+ * this runs, and a merchant is better served by "saved, but three discounts
+ * could not be updated" than by a save that rolls back over one stale row.
+ */
+export async function restampRounding(input: {
+  shop: string;
+  admin: AdminGraphqlClient;
+  rounding: string;
+}): Promise<RestampRoundingResult> {
+  const rows = await prisma.cappedDiscount.findMany({
+    where: { shop: input.shop, status: { not: "cancelled" } },
+    select: { discountGid: true },
+  });
+
+  if (rows.length === 0) {
+    return { updated: 0, failed: 0 };
+  }
+
+  let failed = 0;
+  const metafields: {
+    ownerId: string;
+    namespace: string;
+    key: string;
+    type: string;
+    value: string;
+  }[] = [];
+
+  for (let i = 0; i < rows.length; i += READS_AT_A_TIME) {
+    const batch = rows.slice(i, i + READS_AT_A_TIME);
+
+    const configs = await Promise.all(
+      batch.map((row) => readCapConfigJson(input.admin, row.discountGid)),
+    );
+
+    configs.forEach((config, index) => {
+      if (config === null) {
+        // A config we cannot read is one we must not rewrite: writing our two
+        // known keys over it would replace the merchant's targeting with
+        // nothing. Counted and reported instead.
+        failed += 1;
+        return;
+      }
+
+      metafields.push({
+        ownerId: batch[index].discountGid,
+        namespace: CAP_CONFIG_NAMESPACE,
+        key: CAP_CONFIG_KEY,
+        type: CAP_CONFIG_TYPE,
+        value: JSON.stringify({ ...config, rounding: input.rounding }),
+      });
+    });
+  }
+
+  let updated = 0;
+
+  for (let i = 0; i < metafields.length; i += METAFIELDS_PER_CALL) {
+    const batch = metafields.slice(i, i + METAFIELDS_PER_CALL);
+
+    try {
+      const response = await input.admin.graphql(REWRITE_CAP_CONFIG_MUTATION, {
+        variables: { metafields: batch },
+      });
+      const body = (await response.json()) as {
+        data?: {
+          metafieldsSet?: {
+            metafields?: { key: string }[] | null;
+            userErrors?: UserError[] | null;
+          } | null;
+        } | null;
+        errors?: { message: string }[] | null;
+      };
+
+      const written = body.data?.metafieldsSet?.metafields?.length ?? 0;
+      updated += written;
+      failed += batch.length - written;
+    } catch {
+      failed += batch.length;
+    }
+  }
+
+  return { updated, failed };
+}
+
+/** One discount's stored `cap_config` as a plain object, or null if unreadable. */
+async function readCapConfigJson(
+  admin: AdminGraphqlClient,
+  discountGid: string,
+): Promise<Record<string, unknown> | null> {
+  try {
+    const response = await admin.graphql(READ_CAP_CONFIG_QUERY, {
+      variables: { id: discountGid },
+    });
+    const body = (await response.json()) as {
+      data?: {
+        discountNode?: { metafield?: { jsonValue?: unknown } | null } | null;
+      } | null;
+    };
+
+    const value = body.data?.discountNode?.metafield?.jsonValue;
+    return typeof value === "object" && value !== null && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}

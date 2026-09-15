@@ -27,6 +27,8 @@ export interface CheckoutPreviewModalProps {
   subtotalMinor: number;
   /** The locked note the buyer reads under the discount line (§11). */
   checkoutNote: string;
+  /** The shop's rounding rule, passed through to the receipt. */
+  rounding?: string;
 }
 
 export function CheckoutPreviewModal({
@@ -37,12 +39,14 @@ export function CheckoutPreviewModal({
   currencyCode,
   subtotalMinor,
   checkoutNote,
+  rounding,
 }: CheckoutPreviewModalProps) {
   const shopify = useAppBridge();
   const { uncappedMinor, keptMinor, capped } = capDiscountMinor(
     subtotalMinor,
     percentage,
     capMinor,
+    rounding,
   );
 
   const money = (minor: number) => formatMoney(minor, currencyCode);
@@ -57,6 +61,7 @@ export function CheckoutPreviewModal({
           currencyCode={currencyCode}
           subtotalMinor={subtotalMinor}
           checkoutNote={checkoutNote}
+          rounding={rounding}
         />
 
         {capped ? (
