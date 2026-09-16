@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Privacy policy — MaxOff</title>
+<meta name="description" content="What MaxOff stores, why, and how to have it deleted.">
+<style>
+  :root{
+    --ink:#1f1b18; --muted:#6b625c; --line:#e8ded7; --bg:#ffffff;
+    --page:#faf6f3; --brand:#c2410c; --tint:#fff2e8;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--page); color:var(--ink);
+    font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:760px; margin:0 auto; padding:56px 20px 96px}
+  header{display:flex; align-items:center; gap:10px; margin-bottom:40px}
+  .mark{
+    width:30px; height:30px; border-radius:8px; background:var(--brand);
+    display:grid; place-items:center; color:#fff; font-weight:700; font-size:15px;
+  }
+  .word{font-weight:650; letter-spacing:-0.01em}
+  h1{font-size:2rem; line-height:1.2; letter-spacing:-0.02em; margin:0 0 8px}
+  .updated{color:var(--muted); font-size:.9rem; margin:0 0 36px}
+  h2{font-size:1.15rem; letter-spacing:-0.01em; margin:38px 0 10px}
+  p{margin:0 0 14px}
+  ul{margin:0 0 14px; padding-left:20px}
+  li{margin-bottom:7px}
+  a{color:var(--brand)}
+  .card{
+    background:var(--bg); border:1px solid var(--line); border-radius:12px;
+    padding:18px 20px; margin:0 0 18px;
+  }
+  .tint{background:var(--tint); border-color:#f3d9c8}
+  table{width:100%; border-collapse:collapse; margin:0 0 18px; font-size:.94rem}
+  th,td{text-align:left; padding:11px 12px; border-bottom:1px solid var(--line); vertical-align:top}
+  th{font-weight:620; background:var(--bg)}
+  td:first-child{white-space:nowrap; font-weight:560}
+  .scroll{overflow-x:auto; border:1px solid var(--line); border-radius:12px; background:var(--bg)}
+  .scroll table{margin:0}
+  .scroll tr:last-child td{border-bottom:0}
+  footer{margin-top:52px; padding-top:22px; border-top:1px solid var(--line); color:var(--muted); font-size:.9rem}
+  @media (max-width:520px){ .wrap{padding:36px 16px 72px} h1{font-size:1.6rem} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="mark">π</div>
+    <span class="word">MaxOff</span>
+  </header>
+
+  <h1>Privacy policy</h1>
+  <p class="updated">Last updated 16 September 2026</p>
+
+  <p>MaxOff is a Shopify app made by MPC Trades. It puts a maximum amount on a
+  percentage discount — <em>15% off, but never more than 150.00</em>. This page
+  explains what the app stores, why it stores it, and how to have it removed.</p>
+
+  <div class="card tint">
+    <p style="margin:0"><strong>The short version.</strong> MaxOff stores the
+    discounts you create and the settings for your shop. It does not read your
+    orders, it does not collect your customers' names, emails or addresses, and
+    it adds nothing to your storefront. Uninstalling the app deletes your data.</p>
+  </div>
+
+  <h2>What MaxOff stores</h2>
+  <p>All of it belongs to your shop, and all of it is created by you using the app.</p>
+
+  <div class="scroll">
+  <table>
+    <thead>
+      <tr><th>What</th><th>Why</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Your shop's domain and an access token</td>
+        <td>To identify your shop and talk to the Shopify Admin API on your behalf. The token is issued by Shopify and can be revoked by uninstalling.</td>
+      </tr>
+      <tr>
+        <td>Your capped discounts</td>
+        <td>The code or title, the percentage, the maximum, the currency, the dates, usage limits and combination settings. This is the app's core function.</td>
+      </tr>
+      <tr>
+        <td>Your shop settings</td>
+        <td>Currency, time zone, rounding preference, the wording shown at checkout, your plan, and the defaults used when you create a new discount.</td>
+      </tr>
+      <tr>
+        <td>A little interface state</td>
+        <td>Whether you have dismissed the setup guide, and the figures from the last cart you tested, so the app can show you where you left off.</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h2>What MaxOff does not collect</h2>
+  <ul>
+    <li><strong>No customer personal data.</strong> No names, email addresses, postal addresses, phone numbers or customer IDs — not for your customers, and not for their orders.</li>
+    <li><strong>No order data.</strong> MaxOff does not request the <code>read_orders</code> permission and does not read your orders.</li>
+    <li><strong>No payment details.</strong> Charges for the app are handled entirely by Shopify billing; MaxOff never sees a card.</li>
+    <li><strong>No tracking.</strong> There are no analytics scripts, no advertising pixels, and no profiling of you or of your buyers.</li>
+    <li><strong>Nothing in your storefront.</strong> MaxOff adds nothing to your theme. There is no script to install and no snippet to remove.</li>
+  </ul>
+
+  <h2>The permissions MaxOff asks for</h2>
+  <p>Only these three, and nothing else:</p>
+  <ul>
+    <li><code>write_discounts</code> — to create, edit, pause and delete your capped discounts.</li>
+    <li><code>read_discounts</code> — to read back the discounts it created, and to check a code is not already taken.</li>
+    <li><code>read_products</code> — so the cart tester can show a product picker from your own catalogue. Product details are used to calculate a preview and are not stored.</li>
+  </ul>
+
+  <h2>How the discount is applied</h2>
+  <p>The maximum is worked out by a Shopify Function running inside Shopify's own
+  discount engine at checkout. The percentage and the maximum are stored on the
+  discount itself, in a Shopify metafield. Nothing about a buyer is sent to
+  MaxOff, and no cart or checkout data leaves Shopify.</p>
+
+  <h2>Where your data is kept</h2>
+  <p>On a private server operated by MPC Trades, in a database that is not
+  reachable from the public internet. Traffic to the app is encrypted with TLS.
+  MaxOff uses no third-party analytics, advertising or data-broker services, and
+  does not sell or share your data with anyone.</p>
+  <p>The only other party involved is Shopify itself, which hosts your store and
+  processes app charges.</p>
+
+  <h2>How long it is kept, and how to delete it</h2>
+  <ul>
+    <li><strong>Uninstall the app.</strong> Shopify notifies MaxOff and your session and access token are deleted immediately. Your access is revoked at the same moment.</li>
+    <li><strong>Ask for full erasure.</strong> When Shopify sends a shop erasure request — normally 48 hours after an uninstall — every remaining row belonging to your shop is deleted: your discounts, your settings and any reporting rows.</li>
+    <li><strong>Ask us directly.</strong> Email <a href="mailto:team@mpctrades.com">team@mpctrades.com</a> at any time and we will delete your data and confirm when it is done.</li>
+  </ul>
+  <p>MaxOff also answers Shopify's customer data request and customer erasure
+  webhooks. Because the app holds no customer-linked data, there is nothing to
+  export or erase in response to those — but the requests are received and
+  handled rather than ignored.</p>
+
+  <h2>Your rights</h2>
+  <p>Depending on where you live, you may have the right to ask what personal
+  data we hold about you, to have it corrected, to have it deleted, or to receive
+  a copy of it. Write to <a href="mailto:team@mpctrades.com">team@mpctrades.com</a>
+  and we will respond within 30 days.</p>
+
+  <h2>If this changes</h2>
+  <p>If MaxOff ever needs a permission it does not have today — for example
+  reading orders, so it can show you how much your maximums saved — this page
+  will be updated first, the date at the top will change, and Shopify will ask
+  you to approve the new permission before it takes effect. A new permission
+  cannot be granted without your explicit approval.</p>
+
+  <h2>Contact</h2>
+  <p>MPC Trades<br>
+  <a href="mailto:team@mpctrades.com">team@mpctrades.com</a></p>
+
+  <footer>
+    MaxOff — percentage discounts that stop at a maximum amount.
+    <a href="https://maxoff.mpctrades.com/">maxoff.mpctrades.com</a>
+  </footer>
+
+</div>
+</body>
+</html>
