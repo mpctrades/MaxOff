@@ -58,4 +58,13 @@ api_version = "2026-10"
 redirect_urls = [ "https://dev.maxoff.mpctrades.com/auth/callback" ]
 
 [build]
-automatically_update_urls_on_dev = true
+# false, deliberately. When true, every `shopify app dev` run rewrites
+# application_url to a temporary tunnel and pushes it to Shopify. The moment dev
+# stops, Shopify keeps delivering app/uninstalled and app/scopes_update to a
+# tunnel that no longer answers, and the Monitoring page records them as failed.
+# That is what produced the 95.5% failure rate over 9-14 Sep 2026. Shopify's own
+# guidance: "Recommended for production apps."
+# https://shopify.dev/docs/apps/build/cli-for-apps/app-configuration
+# To develop against a tunnel without touching the deployed URL, use a separate
+# config: `shopify app dev --config dev`.
+automatically_update_urls_on_dev = false
