@@ -121,4 +121,12 @@ model ShopSettings {
   lastCartTestAt            DateTime?   // step 3, "Test it on a big cart"
   lastCartTestSubtotalMinor Int?
   lastCartTestCappedMinor   Int?
+
+  // When this shop was first seen with more active discounts than its plan
+  // allows — set by the Home loader, cleared the moment it is back inside the
+  // allowance. Null means "not over". The grace period runs from this instant,
+  // not from the downgrade itself: Shopify does not tell us when a plan drops,
+  // so the first time we notice is the fairest clock we have.
+  // See app/lib/plan-grace.ts.
+  overLimitSince DateTime?
 }

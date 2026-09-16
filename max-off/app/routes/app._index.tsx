@@ -8,6 +8,7 @@ import { getHomeData } from "../models/home.server";
 import type { HomeData, HomeWeek } from "../models/home.server";
 import { getPlanSummary } from "../models/plan.server";
 import { activeDiscountLimit, isPlanKey } from "../lib/plans";
+import { evaluatePlanGrace } from "../models/plan-grace.server";
 import type { PlanKey } from "../lib/plans";
 import { BrandButton } from "../components/BrandButton";
 import { PlanBar } from "../components/PlanBar";
@@ -19,6 +20,7 @@ import {
   formatAmount,
   formatAmountPlain,
   formatMoney,
+  formatDate,
   formatMonthDay,
   formatPercent,
 } from "../lib/format";
@@ -73,6 +75,18 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const plan =
       forced === null ? planSummary.plan : forced === "unknown" ? null : forced;
 
+    // The over-limit grace period, evaluated against the plan we just read
+    // live — never a forced or cached one, because this branch can pause a
+    // merchant's discounts. `planSummary.activeLimit` is null both for Pro and
+    // for a read that failed, and `evaluatePlanGrace` treats both as "do
+    // nothing", which is the safe reading of each.
+    const grace = await evaluatePlanGrace({
+      shop: session.shop,
+      limit: planSummary.activeLimit,
+      admin,
+      now: new Date(),
+    });
+
     return {
       home,
       planBar: {
@@ -81,6 +95,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         // the meter that belongs to it rather than the live plan's.
         activeLimit: plan === null ? null : activeDiscountLimit(plan),
       },
+      grace: {
+        status: grace.status,
+        overBy: grace.overBy,
+        limit: grace.limit,
+        deadline: grace.deadline ? grace.deadline.toISOString() : null,
+        pausedCodes: grace.pausedCodes,
+      },
       error: null,
     };
   } catch (error) {
@@ -88,6 +109,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     return {
       home: null,
       planBar: null,
+      grace: null,
       error:
         error instanceof Error
           ? error.message
@@ -97,7 +119,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export default function HomePage() {
-  const { home, planBar, error } = useLoaderData<typeof loader>();
+  const { home, planBar, grace, error } = useLoaderData<typeof loader>();
 
   if (home === null) {
     return (
@@ -124,6 +146,8 @@ export default function HomePage() {
         Create capped discount
       </InternalButtonLink>
 
+      {grace && <OverLimitBanner grace={grace} />}
+
       {/* Directly under the title and above the bento row. Home only: Plans &
           billing answers this at length, and every other screen has its own
           job. Shown on a new install too — a merchant deciding whether to pay
@@ -146,6 +170,71 @@ export default function HomePage() {
         </>
       )}
     </s-page>
+  );
+}
+
+/**
+ * The over-limit grace notice, per `app/lib/plan-grace.ts`.
+ *
+ * Two things a merchant can be told here, and they are different sentences:
+ * one warns about a deadline that has not arrived, the other reports discounts
+ * MaxOff has already paused. Neither is written as an alarm — the discounts
+ * are still capping carts correctly, and the only thing wrong is the count.
+ *
+ * "Move up a plan" is offered second, after "pause one". The merchant's own
+ * choice of which campaign to keep is the better answer, and leading with the
+ * upsell would make a limit read as a sales tactic.
+ */
+function OverLimitBanner({
+  grace,
+}: {
+  grace: {
+    status: string;
+    overBy: number;
+    limit: number | null;
+    deadline: string | null;
+    pausedCodes: string[];
+  };
+}) {
+  if (grace.status === "ok" || grace.limit === null) {
+    return null;
+  }
+
+  // Already enforced on this load. Say what was done and name the discounts,
+  // so the merchant can go and un-pause the one we chose wrongly.
+  if (grace.status === "expired") {
+    if (grace.pausedCodes.length === 0) {
+      return null;
+    }
+
+    return (
+      <s-banner heading="MaxOff paused a discount to fit your plan" tone="warning">
+        <s-paragraph>
+          Your plan allows {grace.limit} active capped discount
+          {grace.limit === 1 ? "" : "s"}. MaxOff paused{" "}
+          {grace.pausedCodes.join(", ")}. Pause a different one and activate
+          this again, or move up a plan to run them all.
+        </s-paragraph>
+        <InternalLink href="/app/billing">See plans</InternalLink>
+      </s-banner>
+    );
+  }
+
+  const deadline = grace.deadline ? new Date(grace.deadline) : null;
+
+  return (
+    <s-banner heading="You have more active discounts than your plan allows" tone="warning">
+      <s-paragraph>
+        Your plan allows {grace.limit} active capped discount
+        {grace.limit === 1 ? "" : "s"} and {grace.overBy} more{" "}
+        {grace.overBy === 1 ? "is" : "are"} running. They are all still capping
+        carts normally.
+        {deadline
+          ? ` Pause ${grace.overBy === 1 ? "one" : String(grace.overBy)} before ${formatDate(deadline)}, or MaxOff will pause the newest for you.`
+          : ""}
+      </s-paragraph>
+      <InternalLink href="/app/discounts">Choose which to pause</InternalLink>
+    </s-banner>
   );
 }
 
