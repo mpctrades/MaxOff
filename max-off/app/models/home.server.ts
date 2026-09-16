@@ -45,6 +45,20 @@ export interface HomeWeek {
   keptMinor: number;
 }
 
+/**
+ * One fact about the shop's active maximums, stated without any order data.
+ *
+ * These are what Home can say honestly before `read_orders` is approved: the
+ * ceiling on a single order, and the smallest cart at which a maximum starts
+ * to bite. Both are arithmetic on the merchant's own discounts, so they are
+ * true from the moment the first capped discount exists.
+ */
+export interface HomeCapFact {
+  amountMinor: number;
+  code: string | null;
+  percentage: number;
+}
+
 export interface HomeBiggestSave {
   keptMinor: number;
   orderName: string;
@@ -87,6 +101,18 @@ export interface HomeData {
   discountedOrders: number;
   /** False until the orders/paid webhook has written a single row. */
   hasCapEvents: boolean;
+  /**
+   * The largest maximum among active discounts — the most a single order can
+   * cost the merchant. Null when nothing is active.
+   */
+  biggestMaximum: HomeCapFact | null;
+  /**
+   * The smallest cart at which any active maximum starts to bite, with the
+   * discount it belongs to. Null when nothing is active, or when every active
+   * discount is at 0% (where "cap starts above" has no answer — see
+   * `capStartsAboveMinor`).
+   */
+  earliestCapStartsAbove: HomeCapFact | null;
   biggestSave: HomeBiggestSave | null;
   weeks: HomeWeek[];
   discounts: HomeDiscountRow[];
@@ -117,6 +143,7 @@ export async function getHomeData(shop: string): Promise<HomeData> {
     chartRows,
     activeDiscounts,
     newestDiscount,
+    activeCapFacts,
   ] = await Promise.all([
     // Counted with the list's own predicates (`statusWhere`), so the banner's
     // "N active discounts" and the list's Active tab can never disagree. A
@@ -174,7 +201,43 @@ export async function getHomeData(shop: string): Promise<HomeData> {
       orderBy: { createdAt: "desc" },
       select: { code: true, percentage: true, capMinor: true },
     }),
+    // Every active discount, not the first page of them: the two tiles below
+    // state a maximum and a minimum across the whole set, and a `take` would
+    // quietly make both wrong once a shop has more than one page.
+    prisma.cappedDiscount.findMany({
+      where: { shop, ...statusWhere("active", now) },
+      select: { code: true, percentage: true, capMinor: true },
+    }),
   ]);
+
+  // The two order-free facts. Computed here rather than in the route so the
+  // arithmetic sits next to the query that feeds it, and so a test can reach
+  // it without rendering anything.
+  let biggestMaximum: HomeCapFact | null = null;
+  let earliestCapStartsAbove: HomeCapFact | null = null;
+
+  for (const row of activeCapFacts) {
+    if (biggestMaximum === null || row.capMinor > biggestMaximum.amountMinor) {
+      biggestMaximum = {
+        amountMinor: row.capMinor,
+        code: row.code,
+        percentage: row.percentage,
+      };
+    }
+
+    const startsAbove = capStartsAboveMinor(row.capMinor, row.percentage);
+    if (
+      startsAbove !== null &&
+      (earliestCapStartsAbove === null ||
+        startsAbove < earliestCapStartsAbove.amountMinor)
+    ) {
+      earliestCapStartsAbove = {
+        amountMinor: startsAbove,
+        code: row.code,
+        percentage: row.percentage,
+      };
+    }
+  }
 
   return {
     plan: settings.plan,
@@ -188,6 +251,8 @@ export async function getHomeData(shop: string): Promise<HomeData> {
     ordersCapped: cappedThisMonth,
     discountedOrders: thisMonth._count._all,
     hasCapEvents: capEventCount > 0,
+    biggestMaximum,
+    earliestCapStartsAbove,
     biggestSave: biggestSaveRow
       ? {
           keptMinor: biggestSaveRow.keptMinor,

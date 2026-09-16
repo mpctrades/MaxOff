@@ -165,7 +165,10 @@ export default function HomePage() {
       ) : (
         <>
           <StatTiles home={home} />
-          <MoneyKeptCard home={home} />
+          {/* No CapEvents means no chart and nothing to say about one. A card
+              that exists only to explain its own emptiness is worse than no
+              card; this returns by itself when the first row lands. */}
+          {home.hasCapEvents && <MoneyKeptCard home={home} />}
           <DiscountsCard home={home} />
         </>
       )}
@@ -257,6 +260,74 @@ function NewInstallCard() {
 }
 
 /**
+ * What Home can state before a single order exists.
+ *
+ * Both figures are arithmetic on the merchant's own active discounts, so they
+ * are true from the moment the first capped discount is created — no orders,
+ * no `read_orders`, no webhook. They are also the two numbers a merchant
+ * actually wants before a campaign runs: the worst a single order can cost,
+ * and the cart size where a maximum first starts to bite.
+ *
+ * "Cap starts above" is §11's locked phrase and is used verbatim.
+ */
+function CapTiles({ home }: { home: HomeData }) {
+  const { currencyCode } = home;
+
+  const attribution = (fact: { code: string | null; percentage: number }) =>
+    `${fact.code ? `${fact.code} · ` : ""}${formatPercent(fact.percentage)} off`;
+
+  return (
+    <s-grid
+      gridTemplateColumns="@container (inline-size <= 720px) 1fr 1fr, 1fr 1fr 1fr"
+      gap="base"
+      paddingBlock="base"
+    >
+      <div className="maxoff-tile maxoff-tile--hero">
+        <span className="maxoff-tile__label">Most one order can cost you</span>
+        {home.biggestMaximum ? (
+          <>
+            <span className="maxoff-tile__value">
+              {formatAmount(home.biggestMaximum.amountMinor)}{" "}
+              <small className="maxoff-tile__currency">{currencyCode}</small>
+            </span>
+            <span className="maxoff-tile__note">
+              {attribution(home.biggestMaximum)}
+            </span>
+          </>
+        ) : (
+          <span className="maxoff-tile__note">No active discounts</span>
+        )}
+      </div>
+
+      <div className="maxoff-tile">
+        <span className="maxoff-tile__label">Cap starts above</span>
+        {home.earliestCapStartsAbove ? (
+          <>
+            <span className="maxoff-tile__value">
+              {formatAmount(home.earliestCapStartsAbove.amountMinor)}{" "}
+              <small className="maxoff-tile__currency">{currencyCode}</small>
+            </span>
+            <span className="maxoff-tile__note">
+              {attribution(home.earliestCapStartsAbove)}
+            </span>
+          </>
+        ) : (
+          <span className="maxoff-tile__note">No active discounts</span>
+        )}
+      </div>
+
+      <div className="maxoff-tile">
+        <span className="maxoff-tile__label">Active capped discounts</span>
+        <span className="maxoff-tile__value">{home.activeCount}</span>
+        <span className="maxoff-tile__note">
+          {home.scheduledCount} scheduled, {home.pausedCount} paused
+        </span>
+      </div>
+    </s-grid>
+  );
+}
+
+/**
  * The four figures at the top of Home, per §4.1.
  *
  * Four cards, not Polaris' metrics card: the approved UX gives the first one
@@ -275,6 +346,15 @@ function NewInstallCard() {
  * App Store requirement 1.1.4 is that an app only claims what it does.
  */
 function StatTiles({ home }: { home: HomeData }) {
+  // Nothing writes a CapEvent until `read_orders` is approved and the
+  // orders/paid subscription exists, so this is not "no data yet" — it is the
+  // permanent state of every shop today. Three tiles that are true beat four
+  // where three apologise. The money tiles below return on their own the
+  // moment the first CapEvent lands; nothing here needs changing then.
+  if (!home.hasCapEvents) {
+    return <CapTiles home={home} />;
+  }
+
   const { currencyCode } = home;
   const delta = home.keptThisMonthMinor - home.keptLastMonthMinor;
   const deltaPercent =
