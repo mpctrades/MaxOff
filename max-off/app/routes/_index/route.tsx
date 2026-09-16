@@ -1,18 +1,19 @@
 import type { LoaderFunctionArgs } from "react-router";
-import { redirect, Form, useLoaderData } from "react-router";
-
-import { login } from "../../shopify.server";
+import { redirect } from "react-router";
 
 import styles from "./styles.module.css";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
 
+  // An install from the App Store arrives here as `?shop=…&host=…`. Hand it
+  // straight to the embedded app, which authenticates before it renders
+  // anything (App Store requirement 2.3.2 / 2.3.3).
   if (url.searchParams.get("shop")) {
     throw redirect(`/app?${url.searchParams.toString()}`);
   }
 
-  return { showForm: Boolean(login) };
+  return null;
 };
 
 /**
@@ -20,16 +21,22 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
  *
  * A merchant reaches it by typing the app's own URL, and a Shopify reviewer
  * reaches it before they have installed anything — so it says what MaxOff is
- * and then gets out of the way of the log-in field. It is the only route with
- * no App Bridge and no Polaris, which is why it carries its own stylesheet.
+ * and nothing else. It is the only route with no App Bridge and no Polaris,
+ * which is why it carries its own stylesheet.
+ *
+ * **There is deliberately no log-in form here.** App Store requirement 2.3.1
+ * forbids asking a merchant to type their myshopify.com domain: installation
+ * has to start on a Shopify-owned surface, and identity comes from the `shop`
+ * parameter above, never from something a person types. The template shipped a
+ * "Shop domain" field on this page and at `/auth/login`; both were removed on
+ * 16 Sep 2026, along with the `login` export that fed them. If you are about to
+ * add a field like that back, the answer is no.
  *
  * The copy is BUILD-SPEC §11's locked wording, not a second version of it:
  * "Percentage discounts that stop at a maximum amount", "Cap starts above",
  * and "MaxOff adds nothing to your theme".
  */
 export default function App() {
-  const { showForm } = useLoaderData<typeof loader>();
-
   return (
     <main className={styles.page}>
       <div className={styles.shell}>
@@ -56,35 +63,6 @@ export default function App() {
         </p>
 
         <div className={styles.panels}>
-          {showForm && (
-            <Form className={styles.card} method="post" action="/auth/login">
-              <label className={styles.label} htmlFor="shop">
-                Shop domain
-              </label>
-
-              <div className={styles.field}>
-                <input
-                  id="shop"
-                  className={styles.input}
-                  type="text"
-                  name="shop"
-                  placeholder="my-shop-domain.myshopify.com"
-                  autoComplete="off"
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  spellCheck={false}
-                />
-                <button className={styles.button} type="submit">
-                  Log in
-                </button>
-              </div>
-
-              <span className={styles.hint}>
-                e.g. my-shop-domain.myshopify.com
-              </span>
-            </Form>
-          )}
-
           {/* The same figure the create screen puts in front of a merchant,
               with real numbers, so the product is legible before install. */}
           <div className={styles.example}>
