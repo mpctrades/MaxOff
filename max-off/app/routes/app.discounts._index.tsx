@@ -292,8 +292,14 @@ export default function DiscountsListPage() {
 
           There is no card heading here to sit beside — this page's title
           belongs to the admin's title bar — so the actions take a row of their
-          own. `.maxoff-pageactions` in `theme.css` is the whole of it. */}
-      <div className="maxoff-pageactions">
+          own.
+
+          `s-stack`, not a plain `div`. A raw element as a direct child of
+          `s-page` collapsed the "Cap type" select in the table's filters below
+          to an empty chevron — "All maximums" stopped rendering. Caught by
+          rolling back to the previous build and comparing the two side by
+          side. Keep every direct child of `s-page` a Polaris element. */}
+      <s-stack direction="inline" gap="small-300" justifyContent="end">
         {/* Exports what the merchant is looking at — the current tab and
             search, every page of it, not the 25 rows on screen. Off-plan the
             button stays visible and says why, so a Free merchant can see what
@@ -316,7 +322,7 @@ export default function DiscountsListPage() {
         <BrandButton href="/app/discounts/new">
           Create capped discount
         </BrandButton>
-      </div>
+      </s-stack>
 
       <s-section accessibilityLabel="Capped discounts" padding="none">
         <s-table
