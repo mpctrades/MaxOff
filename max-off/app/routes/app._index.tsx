@@ -612,8 +612,22 @@ function DiscountsCard({ home }: { home: HomeData }) {
 
   return (
     <s-section heading="Your capped discounts">
+      {/* The same two actions as the title bar, repeated here. Once a merchant
+          has scrolled past the tiles the page header is gone, and the table is
+          where the next thing they want to do — test a cart, create another
+          discount — actually belongs. */}
       <InternalButtonLink slot="secondary-actions" href="/app/discounts">
         View all
+      </InternalButtonLink>
+      <InternalButtonLink slot="secondary-actions" href="/app/test">
+        Test a cart
+      </InternalButtonLink>
+      <InternalButtonLink
+        slot="primary-action"
+        variant="primary"
+        href="/app/discounts/new"
+      >
+        Create capped discount
       </InternalButtonLink>
 
       {home.discounts.length === 0 ? (
