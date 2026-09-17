@@ -1,10 +1,17 @@
 /**
- * The plan bar at the top of Home, and nowhere else.
+ * The plan bar at the top of every working screen: Home, Capped discounts,
+ * Create new, Test a cart and Settings.
  *
  * Plans & billing already owns the full answer — price, renewal date, the
  * comparison table, the buttons that change anything. This is the one-line
  * version a merchant reads on the way past: which plan, how much of it is in
  * use, and the one action that follows from it.
+ *
+ * It is not on Plans & billing itself, which has `PlanStrip` — the same facts
+ * at length, on the page that exists to state them.
+ *
+ * Every page that shows it reads the plan once through `readPlanBar`, which
+ * also answers whatever gate that page already had.
  *
  * ## Four states, and why the fourth exists
  *

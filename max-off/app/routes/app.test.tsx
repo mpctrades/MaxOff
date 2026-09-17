@@ -24,6 +24,8 @@ import {
   setLineQuantity,
 } from "../lib/basket";
 import { BrandButton } from "../components/BrandButton";
+import { PlanBar } from "../components/PlanBar";
+import { readPlanBar } from "../models/plan-bar.server";
 import type { BasketLine, PickedVariant } from "../lib/basket";
 import { capDiscountMinor } from "../lib/cap";
 import { toRoundingMode } from "../lib/rounding";
@@ -35,7 +37,7 @@ import type { ValuesElement } from "../lib/polaris-events";
 const CHECKOUT_PREVIEW_ID = "test-checkout-preview";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
 
   // The detail screen links here with the discount it was showing, so the
   // tester opens on that one rather than on whatever happens to be newest.
@@ -43,7 +45,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // URL — an id from another shop must not select anything.
   const requested = new URL(request.url).searchParams.get("discount");
 
-  const [settings, active] = await Promise.all([
+  const [settings, active, planBar] = await Promise.all([
     ensureShopSettings(session.shop),
     listCappedDiscounts({
       shop: session.shop,
@@ -51,9 +53,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       query: "",
       page: 1,
     }),
+    readPlanBar({ shop: session.shop, admin }),
   ]);
 
   return {
+    planBar: planBar.bar,
     requestedDiscountId:
       requested !== null && active.rows.some((row) => row.id === requested)
         ? requested
@@ -103,8 +107,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function TestACartPage() {
-  const { currencyCode, checkoutNote, rounding, discounts, requestedDiscountId } =
-    useLoaderData<typeof loader>();
+  const {
+    currencyCode,
+    checkoutNote,
+    rounding,
+    discounts,
+    requestedDiscountId,
+    planBar,
+  } = useLoaderData<typeof loader>();
   const shopify = useAppBridge();
   const recordFetcher = useFetcher<typeof action>();
 
@@ -185,6 +195,7 @@ export default function TestACartPage() {
 
   return (
     <s-page heading="Test a cart">
+      <PlanBar {...planBar} />
       {/* ---------------- Test basket ---------------- */}
       <s-section heading="Test basket">
         {lines.length === 0 ? (

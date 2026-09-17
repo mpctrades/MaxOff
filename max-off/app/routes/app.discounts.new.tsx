@@ -19,6 +19,8 @@ import {
   refreshShopProfile,
 } from "../models/settings.server";
 import { getPlanForGate } from "../models/plan.server";
+import { readPlanBar } from "../models/plan-bar.server";
+import { PlanBar } from "../components/PlanBar";
 import { CheckoutPreviewModal } from "../components/CheckoutPreviewModal";
 import { CheckoutReceipt } from "../components/CheckoutReceipt";
 import {
@@ -121,7 +123,7 @@ const TEMPLATES: { name: string; percentage: string; capAmount: string }[] = [
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
 
-  const [{ settings }, plan] = await Promise.all([
+  const [{ settings }, planContext] = await Promise.all([
     // The profile, not just the row: this form is where a merchant types the
     // dates, so it must not be the screen still holding a stale UTC because
     // nobody had opened Settings since installing. Runs alongside the plan
@@ -142,9 +144,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
      *
      * The action checks the plan again before anything is written, so this
      * read decides what is offered and never what is allowed.
+     *
+     * The plan bar rides along on the same read — see `plan-bar.server.ts`
+     * for why the plan a gate acts on and the plan a merchant is told they
+     * are on are not the same value.
      */
-    getPlanForGate({ shop: session.shop, admin }),
+    readPlanBar({ shop: session.shop, admin }),
   ]);
+
+  const plan = planContext.gate;
 
   // "Duplicate" on the list lands here with the id of the discount to copy.
   // The form is prefilled from it and nothing is written until the merchant
@@ -157,6 +165,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       : await readCapConfigFor({ shop: session.shop, id: duplicateId, admin });
 
   return {
+    planBar: planContext.bar,
     currencyCode: settings.currencyCode,
     checkoutNote: settings.defaultCheckoutNote || DEFAULT_CHECKOUT_NOTE,
     // The shop's Settings choice, so the live preview and the receipt below it
@@ -501,8 +510,15 @@ function MarketMaximums({
 }
 
 export default function CreateDiscountPage() {
-  const { currencyCode, rounding, timeZone, defaults, plan, duplicateFrom } =
-    useLoaderData<typeof loader>();
+  const {
+    currencyCode,
+    rounding,
+    timeZone,
+    defaults,
+    plan,
+    duplicateFrom,
+    planBar,
+  } = useLoaderData<typeof loader>();
 
   /** The plan's run-length ceiling in days, and whether it may cap uses. */
   const maxDays = maxCampaignDays(plan);
@@ -899,6 +915,7 @@ export default function CreateDiscountPage() {
 
   return (
     <s-page heading="Create capped discount">
+      <PlanBar {...planBar} />
       <ui-save-bar id={SAVE_BAR_ID}>
         <button variant="primary" onClick={save} disabled={saving}>
           Save &amp; activate

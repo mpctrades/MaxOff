@@ -12,6 +12,8 @@ import { authenticate } from "../shopify.server";
 import { refreshShopProfile, upsertSettings } from "../models/settings.server";
 import { restampRounding } from "../models/discounts.server";
 import { getPlanForGate } from "../models/plan.server";
+import { readPlanBar } from "../models/plan-bar.server";
+import { PlanBar } from "../components/PlanBar";
 import { CAP_ENGINE_DEPLOYED } from "../lib/cap";
 import {
   CAP_SCOPES,
@@ -70,10 +72,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // form reads it live: this page decides what may be edited, and a merchant
   // who upgraded a minute ago would otherwise be shown a locked field for the
   // thing they just paid for.
-  const [{ settings }, plan] = await Promise.all([
+  const [{ settings }, planContext] = await Promise.all([
     refreshShopProfile({ shop: session.shop, admin }),
-    getPlanForGate({ shop: session.shop, admin }),
+    readPlanBar({ shop: session.shop, admin }),
   ]);
+
+  // The same billing read answers both questions — see `plan-bar.server.ts`
+  // for why the gate and the label are not the same plan.
+  const plan = planContext.gate;
 
   return {
     currencyCode: settings.currencyCode,
@@ -87,6 +93,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     defaultCombinesProduct: settings.defaultCombinesProduct,
     defaultCombinesOrder: settings.defaultCombinesOrder,
     defaultCombinesShipping: settings.defaultCombinesShipping,
+    planBar: planContext.bar,
     plan,
     noteGate: gateFor(plan, "customCheckoutWording"),
     perMarketGate: gateFor(plan, "perMarketCurrency"),
@@ -268,6 +275,7 @@ export default function SettingsPage() {
 
   return (
     <s-page heading="Settings">
+      <PlanBar {...data.planBar} />
       <ui-save-bar id={SAVE_BAR_ID}>
         <button variant="primary" onClick={save} disabled={saving}>
           Save

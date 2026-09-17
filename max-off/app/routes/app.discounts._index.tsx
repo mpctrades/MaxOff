@@ -23,6 +23,8 @@ import type {
   MethodFilter,
 } from "../models/discounts.server";
 import { getPlanForGate } from "../models/plan.server";
+import { readPlanBar } from "../models/plan-bar.server";
+import { PlanBar } from "../components/PlanBar";
 import { ensureShopSettings } from "../models/settings.server";
 import {
   DISCOUNT_TAB_LABELS,
@@ -62,7 +64,7 @@ function exportFilename(): string {
 }
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
 
   // The cached plan, not a live read: the only thing it decides here is the
   // wording of a toast on a button that does nothing yet. A ~1.9s round trip
@@ -82,16 +84,31 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const capType = isCapTypeFilter(capTypeParam) ? capTypeParam : "all";
 
   try {
-    const list = await listCappedDiscounts({
-      shop: session.shop,
+    /* In parallel, so the billing read and the list are not queued behind each
+       other. The bar is on every page now, and a page that waits for two
+       sequential round trips before it can name a plan is worse than no bar. */
+    const [list, planBar] = await Promise.all([
+      listCappedDiscounts({
+        shop: session.shop,
+        tab,
+        query,
+        method,
+        capType,
+        page: Number.isNaN(page) ? 1 : page,
+      }),
+      readPlanBar({ shop: session.shop, admin }),
+    ]);
+
+    return {
+      list,
       tab,
       query,
       method,
       capType,
-      page: Number.isNaN(page) ? 1 : page,
-    });
-
-    return { list, tab, query, method, capType, exportGate, error: null };
+      exportGate,
+      planBar: planBar.bar,
+      error: null,
+    };
   } catch (error) {
     return {
       list: null,
@@ -100,6 +117,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       method,
       capType,
       exportGate,
+      planBar: null,
       error:
         error instanceof Error
           ? error.message
@@ -167,7 +185,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function DiscountsListPage() {
-  const { list, tab, query, method, capType, exportGate, error } =
+  const { list, tab, query, method, capType, exportGate, planBar, error } =
     useLoaderData<typeof loader>();
   const shopify = useAppBridge();
   const submit = useSubmit();
@@ -286,6 +304,8 @@ export default function DiscountsListPage() {
 
   return (
     <s-page heading="Capped discounts">
+      {planBar && <PlanBar {...planBar} />}
+
       {/* Above the table rather than in the title bar, and in MaxOff's own
           button rather than Polaris' bevelled near-black one, so this row
           matches the one on Home and "Change plan" on the plan bar.
