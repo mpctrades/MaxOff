@@ -311,6 +311,70 @@
  */
 
 /* ===========================================================================
+ * Discount detail — the label/value lists.
+ *
+ * Eleven facts on that page, each a label and its value. They were rendering
+ * as twenty-two stacked lines, which is what made the page read as a wall:
+ * nothing tied a value to the label above it except proximity, and every
+ * section was twice as tall as it needed to be.
+ *
+ * Two columns, and a hairline between rows so each pair is visibly one thing.
+ * A plain grid rather than Polaris' responsive `gridTemplateColumns`, which is
+ * where the original broke — see the note on `Row`.
+ * ======================================================================== */
+
+.maxoff-detail-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.maxoff-detail-row {
+  display: grid;
+  grid-template-columns: minmax(0, 15rem) minmax(0, 1fr);
+  gap: 4px 20px;
+  align-items: baseline;
+  padding-block: 10px;
+  /* Between rows, never above the first or below the last: the section's own
+     card edge already closes the list at both ends. */
+  border-block-start: 1px solid var(--maxoff-chart-grid);
+}
+
+.maxoff-detail-row:first-child {
+  border-block-start: 0;
+  padding-block-start: 2px;
+}
+
+.maxoff-detail-row:last-child {
+  padding-block-end: 2px;
+}
+
+.maxoff-detail-row__label {
+  color: var(--maxoff-text-subdued);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+/* The value is the answer, so it carries the weight — that is what lets the
+   eye run down the right-hand column and read only the facts. */
+.maxoff-detail-row__value {
+  color: var(--maxoff-text);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+/* One column when there is no room for two. A width query, not `@container`:
+   nothing in this stylesheet declares `container-type`, so a container query
+   would depend on a Polaris ancestor establishing one and would never fire if
+   it does not. */
+@media (max-width: 720px) {
+  .maxoff-detail-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+}
+
+/* ===========================================================================
  * Plans & billing — the current-plan strip.
  *
  * Everything bespoke for that card lives between here and the end marker.

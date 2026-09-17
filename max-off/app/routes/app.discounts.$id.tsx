@@ -123,7 +123,12 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
     percentage: config.percentage,
     capMinor,
     currencyCode: config.currencyCode,
-    startsAboveMinor: capStartsAboveMinor(config.percentage, capMinor),
+    /* (capMinor, percentage) — in that order. Reversed, this returned 0 for
+       every discount on the page, because both parameters are `number` and
+       nothing but arithmetic could tell. A 20% / 50.00 cap reported "Cap
+       starts above 0.00 USD", i.e. that the maximum bites from the first
+       cent. `cap-starts-above.test.ts` pins the order down. */
+    startsAboveMinor: capStartsAboveMinor(capMinor, config.percentage),
     scope: config.scope,
     appliesTo: config.appliesTo,
     collectionCount: config.collectionIds.length,
@@ -426,7 +431,7 @@ function ReadableDiscount({ data }: { data: ReadableData }) {
       </s-grid>
 
       <s-section heading="How it applies">
-        <s-stack direction="block" gap="small-300">
+        <div className="maxoff-detail-list">
           <Row label="The maximum applies to" value={SCOPE_LABELS[data.scope] ?? data.scope} />
           <Row label="Applies to" value={appliesTo} />
           <Row
@@ -447,11 +452,11 @@ function ReadableDiscount({ data }: { data: ReadableData }) {
                 .join(", ")}
             />
           )}
-        </s-stack>
+        </div>
       </s-section>
 
       <s-section heading="Active dates">
-        <s-stack direction="block" gap="small-300">
+        <div className="maxoff-detail-list">
           <Row
             label="Starts"
             value={formatDate(new Date(data.startsAt), data.timeZone)}
@@ -477,11 +482,11 @@ function ReadableDiscount({ data }: { data: ReadableData }) {
               this one back when you activate it again.
             </s-text>
           )}
-        </s-stack>
+        </div>
       </s-section>
 
       <s-section heading="Usage">
-        <s-stack direction="block" gap="small-300">
+        <div className="maxoff-detail-list">
           <Row
             label="Times used"
             value={data.timesUsed === null ? NO_DATA : String(data.timesUsed)}
@@ -502,7 +507,7 @@ function ReadableDiscount({ data }: { data: ReadableData }) {
             Times used comes from Shopify. Money you kept needs per-order
             tracking, which MaxOff does not do yet.
           </s-text>
-        </s-stack>
+        </div>
       </s-section>
 
       <s-section heading="Combinations">
@@ -513,27 +518,37 @@ function ReadableDiscount({ data }: { data: ReadableData }) {
       </s-section>
 
       <s-section heading="What the customer sees">
-        <s-stack direction="block" gap="small-300">
+        <div className="maxoff-detail-list">
           <s-paragraph>{data.checkoutNote}</s-paragraph>
           <s-text color="subdued">
             Shown at checkout only when the maximum is what decided the amount.
           </s-text>
-        </s-stack>
+        </div>
       </s-section>
     </s-page>
   );
 }
 
 /** One label-and-value line. The grid keeps the values in a column. */
+/**
+ * One label and its value, on one line.
+ *
+ * This used to be an `s-grid` with
+ * `gridTemplateColumns="@container (inline-size <= 500px) 1fr, minmax(0, 14rem) 1fr"`,
+ * and it never once rendered two columns: Polaris separates the responsive
+ * branches of that prop with a comma, and `minmax(0, 14rem)` contains one. The
+ * value was being cut in half mid-function, so every pair fell back to a single
+ * column and the page read as twenty-two loose lines instead of eleven facts.
+ *
+ * Our own grid, in `theme.css`, with no comma to trip over and no dependency on
+ * a container context this stylesheet never establishes.
+ */
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <s-grid
-      gridTemplateColumns="@container (inline-size <= 500px) 1fr, minmax(0, 14rem) 1fr"
-      gap="small-300"
-    >
-      <s-text color="subdued">{label}</s-text>
-      <s-text>{value}</s-text>
-    </s-grid>
+    <div className="maxoff-detail-row">
+      <span className="maxoff-detail-row__label">{label}</span>
+      <span className="maxoff-detail-row__value">{value}</span>
+    </div>
   );
 }
 
