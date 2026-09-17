@@ -824,11 +824,15 @@
   padding: 5px 14px;
   border: 0;
   border-radius: 8px;
-  /* The same dark green the badge's text uses, now carrying the button. White
-     on #0F5132 is about 9.4:1, so the label is the strongest-contrast text in
-     the row. Still inert: no hover, no pointer, out of the tab order — the
-     fill marks where you are, it does not offer anything. */
-  background: #0f5132;
+  /* A step up from the #0F5132 the badge text uses, which read as almost
+     black at button size. White on #157347 is 5.9:1 — measured, not picked by
+     eye — so it stays clear of the 4.5:1 AA floor for a 13px label with room
+     to spare. #1A8754 was the next stop up and lands on 4.5:1 exactly, which
+     is too close to the line to spend on a shade.
+
+     Still inert: no hover, no pointer, out of the tab order — the fill marks
+     where you are, it does not offer anything. */
+  background: #157347;
   color: #fff;
   font: inherit;
   font-size: 13px;
