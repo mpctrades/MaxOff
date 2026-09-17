@@ -618,6 +618,23 @@
   line-height: 20px;
 }
 
+/**
+ * A row of actions sitting above a card rather than inside its heading.
+ *
+ * Capped discounts has no card heading to pair with — its title lives in the
+ * admin's own title bar — so its actions get a row of their own directly above
+ * the table, right-aligned to where the eye already goes for controls. Same
+ * gap and wrapping behaviour as `.maxoff-cardhead`; only the title is missing.
+ */
+.maxoff-pageactions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-block-end: 12px;
+}
+
 .maxoff-cardhead__actions {
   display: flex;
   flex-wrap: wrap;

@@ -286,28 +286,37 @@ export default function DiscountsListPage() {
 
   return (
     <s-page heading="Capped discounts">
-      {/* Exports what the merchant is looking at — the current tab and search,
-          every page of it, not the 25 rows on screen. Off-plan the button
-          stays visible and says why, so a Free merchant can see what Pro adds
-          rather than meeting a control that is not there. */}
-      <s-button
-        slot="secondary-actions"
-        onClick={
-          exportGate.usable
-            ? exportCsv
-            : () => shopify.toast.show(EXPORT_NOT_ON_PLAN)
-        }
-        {...(exporting ? { loading: true } : {})}
-      >
-        Export
-      </s-button>
-      <InternalButtonLink
-        slot="primary-action"
-        variant="primary"
-        href="/app/discounts/new"
-      >
-        Create capped discount
-      </InternalButtonLink>
+      {/* Above the table rather than in the title bar, and in MaxOff's own
+          button rather than Polaris' bevelled near-black one, so this row
+          matches the one on Home and "Change plan" on the plan bar.
+
+          There is no card heading here to sit beside — this page's title
+          belongs to the admin's title bar — so the actions take a row of their
+          own. `.maxoff-pageactions` in `theme.css` is the whole of it. */}
+      <div className="maxoff-pageactions">
+        {/* Exports what the merchant is looking at — the current tab and
+            search, every page of it, not the 25 rows on screen. Off-plan the
+            button stays visible and says why, so a Free merchant can see what
+            Pro adds rather than meeting a control that is not there.
+
+            `BrandButton` has no loading state, so the label carries it: an
+            export that says "Exporting…" and refuses a second click reports
+            the same thing a spinner would, in words. */}
+        <BrandButton
+          variant="secondary"
+          disabled={exporting}
+          onClick={
+            exportGate.usable
+              ? exportCsv
+              : () => shopify.toast.show(EXPORT_NOT_ON_PLAN)
+          }
+        >
+          {exporting ? "Exporting…" : "Export"}
+        </BrandButton>
+        <BrandButton href="/app/discounts/new">
+          Create capped discount
+        </BrandButton>
+      </div>
 
       <s-section accessibilityLabel="Capped discounts" padding="none">
         <s-table
