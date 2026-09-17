@@ -4,7 +4,13 @@ import type {
   LoaderFunctionArgs,
 } from "react-router";
 import { useEffect, useState } from "react";
-import { Form, useActionData, useLoaderData, useNavigation } from "react-router";
+import {
+  Form,
+  redirect,
+  useActionData,
+  useLoaderData,
+  useNavigation,
+} from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { useAppBridge } from "@shopify/app-bridge-react";
 
@@ -183,7 +189,14 @@ export const action = async ({ params, request }: ActionFunctionArgs): Promise<E
     return { ok: false, errors: {}, message: saved.message };
   }
 
-  return { ok: true, errors: {}, message: `${saved.name} updated` };
+  /* Back to the discount, not back to the form. A merchant who has saved is
+     done with the form, and leaving them on it invites a second save of the
+     same thing. `?updated=1` is what tells the detail page to say so —
+     `throw`, not `return`, because a redirect is not this action's data.
+
+     Only on success: a validation failure returns above, so the form keeps
+     its errors and the values that caused them. */
+  throw redirect(`/app/discounts/${params.id}?updated=1`);
 };
 
 export default function EditCappedDiscountPage() {

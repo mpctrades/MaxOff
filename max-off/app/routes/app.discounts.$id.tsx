@@ -4,7 +4,13 @@ import type {
   LoaderFunctionArgs,
 } from "react-router";
 import { useEffect } from "react";
-import { isRouteErrorResponse, useFetcher, useLoaderData, useRouteError } from "react-router";
+import {
+  isRouteErrorResponse,
+  useFetcher,
+  useLoaderData,
+  useRouteError,
+  useSearchParams,
+} from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { useAppBridge } from "@shopify/app-bridge-react";
 
@@ -274,6 +280,28 @@ function UnreadableDiscount({ data }: { data: UnreadableData }) {
 function ReadableDiscount({ data }: { data: ReadableData }) {
   const shopify = useAppBridge();
   const fetcher = useFetcher<typeof action>();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  /* The edit form redirects here with `?updated=1` rather than staying put, so
+     the confirmation has to be said on arrival. The parameter is stripped
+     immediately, and with `replace` — otherwise a refresh or a Back would
+     announce a save that happened minutes ago. */
+  const justUpdated = searchParams.get("updated") === "1";
+  useEffect(() => {
+    if (!justUpdated) {
+      return;
+    }
+
+    shopify.toast.show(`${data.name} updated`);
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        next.delete("updated");
+        return next;
+      },
+      { replace: true },
+    );
+  }, [justUpdated, shopify, data.name, setSearchParams]);
 
   const money = (minor: number) => formatMoney(minor, data.currencyCode);
   const paused = data.status === "paused";
