@@ -1477,5 +1477,12 @@ green on 3011; switch; then remove the legacy `maxoff-app-1` to free 3010.
 
 **Still open** — the switch is atomic per connection, but a browser holding HTML from the outgoing
 build can still request a hashed asset the incoming one does not have. The exposure is the seconds
-between the reload and `docker compose stop`. If it ever bites, keep the old colour running for a
-grace period instead of stopping it immediately.
+between the reload and `docker compose stop`.
+
+**Update, later the same day** — that window bit, in the other direction. A deploy returned a real
+`502 Bad Gateway` while every health check was green and nginx was already pointed at the new
+colour. `systemctl reload nginx` is graceful for *new* connections, but its old workers keep
+serving requests already in flight, and those are still routed to the old port; stopping that
+container the instant the reload returns kills them mid-response. `deploy.sh` now drains for
+`DRAIN_SECONDS` (5 by default) before stopping the outgoing colour, which also closes the hashed-
+asset window above.

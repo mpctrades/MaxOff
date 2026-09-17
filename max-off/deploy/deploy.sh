@@ -30,6 +30,9 @@ ACTIVE_FILE=/etc/nginx/maxoff/dev-active-upstream.conf
 HEALTH_URL_HOST=127.0.0.1
 BLUE_PORT=3010
 GREEN_PORT=3011
+# How long the outgoing colour keeps serving after nginx has been pointed away
+# from it. See the note above `sleep` at the end of this script.
+DRAIN_SECONDS=${DRAIN_SECONDS:-5}
 
 port_for() { [[ $1 == blue ]] && echo "$BLUE_PORT" || echo "$GREEN_PORT"; }
 
@@ -99,6 +102,20 @@ fi
 
 systemctl reload nginx
 echo "deploy: nginx now serves $idle (127.0.0.1:$idle_port)"
+
+# Drain before stopping the old colour.
+#
+# `systemctl reload nginx` is graceful for *new* connections — they go to the
+# new colour immediately — but nginx's old workers keep serving requests that
+# were already in flight, and those are still routed to the old port. Stopping
+# that container the instant the reload returns kills them mid-response, which
+# is a 502 for whoever was mid-request. Seen once, on 17 Sep 2026: every health
+# check was green and the page still returned 502 Bad Gateway.
+#
+# Five seconds is longer than any request this app serves, and it costs nothing
+# — the new colour is already taking all new traffic.
+echo "deploy: draining app-$live for ${DRAIN_SECONDS}s"
+sleep "$DRAIN_SECONDS"
 
 # Only now is the old colour idle. Stopped, not removed, so `rollback` is
 # instant and the previous build stays on the box.
