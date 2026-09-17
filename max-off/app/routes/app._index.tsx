@@ -12,10 +12,7 @@ import { evaluatePlanGrace } from "../models/plan-grace.server";
 import type { PlanKey } from "../lib/plans";
 import { BrandButton } from "../components/BrandButton";
 import { PlanBar } from "../components/PlanBar";
-import {
-  InternalButtonLink,
-  InternalLink,
-} from "../components/InternalNavigation";
+import { InternalLink } from "../components/InternalNavigation";
 import {
   formatAmount,
   formatAmountPlain,
@@ -134,18 +131,12 @@ export default function HomePage() {
   const isNewInstall = home.totalCount === 0;
 
   return (
+    /* No title-bar actions. "Test a cart" and "Create capped discount" live on
+       the capped-discounts card, where the table they act on is; repeating them
+       up here gave the same two actions twice on one screen. A shop with no
+       discounts yet has no such card, and `NewInstallCard` carries the create
+       action instead. */
     <s-page heading="MaxOff">
-      <InternalButtonLink slot="secondary-actions" href="/app/test">
-        Test a cart
-      </InternalButtonLink>
-      <InternalButtonLink
-        slot="primary-action"
-        variant="primary"
-        href="/app/discounts/new"
-      >
-        Create capped discount
-      </InternalButtonLink>
-
       {grace && <OverLimitBanner grace={grace} />}
 
       {/* Directly under the title and above the bento row. Home only: Plans &
