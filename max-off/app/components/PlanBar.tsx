@@ -32,6 +32,7 @@
  * are React Router `Link`s so navigation stays inside the embedded frame.
  */
 
+import type { CSSProperties } from "react";
 import { Link } from "react-router";
 
 import { nextPlan, PLAN_KEYS, PLAN_LABELS, planChips } from "../lib/plans";
@@ -142,12 +143,17 @@ export function PlanBar({ plan, activeCount, activeLimit }: PlanBarProps) {
             <span className="maxoff-planbar__meter-track">
               <span
                 className="maxoff-planbar__meter-fill"
-                /* Clamped both ends: a shop that was over its allowance before
-                   the limits changed would otherwise draw a bar past the end
-                   of its own track. */
-                style={{
-                  inlineSize: `${Math.min(100, Math.max(0, (activeCount / activeLimit) * 100))}%`,
-                }}
+                /* The width is handed over as a custom property rather than
+                   set directly, so the CSS can animate from zero up to it on
+                   first paint — a number that counts up reads as a live
+                   measurement instead of a static bar. Clamped both ends: a
+                   shop that was over its allowance before the limits changed
+                   would otherwise draw past the end of its own track. */
+                style={
+                  {
+                    "--maxoff-meter-fill": `${Math.min(100, Math.max(0, (activeCount / activeLimit) * 100))}%`,
+                  } as CSSProperties
+                }
               />
             </span>
           </div>
