@@ -824,9 +824,12 @@
   padding: 5px 14px;
   border: 0;
   border-radius: 8px;
-  background: #e3f3e9;
-  /* 0F5132 on E3F3E9 is about 8.6:1. */
-  color: #0f5132;
+  /* The same dark green the badge's text uses, now carrying the button. White
+     on #0F5132 is about 9.4:1, so the label is the strongest-contrast text in
+     the row. Still inert: no hover, no pointer, out of the tab order — the
+     fill marks where you are, it does not offer anything. */
+  background: #0f5132;
+  color: #fff;
   font: inherit;
   font-size: 13px;
   font-weight: 600;
