@@ -27,6 +27,13 @@ x-app: &app
     - .env
   environment:
     DATABASE_URL: postgresql://maxoff:${POSTGRES_PASSWORD}@db:5432/maxoff?schema=public
+    # Off unless the deploy is run with it set, e.g.
+    #   sudo MAXOFF_DEV_TOOLS=1 /opt/maxoff/deploy/deploy.sh
+    # Lets `?plan=free|growth|pro` on Plans & billing stand in for the real
+    # plan, so the states a dev store can never reach are reviewable. It moves
+    # labels and colours only — see app/lib/dev-preview.ts. Never set it on a
+    # deployment serving real merchants.
+    MAXOFF_DEV_TOOLS: ${MAXOFF_DEV_TOOLS:-}
   depends_on:
     db:
       condition: service_healthy

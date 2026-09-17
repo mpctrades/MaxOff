@@ -12,14 +12,19 @@ import {
 import { activeDiscountWhere } from "../models/discounts.server";
 import {
   activeDiscountLimit,
+  isPlanKey,
   nextPlan,
+  planActionLabel,
+  planAllowanceSummary,
   planCard,
+  planDirection,
   PLAN_KEYS,
   PLAN_LABELS,
   PLAN_PRICE_MINOR,
   PLAN_TAGLINES,
 } from "../lib/plans";
 import type { PlanKey } from "../lib/plans";
+import { devPreviewAllowed } from "../lib/dev-preview";
 import { formatAmount } from "../lib/format";
 import { BrandButton } from "../components/BrandButton";
 import { PlanStrip } from "../components/PlanStrip";
@@ -41,6 +46,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     prisma.shopSettings.findUnique({ where: { shop: session.shop } }),
   ]);
 
+  /* `/app/billing?plan=free` on a deployment that allows previews — see
+     `dev-preview.ts`. A dev store sits on one plan and can never show the
+     other two columns as "current", which is exactly the arrangement this
+     section exists to get right. Refused unless explicitly switched on, and
+     it reaches labels and colours only: every button below still goes to
+     Shopify's hosted plan page, and every real gate re-reads the plan. */
+  const forcedParam = new URL(request.url).searchParams.get("plan");
+  const forcedPlan =
+    devPreviewAllowed() && isPlanKey(forcedParam) ? forcedParam : null;
+  const plan = forcedPlan ?? current.plan;
+
   // Only the active count is needed now. The money-kept figure and its
   // CapEvent aggregate went with the "Keep more of every large order" card
   // that this layout replaced — two queries on every load for something
@@ -50,7 +66,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   });
 
   return {
-    plan: current.plan,
+    plan,
+    planPreviewed: forcedPlan !== null,
     planSource: current.source,
     unmappedSubscriptionName: current.unmappedSubscriptionName,
     currentPeriodEnd: current.currentPeriodEnd,
@@ -60,12 +77,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     }),
     currencyCode: settings?.currencyCode ?? "USD",
     activeCount,
-    activeLimit: activeDiscountLimit(current.plan),
+    activeLimit: activeDiscountLimit(plan),
     /** The column the page recommends: whatever is one step up, nothing on
      *  Pro. A statically "recommended" plan is the tell that a pricing table
      *  was hard-coded, and it reads as nonsense to a merchant who is already
      *  above it. */
-    recommended: nextPlan(current.plan),
+    recommended: nextPlan(plan),
   };
 };
 
@@ -118,6 +135,15 @@ export default function BillingPage() {
 
       {/* ---------------- Compare plans ---------------- */}
       <s-section heading="Compare plans">
+        {/* One line naming where the merchant already is, so the three columns
+            below are read as a choice relative to something rather than as a
+            fresh pitch. The allowance is built from the capability matrix in
+            `plans.ts`, so this sentence cannot drift from the cards under it. */}
+        <s-paragraph color="subdued">
+          You are on {PLAN_LABELS[data.plan]} &mdash;{" "}
+          {planAllowanceSummary(data.plan)}.
+        </s-paragraph>
+
         <div className="maxoff-plan-cards">
           {PLAN_KEYS.map((plan) => (
             <PlanCard
@@ -169,24 +195,44 @@ function PlanCard({
   hostedPlanUrl: string | null;
 }) {
   const { allowance, rollupFrom, features } = planCard(plan);
-  const isRecommended = plan === recommended;
+  const direction = planDirection(plan, currentPlan);
+
+  /* The recommended ring is dropped on the card the merchant is already on.
+     Green already says "you are here"; a second 2px ring saying "consider
+     this" on the same card is two instructions at once. */
+  const isRecommended = plan === recommended && direction !== "current";
 
   return (
     <div
-      className={`maxoff-plan-card${
-        isRecommended ? " maxoff-plan-card--recommended" : ""
-      }`}
+      className={[
+        "maxoff-plan-card",
+        `maxoff-plan-card--${direction}`,
+        isRecommended ? "maxoff-plan-card--recommended" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
     >
       <div className="maxoff-plan-card__name">
         <strong>{PLAN_LABELS[plan]}</strong>
-        {plan === currentPlan && <s-badge tone="success">Current</s-badge>}
-        {isRecommended && <s-badge>Recommended</s-badge>}
+        {/* Our own marks, not `s-badge`: Polaris paints a badge inside its
+            shadow DOM, so neither the soft green nor the brand orange this
+            section is built around is reachable through it. */}
+        {direction === "current" && (
+          <span className="maxoff-plan-card__badge maxoff-plan-card__badge--current">
+            Current
+          </span>
+        )}
+        {isRecommended && (
+          <span className="maxoff-plan-card__badge maxoff-plan-card__badge--recommended">
+            Recommended
+          </span>
+        )}
       </div>
 
       <div className="maxoff-plan-card__price">
         <span className="maxoff-plan-card__amount maxoff-tabular">
           {formatAmount(PLAN_PRICE_MINOR[plan])}
-        </span>{" "}
+        </span>
         <span className="maxoff-plan-card__per">
           {currencyCode}
           {PLAN_PRICE_MINOR[plan] > 0 && " / month"}
@@ -237,7 +283,6 @@ function PlanCard({
         <PlanAction
           plan={plan}
           currentPlan={currentPlan}
-          recommended={recommended}
           hostedPlanUrl={hostedPlanUrl}
         />
       </div>
@@ -256,24 +301,29 @@ function PlanCard({
 function PlanAction({
   plan,
   currentPlan,
-  recommended,
   hostedPlanUrl,
 }: {
   plan: PlanKey;
   currentPlan: PlanKey;
-  recommended: PlanKey | null;
   hostedPlanUrl: string | null;
 }) {
-  if (plan === currentPlan) {
+  const direction = planDirection(plan, currentPlan);
+
+  if (direction === "current") {
+    /* Not a `BrandButton`: `disabled` on a real button takes it out of the
+       accessibility tree in some readers, and this one has something to say.
+       `aria-disabled` keeps it announced while `tabIndex={-1}` and the absence
+       of any handler keep it out of the tab order and inert. */
     return (
-      <BrandButton
-        fill
-        disabled
-        variant="secondary"
-        accessibilityLabel="This is your current plan"
+      <button
+        type="button"
+        className="maxoff-plan-card__current-action"
+        aria-disabled="true"
+        aria-label="Current plan, no action available"
+        tabIndex={-1}
       >
         Current plan
-      </BrandButton>
+      </button>
     );
   }
 
@@ -292,18 +342,12 @@ function PlanAction({
     );
   }
 
-  const below = PLAN_KEYS.indexOf(plan) < PLAN_KEYS.indexOf(currentPlan);
-
+  /* One variant for both directions. The fill is set by the card's own
+     `--up` / `--down` class in `theme.css`, so the colour follows the plan's
+     position rather than a prop that has to be kept in step with it. */
   return (
-    <BrandButton
-      fill
-      href={hostedPlanUrl}
-      target="_top"
-      variant={plan === recommended ? "primary" : "secondary"}
-    >
-      {below
-        ? `Move to ${PLAN_LABELS[plan]}`
-        : `Upgrade to ${PLAN_LABELS[plan]}`}
+    <BrandButton fill href={hostedPlanUrl} target="_top">
+      {planActionLabel(plan, currentPlan)}
     </BrandButton>
   );
 }

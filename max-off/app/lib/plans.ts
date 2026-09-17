@@ -395,6 +395,72 @@ export function planChips(plan: PlanKey): string[] {
   return chips;
 }
 
+/**
+ * Where a plan sits relative to the one the merchant is on.
+ *
+ * Read off `PLAN_KEYS`, never off the plan's name. That is the whole point:
+ * "Pro is the orange one" is true on Free and wrong on Pro, and a fourth tier
+ * would need every colour rule rewritten. Position is the only thing that
+ * survives a change to the ladder.
+ */
+export type PlanDirection = "up" | "current" | "down";
+
+export function planDirection(
+  plan: PlanKey,
+  currentPlan: PlanKey,
+): PlanDirection {
+  const here = PLAN_KEYS.indexOf(plan);
+  const now = PLAN_KEYS.indexOf(currentPlan);
+
+  if (here === now) {
+    return "current";
+  }
+
+  return here > now ? "up" : "down";
+}
+
+/**
+ * What the button under a plan says.
+ *
+ * The verb carries the direction on its own, so the colour is never the only
+ * thing telling a merchant which way a button moves them — "Upgrade to" and
+ * "Move to" read the same to someone who cannot separate orange from black.
+ */
+export function planActionLabel(
+  plan: PlanKey,
+  currentPlan: PlanKey,
+): string {
+  switch (planDirection(plan, currentPlan)) {
+    case "current":
+      return "Current plan";
+    case "up":
+      return `Upgrade to ${PLAN_LABELS[plan]}`;
+    case "down":
+      return `Move to ${PLAN_LABELS[plan]}`;
+  }
+}
+
+/**
+ * The plan's allowance as one lower-case clause, for the line above the cards:
+ * "You are on Growth — 20 capped discounts, whole-order maximum."
+ *
+ * Built from `planCard` and the capability matrix rather than written out, so
+ * the sentence cannot claim an allowance the cards below it disagree with.
+ */
+export function planAllowanceSummary(plan: PlanKey): string {
+  const { allowance } = planCard(plan);
+  const discounts = allowance.lead
+    ? `${allowance.lead.toLowerCase()} ${allowance.label}`
+    : allowance.label;
+
+  const maximums =
+    hasNow(plan, "itemMaximums") && hasNow(plan, "collectionMaximums")
+      ? "every cap type"
+      : "whole-order maximum";
+
+  return `${discounts}, ${maximums}`;
+}
+
 /** Everything this plan has today. */
 export function includedNow(plan: PlanKey): Capability[] {
   return CAPABILITIES.filter((entry) => entry.built && entry.plans.includes(plan));

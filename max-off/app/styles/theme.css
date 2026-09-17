@@ -425,18 +425,80 @@
   }
 }
 
+/* ===========================================================================
+ * Plans & billing — the three plan cards.
+ *
+ * All of the bespoke colour for this section lives between here and the end
+ * marker below. Polaris cannot express any of it: a badge paints inside its
+ * own shadow DOM, `s-button` hard-codes a near-black fill, and there is no
+ * pricing card at all. §5 allows brand colour on surfaces we draw ourselves,
+ * and this section is one.
+ *
+ * ## The one rule
+ *
+ * A button's colour says which way it moves the merchant, never which plan it
+ * is. `planDirection` in `plans.ts` reads that off the order of `PLAN_KEYS`,
+ * and the card carries the answer as `--up` / `--current` / `--down`, so a
+ * fourth tier would colour itself.
+ *
+ *     above your plan   orange   #C2410C   "Upgrade to Pro"
+ *     your plan         green    #E3F3E9   "Current plan"
+ *     below your plan   black    #141210   "Move to Free"
+ *
+ * ## Why #C2410C and not #EA580C
+ *
+ * White on #EA580C is about 3.5:1 — fine for large text, short of the 4.5:1
+ * AA asks of a 14px button label. #C2410C clears it. The brighter orange
+ * stays for rings, check marks and the Recommended badge, where the rule does
+ * not bite.
+ *
+ * ## Green
+ *
+ * `maxoff-brand-brief.md` reserves green and red for status marks. "This is
+ * your current plan" is a status mark, which is why it is allowed here — and
+ * why green appears on nothing in this section that is not saying that.
+ * ======================================================================== */
+
 .maxoff-plan-card {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 16px;
+  padding: 20px 18px;
   border: 1px solid var(--maxoff-chart-grid);
-  border-radius: 12px;
+  border-radius: 14px;
+  background: #fff;
   font-size: 13px;
+  transition:
+    box-shadow 160ms ease,
+    border-color 160ms ease;
 }
 
+/* Only the two cards that lead somewhere respond to a cursor. The current one
+   is not going anywhere, and lifting it would promise an action it has not
+   got. */
+.maxoff-plan-card--up:hover,
+.maxoff-plan-card--down:hover {
+  box-shadow: 0 6px 20px -12px rgb(26 26 26 / 0.45);
+}
+
+/* The one step up. A 2px ring in the brighter orange, and a soft shadow so it
+   sits a little proud of the other two without moving — a transform here
+   would nudge the grid every time a cursor crossed it. */
 .maxoff-plan-card--recommended {
   border: 2px solid var(--maxoff-orange-500);
+  box-shadow: 0 8px 26px -14px rgb(234 88 12 / 0.55);
+}
+
+.maxoff-plan-card--recommended:hover {
+  box-shadow: 0 10px 28px -12px rgb(234 88 12 / 0.7);
+}
+
+/* "You are here." A tint and a ring, not a green card: it has to read as a
+   statement of fact, not as a second call to action competing with the
+   orange one beside it. */
+.maxoff-plan-card--current {
+  background: #f2faf5;
+  border: 1.5px solid #9fd8b4;
 }
 
 .maxoff-plan-card__name {
@@ -446,14 +508,51 @@
   font-size: 15px;
 }
 
+.maxoff-plan-card__badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  letter-spacing: 0.01em;
+}
+
+/* 0F5132 on D7F5DF is about 9.4:1. */
+.maxoff-plan-card__badge--current {
+  background: #d7f5df;
+  color: #0f5132;
+}
+
+/* The badge is the one place the brighter orange carries text, at 11px
+   semibold on a 10%-tinted ground — #9A3412 on #FDEDE3 is about 7.4:1. */
+.maxoff-plan-card__badge--recommended {
+  background: #fdede3;
+  color: #9a3412;
+}
+
+/* The number is the thing being compared, so it is set like one: large,
+   tight, and heavy, with the currency and the period dropping back to a
+   muted suffix on the same baseline. */
+.maxoff-plan-card__price {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-block: 2px 4px;
+}
+
 .maxoff-plan-card__amount {
-  font-size: 24px;
-  font-weight: 650;
+  font-size: clamp(38px, 4.4vw, 48px);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  color: var(--maxoff-text);
 }
 
 .maxoff-plan-card__per {
   color: var(--maxoff-text-subdued);
   font-size: 12px;
+  font-weight: 500;
 }
 
 .maxoff-plan-card__tagline {
@@ -478,8 +577,21 @@
   line-height: 18px;
 }
 
+/* The check takes the card's own accent, which is what makes three lists of
+   ticks read as three different offers rather than one repeated. The mark is
+   never the only carrier of meaning: each line is prefixed "Included:" for a
+   screen reader, and the button below says the direction in words. */
 .maxoff-plan-card__yes {
+  color: #6d6d6d;
+  font-weight: 700;
+}
+
+.maxoff-plan-card--up .maxoff-plan-card__yes {
   color: var(--maxoff-orange-500);
+}
+
+.maxoff-plan-card--current .maxoff-plan-card__yes {
+  color: #0f5132;
 }
 
 /* Pins every card's button to the bottom, so three lists of different lengths
@@ -488,6 +600,76 @@
   margin-block-start: auto;
   padding-block-start: 12px;
 }
+
+/* ---- the button under each card ----------------------------------------
+ *
+ * Scoped around `BrandButton` rather than replacing it, so the anchor keeps
+ * its `target="_top"` — the one thing that carries a merchant out of the
+ * embedded frame to Shopify's hosted plan page. Two classes deep, so these
+ * beat `.maxoff-button` without `!important`.
+ */
+
+.maxoff-plan-card--up .maxoff-button {
+  background: #c2410c;
+  color: #fff;
+}
+
+.maxoff-plan-card--up .maxoff-button:hover {
+  background: #9a3412;
+}
+
+.maxoff-plan-card--up .maxoff-button:focus-visible {
+  outline: 2px solid #c2410c;
+  outline-offset: 2px;
+}
+
+.maxoff-plan-card--down .maxoff-button {
+  background: #141210;
+  border-color: #141210;
+  color: #fff;
+}
+
+.maxoff-plan-card--down .maxoff-button:hover {
+  background: #2b2724;
+  border-color: #2b2724;
+}
+
+.maxoff-plan-card--down .maxoff-button:focus-visible {
+  outline: 2px solid #141210;
+  outline-offset: 2px;
+}
+
+/* Sized and shaped exactly like the two real buttons so the row of three
+   stays level, but inert: no hover, no pointer, out of the tab order. */
+.maxoff-plan-card__current-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  inline-size: 100%;
+  min-block-size: 30px;
+  padding: 5px 14px;
+  border: 0;
+  border-radius: 8px;
+  background: #e3f3e9;
+  /* 0F5132 on E3F3E9 is about 8.6:1. */
+  color: #0f5132;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+  cursor: default;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .maxoff-plan-card {
+    transition: none;
+  }
+}
+
+/* ===== end of the Plans & billing colour block ========================== */
+
 
 
 /**
