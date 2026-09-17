@@ -612,24 +612,6 @@ function DiscountsCard({ home }: { home: HomeData }) {
 
   return (
     <s-section heading="Your capped discounts">
-      {/* The same two actions as the title bar, repeated here. Once a merchant
-          has scrolled past the tiles the page header is gone, and the table is
-          where the next thing they want to do — test a cart, create another
-          discount — actually belongs. */}
-      <InternalButtonLink slot="secondary-actions" href="/app/discounts">
-        View all
-      </InternalButtonLink>
-      <InternalButtonLink slot="secondary-actions" href="/app/test">
-        Test a cart
-      </InternalButtonLink>
-      <InternalButtonLink
-        slot="primary-action"
-        variant="primary"
-        href="/app/discounts/new"
-      >
-        Create capped discount
-      </InternalButtonLink>
-
       {home.discounts.length === 0 ? (
         <s-paragraph color="subdued">
           No active capped discounts. Any scheduled or paused discounts are
@@ -697,6 +679,25 @@ function DiscountsCard({ home }: { home: HomeData }) {
           </s-table-body>
         </s-table>
       )}
+
+      {/* The same actions as the title bar, repeated under the table. Once a
+          merchant has scrolled past the plan bar and the tiles, the title bar
+          is gone and this is where the next thing they want to do belongs.
+
+          A row of children, not header actions: `s-section` in the Polaris
+          version this app loads (@shopify/polaris-types 1.0.x) exposes only a
+          default slot. `primary-action` and `secondary-actions` are a 1.1
+          addition and live on `s-page`, `s-modal`, `s-banner` and
+          `s-button-group` only — slotted onto a section they reach the DOM and
+          are never painted, which is how the old "View all" button here spent
+          its whole life invisible. */}
+      <s-stack direction="inline" gap="base" justifyContent="end">
+        <InternalButtonLink href="/app/discounts">View all</InternalButtonLink>
+        <InternalButtonLink href="/app/test">Test a cart</InternalButtonLink>
+        <InternalButtonLink variant="primary" href="/app/discounts/new">
+          Create capped discount
+        </InternalButtonLink>
+      </s-stack>
     </s-section>
   );
 }
