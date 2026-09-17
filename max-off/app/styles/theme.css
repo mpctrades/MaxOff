@@ -1389,6 +1389,22 @@
  * for now, and one search away from being tokens.
  */
 .maxoff-planbar {
+  /* The bar is its own query container, so it reacts to the width it is
+     actually given rather than to the window's.
+     
+     Create new and Test a cart put their sidebar in `s-page`'s `aside` slot,
+     which makes the page a two-column grid and drops everything else into the
+     narrower first column. There the full row does not fit, and the bar was
+     wrapping into two — plan name and chips on one line, meter and button
+     stranded on the next. Spanning the page grid is not available to us:
+     Polaris wraps slotted children, so `grid-column` on this element never
+     reaches the page's own grid.
+     
+     So it sheds instead. Below 760px the chips go, which is enough to put the
+     plan, the ladder, the meter and the action back on one line — the shape
+     Home has. The chips are the only part a merchant can read elsewhere in
+     full: Plans & billing lists every one of them. */
+  container-type: inline-size;
   position: relative;
   display: flex;
   align-items: center;
@@ -1396,6 +1412,10 @@
   flex-wrap: wrap;
   box-sizing: border-box;
   padding: 14px 16px 14px 24px;
+  /* Room beneath it. `s-page` gaps its children tightly, which left the bar
+     sitting almost against whatever card follows it on the pages that do not
+     have the padded tile row Home has. */
+  margin-block-end: 8px;
   border-radius: 14px;
   /* Barely a gradient — top-lit, so the card has a surface rather than a fill.
      The colour work happens on the two planes inside it, not here. */
@@ -1572,6 +1592,19 @@
 .maxoff-planbar__chip:hover {
   border-color: color-mix(in srgb, var(--maxoff-orange-500) 35%, #ececec);
   color: #1a1a1a;
+}
+
+/* Below this the full row does not fit, so the chips go — see the note on
+   `container-type` at the top of the component.
+
+   Placed *after* `.maxoff-planbar__chips`, and that is load-bearing: both
+   selectors are a single class, so at equal specificity the later declaration
+   wins. Written above the chips rule, `display: none` was silently undone by
+   `display: flex` further down the file. */
+@container (inline-size < 760px) {
+  .maxoff-planbar__chips {
+    display: none;
+  }
 }
 
 .maxoff-planbar__right {
