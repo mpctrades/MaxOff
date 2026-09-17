@@ -665,11 +665,12 @@
   box-shadow: 0 10px 28px -12px rgb(234 88 12 / 0.7);
 }
 
-/* "You are here." A tint and a ring, not a green card: it has to read as a
-   statement of fact, not as a second call to action competing with the
-   orange one beside it. */
+/* "You are here", carried by the ring, the badge and the button — and not by
+   the surface. The card keeps the same white ground as the other two, so the
+   three read as one row of comparable things with one of them marked, rather
+   than as a green panel sitting beside two plain ones. Green never fills a
+   shape here that is not itself a status mark. */
 .maxoff-plan-card--current {
-  background: #f2faf5;
   border: 1.5px solid #9fd8b4;
 }
 
