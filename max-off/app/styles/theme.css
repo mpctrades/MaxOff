@@ -310,6 +310,15 @@
  * recommended column comes from.
  */
 
+/* The edit form's own spacing. Its `s-section`s are wrapped in a `Form`, which
+   puts them a level below `s-page` — the page spaces the sections it owns, and
+   these are not among them. */
+.maxoff-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
 /* ===========================================================================
  * Discount detail — the label/value lists.
  *

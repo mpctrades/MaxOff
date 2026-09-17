@@ -12,7 +12,7 @@ import { authenticate } from "../shopify.server";
 import { editCappedDiscount, readDiscountDetail } from "../models/discounts.server";
 import { ensureShopSettings } from "../models/settings.server";
 import { getPlanSummary } from "../models/plan.server";
-import { InternalButtonLink } from "../components/InternalNavigation";
+import { BrandButton } from "../components/BrandButton";
 import {
   capAmountToMinor,
   CHECKOUT_NOTE_MAX_LENGTH,
@@ -219,7 +219,11 @@ export default function EditCappedDiscountPage() {
         {data.name}
       </s-link>
 
-      <Form method="post">
+      {/* `s-page` spaces the `s-section`s it owns, but these are inside the
+          form, so they are grandchildren and that spacing never reached them —
+          the cards sat flush against each other. The form does the spacing
+          itself instead. */}
+      <Form method="post" className="maxoff-edit-form">
         {/* The locked rule, said once and up front. A merchant who came here
             to change the maximum needs to know that in the first sentence,
             not after filling the form in. */}
@@ -310,12 +314,21 @@ export default function EditCappedDiscountPage() {
 
         <s-section>
           <s-stack direction="inline" gap="base" alignItems="center">
-            <s-button type="submit" variant="primary" loading={saving}>
-              Save
-            </s-button>
-            <InternalButtonLink href={`/app/discounts/${data.id}`}>
+            {/* The MaxOff button, so Save wears the same orange as every
+                other primary action in the app rather than Polaris' bevelled
+                near-black. `BrandButton` has no loading state, so the label
+                carries it and the button refuses a second submit. Cancel
+                matches it in shape and size for the same reason the two
+                always travel together. */}
+            <BrandButton type="submit" disabled={saving}>
+              {saving ? "Saving…" : "Save"}
+            </BrandButton>
+            <BrandButton
+              variant="secondary"
+              href={`/app/discounts/${data.id}`}
+            >
               Cancel
-            </InternalButtonLink>
+            </BrandButton>
           </s-stack>
         </s-section>
       </Form>
