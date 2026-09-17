@@ -100,39 +100,38 @@ export function PlanBar({ plan, activeCount, activeLimit }: PlanBarProps) {
         </span>
       </div>
 
-      <span className="maxoff-planbar__rule" aria-hidden="true" />
+      {/* One recessed plane holding the ladder and what the plan includes.
+          It replaces the pair of hairlines that used to frame this middle
+          section: two planes separate "where you are and what you get" from
+          the card around it more clearly than two 1px rules did, and it stops
+          the row reading as one long undifferentiated strip of pills. */}
+      <div className="maxoff-planbar__panel">
+        {/* Display only — not a control, and deliberately not clickable: the
+            place to change a plan is Plans & billing, where the prices and the
+            comparison are. Hidden from assistive technology because the plan
+            name beside it already says which one is lit, and a screen reader
+            reading "Free Growth Pro" adds nothing but confusion. */}
+        <div className="maxoff-planbar__track" aria-hidden="true">
+          {PLAN_KEYS.map((key) => (
+            <span
+              key={key}
+              className={`maxoff-planbar__segment${
+                key === plan ? " maxoff-planbar__segment--on" : ""
+              }`}
+            >
+              {PLAN_LABELS[key]}
+            </span>
+          ))}
+        </div>
 
-      {/* Display only — not a control, and deliberately not clickable: the
-          place to change a plan is Plans & billing, where the prices and the
-          comparison are. Hidden from assistive technology because the plan
-          name beside it already says which one is lit, and a screen reader
-          reading "Free Growth Pro" adds nothing but confusion. */}
-      <div className="maxoff-planbar__track" aria-hidden="true">
-        {PLAN_KEYS.map((key) => (
-          <span
-            key={key}
-            className={`maxoff-planbar__segment${
-              key === plan ? " maxoff-planbar__segment--on" : ""
-            }`}
-          >
-            {PLAN_LABELS[key]}
-          </span>
-        ))}
+        <div className="maxoff-planbar__chips">
+          {chips.map((chip) => (
+            <span key={chip} className="maxoff-planbar__chip">
+              {chip}
+            </span>
+          ))}
+        </div>
       </div>
-
-      <div className="maxoff-planbar__chips">
-        {chips.map((chip) => (
-          <span key={chip} className="maxoff-planbar__chip">
-            {chip}
-          </span>
-        ))}
-      </div>
-
-      {/* A second hairline, matching the one after the plan name. The two
-          frame the row into what it actually is — who you are, what you get,
-          what you can do — instead of one long run of pills with the action
-          floating off the end. */}
-      <span className="maxoff-planbar__rule" aria-hidden="true" />
 
       <div className="maxoff-planbar__right">
         {showMeter && (

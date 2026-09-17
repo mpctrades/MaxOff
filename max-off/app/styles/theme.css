@@ -833,20 +833,17 @@
   gap: 18px;
   flex-wrap: wrap;
   box-sizing: border-box;
-  padding: 16px 20px 16px 24px;
+  padding: 14px 16px 14px 24px;
   border-radius: 14px;
-  /* A warm wash that starts at the accent and is gone by a third of the way
-     across. It gives the card a light source on the side the orange is on,
-     which is what stops a long white strip reading as flat. Faint on purpose:
-     at 55% mix it is barely a tint, and the chips still sit on near-white. */
-  background:
-    linear-gradient(
-      100deg,
-      color-mix(in srgb, var(--maxoff-orange-050) 55%, #fff) 0%,
-      #fff 34%
-    );
+  /* Barely a gradient — top-lit, so the card has a surface rather than a fill.
+     The colour work happens on the two planes inside it, not here. */
+  background: linear-gradient(180deg, #ffffff 0%, #fcfbfa 100%);
+  /* Three layers doing three jobs: a contact shadow, a soft lift that gives
+     the card somewhere to sit, and a hairline so it still has an edge on a
+     grey admin background. */
   box-shadow:
-    0 1px 3px rgb(26 26 26 / 0.07),
+    0 1px 2px rgb(26 26 26 / 0.06),
+    0 6px 20px -14px rgb(26 26 26 / 0.5),
     0 0 0 1px rgb(26 26 26 / 0.05);
   animation: maxoff-planbar-in 420ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
 }
@@ -868,12 +865,12 @@
    gap never pushes it off the corner radius. */
 .maxoff-planbar__accent {
   position: absolute;
-  inset-block: 16px;
-  inset-inline-start: 7px;
+  inset-block: 14px;
+  inset-inline-start: 8px;
   inline-size: 4px;
   border-radius: 999px;
   /* Lit from the top, and throwing a little of itself onto the card. A flat
-     4px bar is a marker; this one is the source the wash above comes from. */
+     4px bar is a marker; this one reads as a source. */
   background: linear-gradient(
     180deg,
     var(--maxoff-orange-500) 0%,
@@ -896,25 +893,51 @@
   color: #9a9a9a;
 }
 
+/**
+ * The plan name, in the brand colour.
+ *
+ * `#c2410c` (orange-700) rather than the orange-500 the accent rail uses.
+ * Orange-500 is 3.6:1 on white, which is fine behind a solid button but short
+ * of the 4.5:1 that WCAG AA asks of text this size — 17px semibold is not
+ * "large text". Orange-700 is 5.2:1 and is the same orange to the eye.
+ *
+ * Hardcoded rather than `var(--maxoff-orange-700)` on purpose: that token
+ * lightens to #fb923c under a dark scheme, which would land pale orange on
+ * this card's hardcoded white. Every text colour in this component is a
+ * literal for the same reason; only the brand fills come from tokens.
+ */
 .maxoff-planbar__name {
-  font-size: 16px;
+  font-size: 17px;
   font-weight: 650;
-  line-height: 20px;
-  color: #1a1a1a;
+  line-height: 21px;
+  letter-spacing: -0.01em;
+  color: #c2410c;
 }
 
-.maxoff-planbar__rule {
-  align-self: stretch;
-  inline-size: 1px;
-  background: #ececec;
+/**
+ * The recessed plane. Inset shadow rather than a border, so it reads as cut
+ * into the card instead of drawn on top of it — that is what gives the bar two
+ * layers and stops the ladder and the chips reading as one strip.
+ */
+.maxoff-planbar__panel {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  /* Takes the leftover width, so the meter and the action stay pinned right. */
+  flex: 1 1 auto;
+  padding: 8px 12px;
+  border-radius: 11px;
+  background: #f6f5f3;
+  box-shadow:
+    inset 0 1px 2px rgb(26 26 26 / 0.05),
+    inset 0 0 0 1px rgb(26 26 26 / 0.035);
 }
 
+/* No fill of its own now — the panel behind it is the recess. */
 .maxoff-planbar__track {
   display: flex;
   gap: 2px;
-  padding: 3px;
-  border-radius: 10px;
-  background: #f4f4f4;
 }
 
 .maxoff-planbar__segment {
@@ -926,7 +949,7 @@
   font-size: 12px;
   font-weight: 500;
   line-height: 16px;
-  color: #949494;
+  color: #97928c;
   /* Not a control: no pointer, no hover, nothing that invites a click that
      would do nothing. */
   cursor: default;
@@ -939,11 +962,11 @@
 .maxoff-planbar__segment--on {
   background: #fff;
   font-weight: 600;
-  color: #1a1a1a;
+  color: #17161a;
+  /* Lifted out of the recess, which is the whole point of the panel. */
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--maxoff-orange-500) 22%, transparent),
-    0 1px 2px rgb(26 26 26 / 0.12),
-    0 2px 6px -2px color-mix(in srgb, var(--maxoff-orange-500) 28%, transparent);
+    0 1px 2px rgb(26 26 26 / 0.14),
+    0 0 0 1px rgb(26 26 26 / 0.05);
 }
 
 .maxoff-planbar__segment--on::before {
@@ -959,10 +982,7 @@
 .maxoff-planbar__chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  /* Takes the leftover width so the second hairline sits against the action
-     group rather than drifting into the middle of an empty row. */
-  flex: 1 1 auto;
+  gap: 5px;
 }
 
 /* Outlined rather than filled. The segmented track beside these is a run of
@@ -970,13 +990,15 @@
    strip of them — the track is a position on a ladder, the chips are a list of
    what you get, and they should not look like the same object. */
 .maxoff-planbar__chip {
-  padding: 4px 9px;
-  border: 1px solid #ececec;
-  border-radius: 7px;
+  padding: 3px 9px;
+  border: 1px solid #e9e7e4;
+  /* Fully round, so a list of what you get never reads as the same object as
+     the square-cornered rungs of the ladder beside it. */
+  border-radius: 999px;
   background: #fff;
   font-size: 12px;
   line-height: 16px;
-  color: #545454;
+  color: #56524e;
   transition:
     border-color 140ms ease,
     color 140ms ease;
@@ -1012,11 +1034,11 @@
 .maxoff-planbar__meter-track {
   display: block;
   inline-size: 76px;
-  block-size: 5px;
+  block-size: 6px;
   border-radius: 999px;
   /* Inset, so the track reads as a groove the fill sits in. */
-  background: #ededed;
-  box-shadow: inset 0 0 0 1px rgb(26 26 26 / 0.04);
+  background: #ebe9e6;
+  box-shadow: inset 0 1px 1px rgb(26 26 26 / 0.07);
   overflow: hidden;
 }
 
@@ -1024,12 +1046,7 @@
   display: block;
   block-size: 100%;
   border-radius: 999px;
-  background: linear-gradient(
-    90deg,
-    var(--maxoff-orange-700) 0%,
-    var(--maxoff-orange-500) 100%
-  );
-  box-shadow: 0 0 8px -1px color-mix(in srgb, var(--maxoff-orange-500) 55%, transparent);
+  background: linear-gradient(90deg, #c2410c 0%, #f97316 100%);
   /* The width comes from the component as `--maxoff-meter-fill`; this runs it
      up from nothing on first paint. `both` holds the end state, so the bar
      stays where the number put it. */
@@ -1110,9 +1127,9 @@
   box-shadow: 0 0 10px -2px rgb(185 137 0 / 0.55);
 }
 
-/* Same reason, for the wash across the card. */
+/* Same reason, for the surface of the card. */
 .maxoff-planbar--unknown {
-  background: linear-gradient(100deg, #fdf8ec 0%, #fff 34%);
+  background: linear-gradient(180deg, #fffdf8 0%, #fdf8ec 100%);
 }
 
 .maxoff-planbar--unknown .maxoff-planbar__name {
