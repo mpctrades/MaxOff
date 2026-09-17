@@ -12,6 +12,7 @@ import { authenticate } from "../shopify.server";
 import { readDiscountDetail, setDiscountPaused } from "../models/discounts.server";
 import { ensureShopSettings } from "../models/settings.server";
 import { getPlanSummary } from "../models/plan.server";
+import { BrandButton } from "../components/BrandButton";
 import {
   InternalButtonLink,
   InternalLink,
@@ -312,45 +313,57 @@ function ReadableDiscount({ data }: { data: ReadableData }) {
         Capped discounts
       </s-link>
 
-      {/* Edit reaches the three fields that cannot change what a cart already
+      {/* Out of the title bar and onto the page, the same way Home and the
+          capped-discounts list carry theirs.
+
+          Edit reaches the three fields that cannot change what a cart already
           in checkout is charged — the end date, the usage limit and the
           checkout wording. The percentage and the maximum are not among them;
-          `app/lib/discount-edit.ts` argues why. Polaris allows one primary and
-          three secondary actions, and these are them. */}
-      <InternalButtonLink
-        slot="primary-action"
-        variant="primary"
-        href={`/app/discounts/${data.id}/edit`}
-      >
-        Edit
-      </InternalButtonLink>
+          `app/lib/discount-edit.ts` argues why.
 
-      <s-button
-        slot="secondary-actions"
-        loading={busy}
-        onClick={() =>
-          fetcher.submit(
-            { intent: "set-paused", paused: String(!paused) },
-            { method: "post" },
-          )
-        }
+          `BrandButton` has no loading state, so Pause carries it in the label
+          and refuses a second click while the fetcher is in flight. */}
+      <s-stack
+        direction="inline"
+        gap="small-300"
+        justifyContent="end"
+        paddingBlockEnd="small-100"
       >
-        {paused ? "Activate" : "Pause"}
-      </s-button>
+        <BrandButton
+          variant="secondary"
+          disabled={busy}
+          onClick={() =>
+            fetcher.submit(
+              { intent: "set-paused", paused: String(!paused) },
+              { method: "post" },
+            )
+          }
+        >
+          {busy
+            ? paused
+              ? "Activating…"
+              : "Pausing…"
+            : paused
+              ? "Activate"
+              : "Pause"}
+        </BrandButton>
 
-      <InternalButtonLink
-        slot="secondary-actions"
-        href={`/app/discounts/new?duplicate=${encodeURIComponent(data.id)}`}
-      >
-        Duplicate
-      </InternalButtonLink>
+        <BrandButton
+          variant="secondary"
+          href={`/app/discounts/new?duplicate=${encodeURIComponent(data.id)}`}
+        >
+          Duplicate
+        </BrandButton>
 
-      <InternalButtonLink
-        slot="secondary-actions"
-        href={`/app/test?discount=${encodeURIComponent(data.id)}`}
-      >
-        Test a cart
-      </InternalButtonLink>
+        <BrandButton
+          variant="secondary"
+          href={`/app/test?discount=${encodeURIComponent(data.id)}`}
+        >
+          Test a cart
+        </BrandButton>
+
+        <BrandButton href={`/app/discounts/${data.id}/edit`}>Edit</BrandButton>
+      </s-stack>
 
       {data.liveDisagrees && (
         <s-banner tone="warning" heading="Shopify and MaxOff disagree about this discount">
