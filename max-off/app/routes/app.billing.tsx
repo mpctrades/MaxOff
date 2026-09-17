@@ -158,10 +158,6 @@ export default function BillingPage() {
         </s-banner>
       )}
 
-      <s-paragraph color="subdued">
-        Charged through Shopify with the rest of your bill. Cancel any time from
-        your Shopify admin.
-      </s-paragraph>
     </s-page>
   );
 }

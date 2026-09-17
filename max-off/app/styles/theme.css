@@ -907,16 +907,15 @@
   padding: 5px 14px;
   border: 0;
   border-radius: 8px;
-  /* A step up from the #0F5132 the badge text uses, which read as almost
-     black at button size. White on #157347 is 5.9:1 — measured, not picked by
-     eye — so it stays clear of the 4.5:1 AA floor for a 13px label with room
-     to spare. #1A8754 was the next stop up and lands on 4.5:1 exactly, which
-     is too close to the line to spend on a shade.
+  /* Pale on purpose. This is the one control in the row that does nothing —
+     no hover, no pointer, out of the tab order — and a solid fill made it look
+     exactly as clickable as the two real buttons beside it. A tint reads as a
+     marker rather than an offer, which is what it is.
 
-     Still inert: no hover, no pointer, out of the tab order — the fill marks
-     where you are, it does not offer anything. */
-  background: #157347;
-  color: #fff;
+     #0F5132 on #E3F3E9 is about 8.6:1, so the label is still the easiest text
+     in the row to read. */
+  background: #e3f3e9;
+  color: #0f5132;
   font: inherit;
   font-size: 13px;
   font-weight: 600;
