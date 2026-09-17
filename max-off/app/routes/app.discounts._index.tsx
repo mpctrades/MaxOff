@@ -299,7 +299,12 @@ export default function DiscountsListPage() {
           to an empty chevron — "All maximums" stopped rendering. Caught by
           rolling back to the previous build and comparing the two side by
           side. Keep every direct child of `s-page` a Polaris element. */}
-      <s-stack direction="inline" gap="small-300" justifyContent="end">
+      <s-stack
+        direction="inline"
+        gap="small-300"
+        justifyContent="end"
+        paddingBlockEnd="base"
+      >
         {/* Exports what the merchant is looking at — the current tab and
             search, every page of it, not the 25 rows on screen. Off-plan the
             button stays visible and says why, so a Free merchant can see what
