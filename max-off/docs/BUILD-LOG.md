@@ -1430,3 +1430,52 @@ data and rendered the response status instead of the requested page.
 - A temporary automatic discount completed the same create → verify → pause → reactivate path.
 - Both exact QA discounts and their PostgreSQL mirror rows were deleted after the checks. No
   merchant-created discount was changed.
+
+---
+
+## 17 Sep 2026 · blue-green deploys, and the end of the 502
+
+**Problem** — every deploy returned 502 for a while, and nobody knew how long. A single `app`
+service published `127.0.0.1:3010`, and `docker compose up -d --build` stopped it in order to
+start its replacement. nginx proxied to that one port, so between the two there was nothing
+listening. Polling the public URL every 0.5s through a deploy measured the window: **9.7 seconds**,
+`404 → 502 at +21.7s → 200 at +31.4s`.
+
+A healthcheck was added first and did **not** fix it — worth recording, because it looks like it
+should. A healthcheck reports when the new container is ready; it cannot make the old one keep
+serving meanwhile. What it bought was certainty (`up --wait` blocks on it) rather than uptime.
+
+**Built**
+
+- `/healthz` — a bare 200, no auth, no database, nothing disclosed to an unauthenticated caller.
+  It exists so Docker and the deploy script have something cheap to ask.
+- Two interchangeable app services, `app-blue` (3010) and `app-green` (3011), sharing one YAML
+  anchor. Each carries a Compose profile so a bare `docker compose up -d` cannot start both and
+  quietly double the connections to Postgres; naming a service explicitly activates its profile.
+- nginx gained an `upstream maxoff_dev_app` that `include`s
+  `/etc/nginx/maxoff/dev-active-upstream.conf`, a file holding one `server` line. A deploy rewrites
+  that line and reloads. **One server, never two** — with both colours listed nginx would
+  round-robin during the overlap, and a browser that loaded its HTML from the old build could ask
+  the new one for a hashed asset that only exists in the old.
+- `deploy/deploy.sh` — builds the idle colour, `--wait`s for health, confirms `/healthz` through
+  the published port, rewrites the include, `nginx -t`, graceful reload, then stops the old colour.
+  A failed `nginx -t` restores the previous line and reloads nothing. The old colour is stopped and
+  **not removed**, so `deploy.sh rollback` is one reload away and needs no rebuild.
+
+**Cutover** — done without downtime: install the include pointing at the live 3010, reload; build
+green on 3011; switch; then remove the legacy `maxoff-app-1` to free 3010.
+
+**Verified**
+
+- Cutover: **108/108 requests 200** over 78.5s, covering the config swap, a full rebuild, the
+  traffic switch and the removal of the old container.
+- A normal alternating deploy (green → blue) and a `rollback` (blue → green): **68/68 requests
+  200** over 56.5s. No 502 anywhere.
+- The twelve other sites on this nginx were unaffected — `shuffly`, `dev.shuffly`, `deliverby` and
+  `maxoff.mpctrades.com` all still return 200. The previous site conf was backed up beside it.
+- Home renders correctly on the deployed app afterwards.
+
+**Still open** — the switch is atomic per connection, but a browser holding HTML from the outgoing
+build can still request a hashed asset the incoming one does not have. The exposure is the seconds
+between the reload and `docker compose stop`. If it ever bites, keep the old colour running for a
+grace period instead of stopping it immediately.

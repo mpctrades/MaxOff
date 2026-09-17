@@ -1,3 +1,51 @@
+# Blue-green, so a deploy never returns 502.
+#
+# The app runs as two interchangeable services on two host ports. nginx points
+# at exactly one of them through an include file holding a single `server`
+# line; a deploy builds the colour that is *not* live, waits for it to report
+# healthy, rewrites that include and reloads nginx. The old colour keeps
+# serving every request until the reload, and nginx's reload is graceful, so
+# nothing in flight is dropped. `deploy/deploy.sh` is the whole procedure.
+#
+# Before this, a single service published 127.0.0.1:3010 and `up --build`
+# stopped it to start its replacement. Measured on 17 Sep 2026, that left
+# nginx with nothing to proxy to for 9.7 seconds and every request in the
+# window got a 502.
+#
+# Only one colour runs at a time, and each carries a profile so that a bare
+# `docker compose up -d` cannot start both and quietly double the connections
+# to Postgres. Naming a service explicitly (`up -d app-green`) activates its
+# profile, so the deploy script never passes `--profile`.
+
+x-app: &app
+  build:
+    context: .
+    args:
+      SHOPIFY_APP_URL: ${SHOPIFY_APP_URL}
+  restart: unless-stopped
+  env_file:
+    - .env
+  environment:
+    DATABASE_URL: postgresql://maxoff:${POSTGRES_PASSWORD}@db:5432/maxoff?schema=public
+  depends_on:
+    db:
+      condition: service_healthy
+  # `/healthz` is a bare 200 with no auth and no database (see the route).
+  # wget is busybox's, already in node:22-alpine — nothing is installed for
+  # this. `--spider` makes the request and discards the body.
+  #
+  # This is what `up --wait` blocks on, and therefore what decides when it is
+  # safe to move nginx across. `start_period` covers boot (prisma migrate
+  # deploy, then the server); failures during it are not counted as retries.
+  healthcheck:
+    test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3000/healthz"]
+    interval: 10s
+    timeout: 5s
+    retries: 3
+    start_period: 40s
+  networks:
+    - internal
+
 services:
   db:
     image: postgres:16-alpine
@@ -16,43 +64,17 @@ services:
     networks:
       - internal
 
-  app:
-    build:
-      context: .
-      args:
-        SHOPIFY_APP_URL: ${SHOPIFY_APP_URL}
-    restart: unless-stopped
-    env_file:
-      - .env
-    environment:
-      DATABASE_URL: postgresql://maxoff:${POSTGRES_PASSWORD}@db:5432/maxoff?schema=public
-    depends_on:
-      db:
-        condition: service_healthy
-    # `/healthz` is a bare 200 with no auth and no database (see the route).
-    # wget is busybox's, already in node:22-alpine — nothing is installed for
-    # this. `--spider` makes the request and discards the body.
-    #
-    # This reports when the container is genuinely serving, which is what
-    # `up --wait` blocks on and what `docker compose ps` shows. It does NOT by
-    # itself close the 502 window on deploy: nginx proxies to a single host
-    # port, and while the old container is gone and the new one is booting
-    # there is nothing listening on it. Closing that gap for real needs two
-    # containers and an nginx upstream — see the note in the deploy section of
-    # docs/BUILD-LOG.md.
-    #
-    # `start_period` covers boot (prisma migrate deploy, then the server) and
-    # failures during it are not counted against `retries`.
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3000/healthz"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 40s
+  app-blue:
+    <<: *app
+    profiles: ["blue"]
     ports:
       - "127.0.0.1:3010:3000"
-    networks:
-      - internal
+
+  app-green:
+    <<: *app
+    profiles: ["green"]
+    ports:
+      - "127.0.0.1:3011:3000"
 
 networks:
   internal:
