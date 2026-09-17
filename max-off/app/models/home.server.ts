@@ -24,9 +24,6 @@ import {
 /** How many weeks the "Money you kept" chart shows. §4.1: eight bars. */
 const CHART_WEEKS = 8;
 
-/** Active discounts listed on Home. §4.1: the rest are behind "View all". */
-const HOME_DISCOUNT_LIMIT = 5;
-
 export interface HomeDiscountRow {
   id: string;
   code: string | null;
@@ -191,10 +188,15 @@ export async function getHomeData(shop: string): Promise<HomeData> {
       where: { shop, occurredAt: { gte: chartStart } },
       select: { occurredAt: true, keptMinor: true },
     }),
+    // Every active discount, not a first page of them. This list used to
+    // `take` five, which left the tile above it counting six and the table
+    // showing five with nothing to explain the missing row — the oldest
+    // discount simply vanished from Home. §4.1 asks for "active discounts
+    // only" and says nothing about a limit, so the honest reading is all of
+    // them: the table and the count can now never disagree.
     prisma.cappedDiscount.findMany({
       where: { shop, ...statusWhere("active", now) },
       orderBy: { createdAt: "desc" },
-      take: HOME_DISCOUNT_LIMIT,
     }),
     prisma.cappedDiscount.findFirst({
       where: { shop },
