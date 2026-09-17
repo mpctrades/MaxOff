@@ -322,9 +322,11 @@
  * Three zones on one row: A and C fixed, B takes the slack. Below 900px they
  * stack, the hairlines turn horizontal, and the button goes full width.
  *
- * On colour: #C2410C carries every label, because white on the brighter
- * #EA580C is about 3.5:1 — fine for large text, short of AA at button size.
- * #EA580C appears only in the tick gradient, where nothing is read off it.
+ * On colour: the button is the plain MaxOff orange (#EA580C), the same fill
+ * Home's plan bar wears — Arthur asked for the two pages to agree, and white
+ * on it is a call he has confirmed three times. Orange *text* here stays at
+ * #C2410C (5.2:1), which is also what Home's plan name uses, so the two pages
+ * agree on that too.
  * ======================================================================== */
 
 .maxoff-plan-strip {
@@ -528,21 +530,13 @@
 /* Scoped around `BrandButton` rather than replacing it, so the anchor keeps
    the `target="_top"` that leaves the embedded frame. Two classes deep, which
    beats `.maxoff-button` without `!important`. */
+/* Size and shape only — the fill, the hover and the focus ring all come from
+   `.maxoff-button`, so this button is the same orange as the one on Home. */
 .maxoff-plan-strip__cta .maxoff-button {
-  background: #c2410c;
   border-radius: 10px;
   font-size: 15.5px;
   font-weight: 700;
   min-block-size: 44px;
-}
-
-.maxoff-plan-strip__cta .maxoff-button:hover {
-  background: #9a3412;
-}
-
-.maxoff-plan-strip__cta .maxoff-button:focus-visible {
-  outline: 2px solid #c2410c;
-  outline-offset: 2px;
 }
 
 /* ---- narrow -------------------------------------------------------------
@@ -617,12 +611,17 @@
  *     your plan         green    #E3F3E9   "Current plan"
  *     below your plan   black    #141210   "Move to Free"
  *
- * ## Why #C2410C and not #EA580C
+ * ## Orange, and which one
  *
- * White on #EA580C is about 3.5:1 — fine for large text, short of the 4.5:1
- * AA asks of a 14px button label. #C2410C clears it. The brighter orange
- * stays for rings, check marks and the Recommended badge, where the rule does
- * not bite.
+ * The upgrade button takes no fill of its own: `.maxoff-button` already paints
+ * #EA580C with a #C2410C hover, and that is the button Home's plan bar wears.
+ * These cards used to darken it to #C2410C for contrast — white on #EA580C is
+ * about 3.5:1, short of the 4.5:1 AA wants of a 13px label — but Arthur asked
+ * the two pages to match, and that trade is a decision he has confirmed three
+ * times now. It is recorded on `.maxoff-button` itself.
+ *
+ * Orange text is a separate question and keeps #C2410C (5.2:1): nothing about
+ * matching a button fill makes a 13px label easier to read.
  *
  * ## Green
  *
@@ -782,18 +781,13 @@
  * beat `.maxoff-button` without `!important`.
  */
 
+/* No fill of its own. `.maxoff-button` already paints the MaxOff orange —
+   #EA580C, hover #C2410C — which is the same button Home's plan bar wears, and
+   matching it is the point. This used to override to #C2410C for the extra
+   contrast; Arthur asked for the two pages to agree, and white-on-#EA580C is a
+   call he has now confirmed three times (see the note on `.maxoff-button`). */
 .maxoff-plan-card--up .maxoff-button {
-  background: #c2410c;
   color: #fff;
-}
-
-.maxoff-plan-card--up .maxoff-button:hover {
-  background: #9a3412;
-}
-
-.maxoff-plan-card--up .maxoff-button:focus-visible {
-  outline: 2px solid #c2410c;
-  outline-offset: 2px;
 }
 
 .maxoff-plan-card--down .maxoff-button {
