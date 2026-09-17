@@ -29,6 +29,26 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    # `/healthz` is a bare 200 with no auth and no database (see the route).
+    # wget is busybox's, already in node:22-alpine — nothing is installed for
+    # this. `--spider` makes the request and discards the body.
+    #
+    # This reports when the container is genuinely serving, which is what
+    # `up --wait` blocks on and what `docker compose ps` shows. It does NOT by
+    # itself close the 502 window on deploy: nginx proxies to a single host
+    # port, and while the old container is gone and the new one is booting
+    # there is nothing listening on it. Closing that gap for real needs two
+    # containers and an nginx upstream — see the note in the deploy section of
+    # docs/BUILD-LOG.md.
+    #
+    # `start_period` covers boot (prisma migrate deploy, then the server) and
+    # failures during it are not counted against `retries`.
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3000/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
     ports:
       - "127.0.0.1:3010:3000"
     networks:
