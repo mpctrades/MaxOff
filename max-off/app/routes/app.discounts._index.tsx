@@ -323,6 +323,7 @@ export default function DiscountsListPage() {
         direction="inline"
         gap="small-300"
         justifyContent="end"
+        paddingBlockStart="small-100"
         paddingBlockEnd="base"
       >
         {/* Exports what the merchant is looking at — the current tab and
@@ -386,7 +387,18 @@ export default function DiscountsListPage() {
                 release candidate. `alignItems="end"` lines the three controls
                 up along their bottom edge, which is what holds the sentence
                 level with the two labels. */}
-            <s-grid gridTemplateColumns="1fr auto auto" gap="small-200" alignItems="end">
+            {/* Real tracks for the two selects, not `auto`. `auto` lets them
+                shrink to nothing when the search field takes the slack, and
+                one or other of them was rendering as an empty box with just a
+                chevron — "All methods" and "All maximums" clipped to nothing.
+                No `minmax()` here: Polaris splits this prop on commas, which
+                is the trap that stopped `Row` on the detail page from ever
+                laying out in two columns. */}
+            <s-grid
+              gridTemplateColumns="1fr 11rem 12rem"
+              gap="small-200"
+              alignItems="end"
+            >
               <s-stack direction="block" gap="small-400">
                 <s-text color="subdued">
                   Every percentage discount with a maximum amount.
