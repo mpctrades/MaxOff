@@ -357,8 +357,14 @@
 
 /* ---- zone A: identity --------------------------------------------------- */
 
+/* Basis, not a fixed width. Inside the Shopify admin this card is roughly
+   790px at a 1244px viewport, and two rigid zones of 330 and 310 left the
+   meter about 100px to live in — the header wrapped and twenty ticks became
+   hairlines. Every zone now declares a basis and is allowed to shrink, so
+   they give ground in proportion rather than B absorbing all of it. */
 .maxoff-plan-strip__identity {
-  flex: 0 0 330px;
+  flex: 0 1 300px;
+  min-inline-size: 210px;
   gap: 2px;
 }
 
@@ -425,7 +431,8 @@
 /* ---- zone B: usage ------------------------------------------------------ */
 
 .maxoff-plan-strip__usage {
-  flex: 1 1 auto;
+  flex: 1 1 340px;
+  min-inline-size: 220px;
   justify-content: center;
   gap: 9px;
 }
@@ -441,6 +448,7 @@
   font-size: 15px;
   font-weight: 600;
   color: var(--maxoff-text);
+  white-space: nowrap;
 }
 
 .maxoff-plan-strip__usage-count {
@@ -499,7 +507,8 @@
 /* ---- zone C: the step up ------------------------------------------------ */
 
 .maxoff-plan-strip__cta {
-  flex: 0 0 310px;
+  flex: 0 1 290px;
+  min-inline-size: 210px;
   justify-content: center;
   gap: 12px;
 }
@@ -543,7 +552,7 @@
  * ancestor establishing containment in its shadow DOM — and if none does, the
  * rule never fires at any width and the three zones stay jammed on one row.
  */
-@media (max-width: 900px) {
+@media (max-width: 1000px) {
   .maxoff-plan-strip {
     flex-direction: column;
     gap: 16px;
