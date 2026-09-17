@@ -501,6 +501,89 @@
   color: #8a8480;
 }
 
+/* ---- the top plan only -------------------------------------------------
+ *
+ * Everything below applies to a plan with no allowance, which today is Pro.
+ * Free and Growth reach none of it: they render the metered branch, which has
+ * no `__rail` and no `__top`.
+ */
+
+/* The count leads with its figure in the brand colour, the same way "6 of 20
+   used" does on a metered plan, so the two states are recognisably the same
+   component rather than two designs. */
+.maxoff-plan-strip__count-large strong {
+  color: #c2410c;
+  font-weight: 800;
+}
+
+/* A meter that does not end. Every tick is lit and the row is masked to
+   nothing at its right edge, so it reads as continuing past the card rather
+   than stopping — which is the whole of what "unlimited" means here. */
+.maxoff-plan-strip__rail {
+  display: flex;
+  gap: 5px;
+  margin-block: 1px 2px;
+  -webkit-mask-image: linear-gradient(90deg, #000 0%, #000 42%, transparent 100%);
+  mask-image: linear-gradient(90deg, #000 0%, #000 42%, transparent 100%);
+}
+
+.maxoff-plan-strip__rail-tick {
+  flex: 1 1 0;
+  min-inline-size: 0;
+  block-size: 11px;
+  border-radius: 6px;
+  background: linear-gradient(180deg, #fb923c, #ea580c);
+  /* Lights left to right on load, one tick after the next. The delay is set
+     per tick in the component; 45ms apart runs the whole rail in under a
+     second, which reads as the row filling rather than as a page still
+     loading. */
+  animation: maxoff-rail-tick-in 420ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+@keyframes maxoff-rail-tick-in {
+  from {
+    opacity: 0;
+    transform: scaleX(0.3);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Zone C has nothing to sell on the top plan, so it states where the merchant
+   has arrived instead of sitting as one grey sentence in white space. */
+.maxoff-plan-strip__top {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 11px;
+  border: 1px solid #f7ddcb;
+  background: linear-gradient(140deg, #fff6f0 0%, #fffdfb 70%);
+}
+
+.maxoff-plan-strip__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  /* 5.2:1 on the tint behind it. */
+  color: #c2410c;
+}
+
+.maxoff-plan-strip__eyebrow-dot {
+  inline-size: 6px;
+  block-size: 6px;
+  border-radius: 999px;
+  background: var(--maxoff-orange-500);
+  box-shadow: 0 0 0 3px rgb(234 88 12 / 0.16);
+}
+
+
 .maxoff-plan-strip__foot--at-limit {
   color: #9a3412;
   font-weight: 600;
@@ -546,6 +629,12 @@
  * ancestor establishing containment in its shadow DOM — and if none does, the
  * rule never fires at any width and the three zones stay jammed on one row.
  */
+@media (prefers-reduced-motion: reduce) {
+  .maxoff-plan-strip__rail-tick {
+    animation: none;
+  }
+}
+
 @media (max-width: 1000px) {
   .maxoff-plan-strip {
     flex-direction: column;

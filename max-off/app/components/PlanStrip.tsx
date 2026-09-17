@@ -158,6 +158,13 @@ function Usage({
   activeLimit: number | null;
 }) {
   if (activeLimit === null) {
+    /* The top plan has no allowance to meter, and the plain count that used to
+       sit here said so in the dullest way available: a number, then the word
+       "unlimited". The rail below answers the question the meter would have —
+       *how much room is left* — in the meter's own vocabulary. Every tick is
+       lit and the row fades out rather than ending, because that is what
+       "no ceiling" looks like. It is decoration; the sentence under it carries
+       the fact. */
     return (
       <div className="maxoff-plan-strip__zone maxoff-plan-strip__usage">
         <div className="maxoff-plan-strip__usage-head">
@@ -165,9 +172,22 @@ function Usage({
             Capped discounts
           </span>
         </div>
+
         <span className="maxoff-plan-strip__count-large maxoff-tabular">
-          {activeCount} capped discount{activeCount === 1 ? "" : "s"}
+          <strong>{activeCount}</strong> capped discount
+          {activeCount === 1 ? "" : "s"}
         </span>
+
+        <div className="maxoff-plan-strip__rail" aria-hidden="true">
+          {Array.from({ length: 16 }, (_, index) => (
+            <span
+              key={index}
+              className="maxoff-plan-strip__rail-tick"
+              style={{ animationDelay: `${index * 45}ms` }}
+            />
+          ))}
+        </div>
+
         <span className="maxoff-plan-strip__foot">
           Unlimited on {PLAN_LABELS[plan]}
         </span>
@@ -242,11 +262,20 @@ function Upgrade({
   const pitch = planPitch(plan);
 
   if (pitch === null) {
+    /* Nothing to sell, so the zone states where the merchant has got to
+       instead of sitting empty. The eyebrow is the only new words on this
+       plan; the billing line beneath it is the same sentence as before. */
     return (
       <div className="maxoff-plan-strip__zone maxoff-plan-strip__cta">
-        <p className="maxoff-plan-strip__pitch">
-          Charged through Shopify with the rest of your bill.
-        </p>
+        <div className="maxoff-plan-strip__top">
+          <span className="maxoff-plan-strip__eyebrow">
+            Top plan
+            <span className="maxoff-plan-strip__eyebrow-dot" aria-hidden="true" />
+          </span>
+          <p className="maxoff-plan-strip__pitch">
+            Charged through Shopify with the rest of your bill.
+          </p>
+        </div>
       </div>
     );
   }
