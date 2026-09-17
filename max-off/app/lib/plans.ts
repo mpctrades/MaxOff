@@ -396,6 +396,41 @@ export function planChips(plan: PlanKey): string[] {
 }
 
 /**
+ * What the plan one step up is worth, as the two halves of a sentence:
+ * "Unlimited discounts and per-item caps on Pro — 7.99 USD / month."
+ *
+ * Built from the capability matrix, so a plan cannot be sold a feature it does
+ * not grant. Null on the top plan, which has nothing above it to pitch.
+ */
+export function planPitch(
+  plan: PlanKey,
+): { offer: string; target: PlanKey } | null {
+  const target = nextPlan(plan);
+  if (target === null) {
+    return null;
+  }
+
+  const limit = PLAN_ACTIVE_DISCOUNT_LIMIT[target];
+  const discounts =
+    limit === null ? "Unlimited discounts" : `${limit} capped discounts`;
+
+  /* The second clause is whichever of the two things the step actually buys:
+     the per-item and per-collection maximums, or — where those are not what
+     changes — the removal of the run-length ceiling. */
+  const gainsCapTypes =
+    !hasNow(plan, "itemMaximums") && hasNow(target, "itemMaximums");
+
+  const second = gainsCapTypes
+    ? "per-item caps"
+    : PLAN_MAX_CAMPAIGN_DAYS[plan] !== null &&
+        PLAN_MAX_CAMPAIGN_DAYS[target] === null
+      ? "no time limit"
+      : "more room";
+
+  return { offer: `${discounts} and ${second}`, target };
+}
+
+/**
  * Where a plan sits relative to the one the merchant is on.
  *
  * Read off `PLAN_KEYS`, never off the plan's name. That is the whole point:

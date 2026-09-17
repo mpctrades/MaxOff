@@ -57,6 +57,8 @@ const CURRENT_PLAN_QUERY = `#graphql
         name
         status
         currentPeriodEnd
+        createdAt
+        trialDays
       }
     }
   }`;
@@ -73,6 +75,8 @@ interface Subscription {
   name?: string | null;
   status?: string | null;
   currentPeriodEnd?: string | null;
+  createdAt?: string | null;
+  trialDays?: number | null;
 }
 
 interface CurrentPlanResponse {
@@ -99,6 +103,16 @@ export interface CurrentPlan {
   appHandle: string | null;
   /** ISO date of the next charge, when Shopify tells us. Never guessed. */
   currentPeriodEnd: string | null;
+  /**
+   * When the free trial ends, or null when there is no trial running.
+   *
+   * Computed, because the Admin API has no such field. `AppSubscription`
+   * offers `trialDays` — "the number of free trial days, starting at the
+   * subscription's creation date, by which billing is delayed" — and
+   * `createdAt`, so the end is the sum of the two. Verified against the
+   * 2026-10 schema on 17 Sep 2026; there is no `trialEndsAt`.
+   */
+  trialEndsAt: string | null;
   /** An active subscription whose name we could not map to a plan. */
   unmappedSubscriptionName: string | null;
 }
@@ -148,6 +162,7 @@ export async function getCurrentPlan(input: {
       source: "cache",
       appHandle: null,
       currentPeriodEnd: null,
+      trialEndsAt: null,
       unmappedSubscriptionName: null,
     };
   }
@@ -159,6 +174,7 @@ export async function getCurrentPlan(input: {
       source: "cache",
       appHandle: null,
       currentPeriodEnd: null,
+      trialEndsAt: null,
       unmappedSubscriptionName: null,
     };
   }
@@ -172,11 +188,13 @@ export async function getCurrentPlan(input: {
   let plan: PlanKey = "free";
   let unmappedSubscriptionName: string | null = null;
   let currentPeriodEnd: string | null = null;
+  let trialEndsAt: string | null = null;
   let source: CurrentPlan["source"] = "shopify";
 
   if (active.length > 0) {
     const subscription = active[0];
     currentPeriodEnd = subscription.currentPeriodEnd ?? null;
+    trialEndsAt = trialEndFor(subscription.createdAt, subscription.trialDays);
 
     const mapped = planFromLabel(subscription.name);
     if (mapped) {
@@ -225,8 +243,34 @@ export async function getCurrentPlan(input: {
     source,
     appHandle: installation.app?.handle ?? null,
     currentPeriodEnd,
+    trialEndsAt,
     unmappedSubscriptionName,
   };
+}
+
+/**
+ * `createdAt + trialDays`, or null when no trial is running.
+ *
+ * Null rather than a past date once it has elapsed, so no caller has to ask
+ * "is this trial end in the future" a second time. A subscription created
+ * without a trial reports `trialDays: 0`, which is the same answer.
+ */
+export function trialEndFor(
+  createdAt: string | null | undefined,
+  trialDays: number | null | undefined,
+  now: Date = new Date(),
+): string | null {
+  if (!createdAt || !trialDays || trialDays <= 0) {
+    return null;
+  }
+
+  const created = new Date(createdAt);
+  if (Number.isNaN(created.getTime())) {
+    return null;
+  }
+
+  const ends = new Date(created.getTime() + trialDays * 24 * 60 * 60 * 1000);
+  return ends.getTime() > now.getTime() ? ends.toISOString() : null;
 }
 
 /**

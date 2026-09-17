@@ -310,99 +310,257 @@
  * recommended column comes from.
  */
 
-/**
- * The current-plan strip: what you are on at the left, the one step up at the
- * right, and the allowance meter spanning underneath both.
- */
+/* ===========================================================================
+ * Plans & billing — the current-plan strip.
+ *
+ * Everything bespoke for that card lives between here and the end marker.
+ * Polaris supplies none of it: there is no meter in this version, no vertical
+ * rule, and no way to reach inside `s-button` to change a fill — so the ticks,
+ * the hairlines and the button colour are all drawn here, and the component
+ * keeps `BrandButton` underneath so the anchor's `target="_top"` survives.
+ *
+ * Three zones on one row: A and C fixed, B takes the slack. Below 900px they
+ * stack, the hairlines turn horizontal, and the button goes full width.
+ *
+ * On colour: #C2410C carries every label, because white on the brighter
+ * #EA580C is about 3.5:1 — fine for large text, short of AA at button size.
+ * #EA580C appears only in the tick gradient, where nothing is read off it.
+ * ======================================================================== */
+
 .maxoff-plan-strip {
-  display: grid;
-  grid-template-columns: minmax(180px, max-content) 1fr;
-  gap: 12px 32px;
-  align-items: start;
+  display: flex;
+  align-items: stretch;
+  gap: 24px;
+  box-sizing: border-box;
+  padding: 20px 24px;
+  border: 1px solid var(--maxoff-chart-grid);
+  border-radius: 14px;
+  background: #fff;
 }
 
-.maxoff-plan-strip__action {
+/* At the limit the card asks for attention, in amber rather than red: a plan
+   allowance that is full is a decision to make, not something broken. */
+.maxoff-plan-strip--at-limit {
+  border: 1.5px solid #f8c39a;
+}
+
+.maxoff-plan-strip__rule {
+  inline-size: 1px;
+  background: #ede9e5;
+}
+
+.maxoff-plan-strip__zone {
   display: flex;
   flex-direction: column;
-  align-items: end;
-  gap: 4px;
-  justify-self: end;
+  min-inline-size: 0;
 }
 
-/* The meter runs the full width under both, as one row of its own. */
-.maxoff-plan-strip > .maxoff-usage {
-  grid-column: 1 / -1;
-}
+/* ---- zone A: identity --------------------------------------------------- */
 
-@container (inline-size <= 640px) {
-  .maxoff-plan-strip {
-    grid-template-columns: 1fr;
-  }
-
-  .maxoff-plan-strip__action {
-    align-items: start;
-    justify-self: start;
-  }
-}
-
-.maxoff-plan-strip__plan {
-  display: flex;
-  flex-direction: column;
+.maxoff-plan-strip__identity {
+  flex: 0 0 330px;
   gap: 2px;
+}
+
+/* Written sentence case and uppercased here: a screen reader should not spell
+   out "Y-O-U-R". */
+.maxoff-plan-strip__kicker {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: #8a8480;
 }
 
 .maxoff-plan-strip__name {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 15px;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-block: 1px 5px;
+}
+
+.maxoff-plan-strip__name strong {
+  font-size: 27px;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.035em;
+  color: var(--maxoff-text);
+}
+
+/* Our own, not `s-badge`: Polaris paints a badge inside its shadow DOM, so
+   this exact green is not reachable through it. 0F5132 on D7F5DF is ~9.4:1. */
+.maxoff-plan-strip__pill {
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: #d7f5df;
+  color: #0f5132;
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 18px;
+  white-space: nowrap;
 }
 
 .maxoff-plan-strip__price {
-  color: var(--maxoff-text-subdued);
-  font-size: 13px;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--maxoff-text);
 }
 
+.maxoff-plan-strip__price strong {
+  font-weight: 700;
+}
+
+.maxoff-plan-strip__per {
+  color: var(--maxoff-text-subdued);
+}
+
+.maxoff-plan-strip__trial,
 .maxoff-plan-strip__next {
+  font-size: 14px;
+  line-height: 20px;
   color: var(--maxoff-text-subdued);
-  font-size: 13px;
 }
 
-/* The plan's active-discount allowance, beside the plan it belongs to. */
-.maxoff-usage {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+/* ---- zone B: usage ------------------------------------------------------ */
+
+.maxoff-plan-strip__usage {
+  flex: 1 1 auto;
+  justify-content: center;
+  gap: 9px;
 }
 
-.maxoff-usage__head {
+.maxoff-plan-strip__usage-head {
   display: flex;
+  align-items: baseline;
   justify-content: space-between;
-  gap: 16px;
-  font-size: 13px;
+  gap: 12px;
 }
 
-.maxoff-usage__count {
+.maxoff-plan-strip__usage-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--maxoff-text);
+}
+
+.maxoff-plan-strip__usage-count {
+  font-size: 14px;
   color: var(--maxoff-text-subdued);
+  white-space: nowrap;
 }
 
-.maxoff-usage__track {
-  block-size: 6px;
-  border-radius: 3px;
-  background: var(--maxoff-track);
-  overflow: hidden;
+/* The used figure is the number being reported, so it is the only thing in
+   the row that carries weight and colour. */
+.maxoff-plan-strip__usage-count strong {
+  font-size: 16px;
+  font-weight: 800;
+  color: #c2410c;
 }
 
-.maxoff-usage__fill {
-  block-size: 6px;
-  border-radius: 3px;
-  background: var(--maxoff-orange-500);
+/* One tick per slot the plan allows, each taking an equal share of whatever
+   width the zone has. No fixed tick width, so twenty ticks and three ticks
+   both fill the row and it reflows without breaking. */
+.maxoff-plan-strip__ticks {
+  display: flex;
+  gap: 5px;
 }
 
-.maxoff-usage__note {
-  color: var(--maxoff-text-subdued);
-  font-size: 13px;
+.maxoff-plan-strip__tick {
+  flex: 1 1 0;
+  min-inline-size: 0;
+  block-size: 11px;
+  border-radius: 6px;
+  background: #e9e4df;
 }
+
+.maxoff-plan-strip__tick--on {
+  background: linear-gradient(180deg, #fb923c, #ea580c);
+}
+
+.maxoff-plan-strip__count-large {
+  font-size: 27px;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  line-height: 1.1;
+  color: var(--maxoff-text);
+}
+
+.maxoff-plan-strip__foot {
+  font-size: 13.5px;
+  line-height: 18px;
+  color: #8a8480;
+}
+
+.maxoff-plan-strip__foot--at-limit {
+  color: #9a3412;
+  font-weight: 600;
+}
+
+/* ---- zone C: the step up ------------------------------------------------ */
+
+.maxoff-plan-strip__cta {
+  flex: 0 0 310px;
+  justify-content: center;
+  gap: 12px;
+}
+
+.maxoff-plan-strip__pitch {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--maxoff-text);
+}
+
+.maxoff-plan-strip__pitch-price {
+  color: #c2410c;
+  font-weight: 700;
+}
+
+/* Scoped around `BrandButton` rather than replacing it, so the anchor keeps
+   the `target="_top"` that leaves the embedded frame. Two classes deep, which
+   beats `.maxoff-button` without `!important`. */
+.maxoff-plan-strip__cta .maxoff-button {
+  background: #c2410c;
+  border-radius: 10px;
+  font-size: 15.5px;
+  font-weight: 700;
+  min-block-size: 44px;
+}
+
+.maxoff-plan-strip__cta .maxoff-button:hover {
+  background: #9a3412;
+}
+
+.maxoff-plan-strip__cta .maxoff-button:focus-visible {
+  outline: 2px solid #c2410c;
+  outline-offset: 2px;
+}
+
+/* ---- narrow -------------------------------------------------------------
+ *
+ * A width query, not `@container`: nothing in this stylesheet declares
+ * `container-type`, so a container query would depend on some Polaris
+ * ancestor establishing containment in its shadow DOM — and if none does, the
+ * rule never fires at any width and the three zones stay jammed on one row.
+ */
+@media (max-width: 900px) {
+  .maxoff-plan-strip {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .maxoff-plan-strip__rule {
+    inline-size: auto;
+    block-size: 1px;
+  }
+
+  .maxoff-plan-strip__identity,
+  .maxoff-plan-strip__cta {
+    flex: 1 1 auto;
+  }
+}
+
+/* ===== end of the current-plan strip block ============================== */
 
 /**
  * The three plan cards.

@@ -122,6 +122,32 @@ export function formatDate(date: Date, timeZone = DEFAULT_TIME_ZONE): string {
 }
 
 /**
+ * `22 hours left` / `6 days left` — how much of a free trial remains.
+ *
+ * Hours below a day, because "0 days left" on the last afternoon of a trial is
+ * both true and useless. Rounds up, so a trial is never reported as having
+ * less time than it has. Null once it has elapsed, so a caller cannot render
+ * a trial that has ended.
+ */
+export function formatTrialRemaining(
+  endsAt: Date,
+  now: Date = new Date(),
+): string | null {
+  const ms = endsAt.getTime() - now.getTime();
+  if (ms <= 0) {
+    return null;
+  }
+
+  const hours = Math.ceil(ms / (60 * 60 * 1000));
+  if (hours <= 48) {
+    return `${hours} hour${hours === 1 ? "" : "s"} left`;
+  }
+
+  const days = Math.ceil(ms / (24 * 60 * 60 * 1000));
+  return `${days} days left`;
+}
+
+/**
  * `Jul 7` — a chart axis label.
  *
  * The money-kept chart has eight of these side by side in 10px type, so the

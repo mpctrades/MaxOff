@@ -71,6 +71,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     planSource: current.source,
     unmappedSubscriptionName: current.unmappedSubscriptionName,
     currentPeriodEnd: current.currentPeriodEnd,
+    trialEndsAt: current.trialEndsAt,
     hostedPlanUrl: hostedPlanPageUrl({
       shop: session.shop,
       appHandle: current.appHandle,
@@ -120,16 +121,8 @@ export default function BillingPage() {
           activeCount={data.activeCount}
           lastKnown={data.planSource === "cache"}
           nextChargeOn={data.currentPeriodEnd}
-          action={
-            data.recommended !== null && data.hostedPlanUrl !== null ? (
-              /* The name, not the price. The price is on the plan's own
-                 card a few centimetres below, and a button that carries it
-                 runs wider than the strip it sits in. */
-              <BrandButton href={data.hostedPlanUrl} target="_top">
-                Upgrade to {PLAN_LABELS[data.recommended]}
-              </BrandButton>
-            ) : undefined
-          }
+          trialEndsAt={data.trialEndsAt}
+          upgradeHref={data.hostedPlanUrl}
         />
       </s-section>
 
