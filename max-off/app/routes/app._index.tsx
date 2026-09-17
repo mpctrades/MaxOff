@@ -611,32 +611,30 @@ function DiscountsCard({ home }: { home: HomeData }) {
   const { currencyCode } = home;
 
   return (
-    <s-section heading="Your capped discounts">
-      {/* The same actions as the title bar, repeated above the table. Once a
-          merchant has scrolled past the plan bar and the tiles the title bar is
-          gone, and this is where the next thing they want to do belongs.
+    /* No `heading` prop: the title and the actions share one row, and the only
+       way to put a button on `s-section`'s own heading row is the
+       `secondary-actions` slot it does not have until Polaris 1.1. We draw the
+       row instead — `.maxoff-cardhead` in `theme.css` explains the whole of it.
 
-          A row of children, not header actions: `s-section` in the Polaris
-          version this app loads (@shopify/polaris-types 1.0.x) exposes only a
-          default slot. `primary-action` and `secondary-actions` are a 1.1
-          addition and live on `s-page`, `s-modal`, `s-banner` and
-          `s-button-group` only — slotted onto a section they reach the DOM and
-          are never painted, which is how the old "View all" button here spent
-          its whole life invisible.
-
-          `BrandButton`, not `s-button`, so the row matches "Change plan" on the
-          plan bar above it rather than sitting beside it in Polaris' bevelled
-          near-black shape. One orange fill, because there is one primary action
-          here; the other two are the white variant at the same size. */}
-      <s-stack direction="inline" gap="small" justifyContent="end">
-        <BrandButton variant="secondary" href="/app/discounts">
-          View all
-        </BrandButton>
-        <BrandButton variant="secondary" href="/app/test">
-          Test a cart
-        </BrandButton>
-        <BrandButton href="/app/discounts/new">Create capped discount</BrandButton>
-      </s-stack>
+       `BrandButton`, not `s-button`, so the row matches "Change plan" on the
+       plan bar above it rather than sitting beside it in Polaris' bevelled
+       near-black shape. One orange fill, because there is one primary action
+       here; the other two are the white variant at the same size. */
+    <s-section accessibilityLabel="Your capped discounts">
+      <div className="maxoff-cardhead">
+        <h2 className="maxoff-cardhead__title">Your capped discounts</h2>
+        <div className="maxoff-cardhead__actions">
+          <BrandButton variant="secondary" href="/app/discounts">
+            View all
+          </BrandButton>
+          <BrandButton variant="secondary" href="/app/test">
+            Test a cart
+          </BrandButton>
+          <BrandButton href="/app/discounts/new">
+            Create capped discount
+          </BrandButton>
+        </div>
+      </div>
 
       {home.discounts.length === 0 ? (
         <s-paragraph color="subdued">

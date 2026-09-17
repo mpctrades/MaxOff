@@ -582,6 +582,50 @@
   cursor: default;
 }
 
+/**
+ * A card heading row we draw ourselves, so actions can sit beside the title.
+ *
+ * `s-section`'s `heading` prop renders the title inside the component's own
+ * shadow DOM, and the Polaris this app loads (@shopify/polaris-types 1.0.x)
+ * gives a section a default slot and nothing else — `primary-action` and
+ * `secondary-actions` are a 1.1 addition and exist on `s-page`, `s-modal`,
+ * `s-banner` and `s-button-group` only. There is therefore no way to reach
+ * that heading row from outside the component.
+ *
+ * So a card that needs actions on its title row passes no `heading` and lays
+ * the row out here instead. This is the approved mockup's `.cardhead` — flex,
+ * title left, actions pushed right by `margin-inline-start: auto`, 8px between
+ * them — at the same 14px/650 as `.card h2` there.
+ *
+ * It wraps: at narrow widths the actions drop to their own line rather than
+ * crushing the title, which is what `s-section`'s own header does too.
+ */
+.maxoff-cardhead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  /* Separates the row from the table directly beneath it. The section's own
+     heading carries this spacing internally; ours has to state it. */
+  margin-block-end: 16px;
+}
+
+.maxoff-cardhead__title {
+  margin: 0;
+  color: var(--maxoff-text);
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 20px;
+}
+
+.maxoff-cardhead__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-inline-start: auto;
+}
+
 /* A modal's action, at the foot of its body. See `CheckoutPreviewModal`. */
 .maxoff-modal-actions {
   display: flex;
