@@ -323,6 +323,50 @@
  * where the original broke — see the note on `Row`.
  * ======================================================================== */
 
+/* The heading of a fact card. `s-section`'s own `heading` prop paints inside
+   its shadow DOM, so the icon and the colour had to come from a heading of
+   ours; the section still draws the card around it. */
+.maxoff-fact-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-block-end: 11px;
+  margin-block-end: 3px;
+  /* Brand colour at the left, gone by two thirds — the rule marks the heading
+     without drawing a full line across every card. */
+  border-block-end: 1px solid transparent;
+  border-image: linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--maxoff-orange-500) 45%, transparent) 0%,
+      var(--maxoff-chart-grid) 62%,
+      transparent 100%
+    )
+    1;
+}
+
+/* A tinted tile, so the colour is carried by something of ours whether or not
+   the icon's own glyph inherits `currentColor` through its shadow root. */
+.maxoff-fact-head__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 28px;
+  block-size: 28px;
+  flex: 0 0 28px;
+  border-radius: 9px;
+  background: linear-gradient(140deg, #ffe8d8 0%, #fff4ec 100%);
+  box-shadow: inset 0 0 0 1px rgb(234 88 12 / 0.16);
+  color: var(--maxoff-orange-700);
+}
+
+.maxoff-fact-head__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 20px;
+  color: var(--maxoff-text);
+}
+
 .maxoff-detail-list {
   display: flex;
   flex-direction: column;
@@ -335,8 +379,9 @@
   align-items: baseline;
   padding-block: 10px;
   /* Between rows, never above the first or below the last: the section's own
-     card edge already closes the list at both ends. */
-  border-block-start: 1px solid var(--maxoff-chart-grid);
+     card edge already closes the list at both ends. Warm rather than neutral
+     grey, so the lists sit in the same palette as the heading above them. */
+  border-block-start: 1px solid #f2ece7;
 }
 
 .maxoff-detail-row:first-child {

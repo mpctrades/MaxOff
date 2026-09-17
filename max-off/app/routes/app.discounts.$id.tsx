@@ -446,7 +446,8 @@ function ReadableDiscount({ data }: { data: ReadableData }) {
         gap="base"
         alignItems="start"
       >
-        <s-section heading="How it applies">
+        <s-section accessibilityLabel="How it applies">
+          <FactHead icon="target">How it applies</FactHead>
           <div className="maxoff-detail-list">
             <Row label="The maximum applies to" value={SCOPE_LABELS[data.scope] ?? data.scope} />
             <Row label="Applies to" value={appliesTo} />
@@ -471,7 +472,8 @@ function ReadableDiscount({ data }: { data: ReadableData }) {
           </div>
         </s-section>
 
-        <s-section heading="Active dates">
+        <s-section accessibilityLabel="Active dates">
+          <FactHead icon="calendar">Active dates</FactHead>
           <div className="maxoff-detail-list">
             <Row
               label="Starts"
@@ -501,7 +503,8 @@ function ReadableDiscount({ data }: { data: ReadableData }) {
           </div>
         </s-section>
 
-        <s-section heading="Usage">
+        <s-section accessibilityLabel="Usage">
+          <FactHead icon="order">Usage</FactHead>
           <div className="maxoff-detail-list">
             <Row
               label="Times used"
@@ -526,14 +529,16 @@ function ReadableDiscount({ data }: { data: ReadableData }) {
           </div>
         </s-section>
 
-        <s-section heading="Combinations">
+        <s-section accessibilityLabel="Combinations">
+          <FactHead icon="split">Combinations</FactHead>
           <Row
             label="Combines with"
             value={combinations.length === 0 ? "Nothing else" : combinations.join(", ")}
           />
         </s-section>
 
-        <s-section heading="What the customer sees">
+        <s-section accessibilityLabel="What the customer sees">
+          <FactHead icon="view">What the customer sees</FactHead>
           <s-stack direction="block" gap="small-300">
             <s-paragraph>{data.checkoutNote}</s-paragraph>
             <s-text color="subdued">
@@ -547,6 +552,36 @@ function ReadableDiscount({ data }: { data: ReadableData }) {
 }
 
 /** One label-and-value line. The grid keeps the values in a column. */
+/**
+ * The heading of a fact card: an icon in a tinted tile, the title, and a rule
+ * that fades out under both.
+ *
+ * Our own rather than `s-section`'s `heading` prop, because that prop renders
+ * inside the component's shadow DOM where no icon of ours can join it and no
+ * colour of ours can reach it. The section still draws the card; only the
+ * heading moved in.
+ *
+ * The icon is decoration and carries nothing the title does not already say,
+ * so it is hidden from assistive technology. `accessibilityLabel` on the
+ * section keeps the landmark named.
+ */
+function FactHead({
+  icon,
+  children,
+}: {
+  icon: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="maxoff-fact-head">
+      <span className="maxoff-fact-head__icon" aria-hidden="true">
+        <s-icon type={icon as never} />
+      </span>
+      <h3 className="maxoff-fact-head__title">{children}</h3>
+    </div>
+  );
+}
+
 /**
  * One label and its value, on one line.
  *
