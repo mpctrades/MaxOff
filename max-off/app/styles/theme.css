@@ -412,17 +412,22 @@
  * button — so the orange still means "this one" rather than decorating three
  * cards equally.
  */
+/* `auto-fit` + `minmax`, not a breakpoint, and deliberately not an
+   `@container` query: nothing in this stylesheet declares `container-type`,
+   so a container query here would depend on some Polaris ancestor
+   establishing a containment context in its shadow DOM. If it does not, the
+   rule never fires at any width and the cards squash instead of stacking —
+   a bug you would only meet on a phone. This needs no ancestor to cooperate:
+   three columns while they fit, then two, then one.
+
+   `align-items: stretch` is what makes the three cards equal height; each
+   card is its own flex column with `margin-block-start: auto` on the action,
+   which is what pins the buttons to the bottom of whichever card is tallest. */
 .maxoff-plan-cards {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
   gap: 16px;
   align-items: stretch;
-}
-
-@container (inline-size <= 760px) {
-  .maxoff-plan-cards {
-    grid-template-columns: 1fr;
-  }
 }
 
 /* ===========================================================================
