@@ -430,101 +430,118 @@ function ReadableDiscount({ data }: { data: ReadableData }) {
         </div>
       </s-grid>
 
-      <s-section heading="How it applies">
-        <div className="maxoff-detail-list">
-          <Row label="The maximum applies to" value={SCOPE_LABELS[data.scope] ?? data.scope} />
-          <Row label="Applies to" value={appliesTo} />
-          <Row
-            label="Minimum requirements"
-            value={
-              data.minSubtotalMinor !== null
-                ? `A subtotal of ${money(data.minSubtotalMinor)}`
-                : data.minQuantity !== null
-                  ? `${data.minQuantity} items`
-                  : "None"
-            }
-          />
-          {data.marketMaximums.length > 0 && (
+      {/* Two to a row. Each of these is a short list of facts, and stacked
+          full-width they ran the page to twice the height it needs — a reader
+          had to scroll past "Active dates" to reach "Usage" when both together
+          are shorter than one screen.
+
+          `s-grid`, not a plain div: a raw element as a direct child of
+          `s-page` collapsed a select on the discounts list once already. And
+          the track list is `1fr 1fr` with no `minmax()` in it — Polaris splits
+          this prop's responsive branches on commas, which is exactly what broke
+          `Row`. `alignItems="start"` keeps a one-line card from stretching to
+          match a four-line one beside it. */}
+      <s-grid
+        gridTemplateColumns="@container (inline-size <= 720px) 1fr, 1fr 1fr"
+        gap="base"
+        alignItems="start"
+      >
+        <s-section heading="How it applies">
+          <div className="maxoff-detail-list">
+            <Row label="The maximum applies to" value={SCOPE_LABELS[data.scope] ?? data.scope} />
+            <Row label="Applies to" value={appliesTo} />
             <Row
-              label="Other market maximums"
-              value={data.marketMaximums
-                .map((entry) => `${entry.amount} ${entry.code}`)
-                .join(", ")}
+              label="Minimum requirements"
+              value={
+                data.minSubtotalMinor !== null
+                  ? `A subtotal of ${money(data.minSubtotalMinor)}`
+                  : data.minQuantity !== null
+                    ? `${data.minQuantity} items`
+                    : "None"
+              }
             />
-          )}
-        </div>
-      </s-section>
+            {data.marketMaximums.length > 0 && (
+              <Row
+                label="Other market maximums"
+                value={data.marketMaximums
+                  .map((entry) => `${entry.amount} ${entry.code}`)
+                  .join(", ")}
+              />
+            )}
+          </div>
+        </s-section>
 
-      <s-section heading="Active dates">
-        <div className="maxoff-detail-list">
-          <Row
-            label="Starts"
-            value={formatDate(new Date(data.startsAt), data.timeZone)}
-          />
-          <Row
-            label="Ends"
-            value={
-              data.endsAt === null
-                ? "No end date"
-                : formatDate(new Date(data.endsAt), data.timeZone)
-            }
-          />
-          {data.maxCampaignDays !== null && data.plan !== null && (
+        <s-section heading="Active dates">
+          <div className="maxoff-detail-list">
+            <Row
+              label="Starts"
+              value={formatDate(new Date(data.startsAt), data.timeZone)}
+            />
+            <Row
+              label="Ends"
+              value={
+                data.endsAt === null
+                  ? "No end date"
+                  : formatDate(new Date(data.endsAt), data.timeZone)
+              }
+            />
+            {data.maxCampaignDays !== null && data.plan !== null && (
+              <s-text color="subdued">
+                The {PLAN_LABELS[data.plan]} plan runs one discount for up to{" "}
+                {data.maxCampaignDays} days.{" "}
+                <InternalLink href="/app/billing">See plans</InternalLink>
+              </s-text>
+            )}
+            {paused && data.endsAt !== null && (
+              <s-text color="subdued">
+                Shopify clears the end date when a discount is paused. MaxOff puts
+                this one back when you activate it again.
+              </s-text>
+            )}
+          </div>
+        </s-section>
+
+        <s-section heading="Usage">
+          <div className="maxoff-detail-list">
+            <Row
+              label="Times used"
+              value={data.timesUsed === null ? NO_DATA : String(data.timesUsed)}
+            />
+            <Row
+              label="Money you kept"
+              value={NO_DATA}
+            />
+            <Row
+              label="Total uses allowed"
+              value={data.usageLimit === null ? "No limit" : String(data.usageLimit)}
+            />
+            <Row
+              label="One use per customer"
+              value={data.oncePerCustomer ? "Yes" : "No"}
+            />
             <s-text color="subdued">
-              The {PLAN_LABELS[data.plan]} plan runs one discount for up to{" "}
-              {data.maxCampaignDays} days.{" "}
-              <InternalLink href="/app/billing">See plans</InternalLink>
+              Times used comes from Shopify. Money you kept needs per-order
+              tracking, which MaxOff does not do yet.
             </s-text>
-          )}
-          {paused && data.endsAt !== null && (
+          </div>
+        </s-section>
+
+        <s-section heading="Combinations">
+          <Row
+            label="Combines with"
+            value={combinations.length === 0 ? "Nothing else" : combinations.join(", ")}
+          />
+        </s-section>
+
+        <s-section heading="What the customer sees">
+          <s-stack direction="block" gap="small-300">
+            <s-paragraph>{data.checkoutNote}</s-paragraph>
             <s-text color="subdued">
-              Shopify clears the end date when a discount is paused. MaxOff puts
-              this one back when you activate it again.
+              Shown at checkout only when the maximum is what decided the amount.
             </s-text>
-          )}
-        </div>
-      </s-section>
-
-      <s-section heading="Usage">
-        <div className="maxoff-detail-list">
-          <Row
-            label="Times used"
-            value={data.timesUsed === null ? NO_DATA : String(data.timesUsed)}
-          />
-          <Row
-            label="Money you kept"
-            value={NO_DATA}
-          />
-          <Row
-            label="Total uses allowed"
-            value={data.usageLimit === null ? "No limit" : String(data.usageLimit)}
-          />
-          <Row
-            label="One use per customer"
-            value={data.oncePerCustomer ? "Yes" : "No"}
-          />
-          <s-text color="subdued">
-            Times used comes from Shopify. Money you kept needs per-order
-            tracking, which MaxOff does not do yet.
-          </s-text>
-        </div>
-      </s-section>
-
-      <s-section heading="Combinations">
-        <Row
-          label="Combines with"
-          value={combinations.length === 0 ? "Nothing else" : combinations.join(", ")}
-        />
-      </s-section>
-
-      <s-section heading="What the customer sees">
-        <div className="maxoff-detail-list">
-          <s-paragraph>{data.checkoutNote}</s-paragraph>
-          <s-text color="subdued">
-            Shown at checkout only when the maximum is what decided the amount.
-          </s-text>
-        </div>
-      </s-section>
+          </s-stack>
+        </s-section>
+      </s-grid>
     </s-page>
   );
 }
