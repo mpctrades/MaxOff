@@ -91,6 +91,13 @@ where they fit. No exclamation marks.
 Do not list: money-kept reporting or dashboards, a campaign budget cap, or
 anything about orders. None of those are built.
 
+**Free trial:** Growth and Pro have a free trial in App Pricing. Its length is
+not confirmed yet. Shopify's plan page on the dev store said "3 trial days
+remaining", which is what was *left* on 29 Sep 2026, not the trial's length,
+and the active subscription reports `trialDays: 0`. Once the length is
+confirmed from the App Pricing settings, add it to the pricing table above
+and to the website's pricing cards.
+
 ---
 
 ## 3. Screencast script (under 3 minutes)
@@ -128,8 +135,12 @@ clean.
       and `redirect_urls` in `shopify.app.toml` and the server's
       `SHOPIFY_APP_URL`. The listing and reviewers use whichever is live.
 - [ ] **Storefront password** for the test instructions above.
-- [ ] **Delete the test discounts** MAXOFFTEST1, 2 and 3 from Shopify's
-      Discounts page.
+- [ ] **Delete the test discounts** MAXOFFTEST2 and 3 from Shopify's
+      Discounts page. MAXOFFTEST1 is already gone from Shopify, and all three
+      were removed from MaxOff's own list on 29 Sep 2026 (a backup of those
+      rows is in `~/maxoff-backups/` on the VPS).
+- [ ] **Trial length:** confirm the free-trial length for Growth and Pro in
+      App Pricing, then add it to the listing and the website.
 
 ### Open questions from the website review
 
