@@ -144,9 +144,9 @@ clean.
 
 ### Open questions from the website review
 
-- The FAQ says early-access stores "keep a discounted rate when we launch".
-  Keep that promise, or remove it?
-- The FAQ answer "What happens if I uninstall?" says the discounts "stay … as
-  ordinary percentage discounts". The app's own Settings screen says capped
-  discounts stop capping and can be deleted. Worth checking which is true on
-  the dev store before a reviewer reads it.
+- Resolved: the early-access "discounted rate" promise was removed from the FAQ.
+- Resolved, 29 Sep 2026: **Shopify deletes an app's discounts on uninstall.** Its
+  uninstall dialog says so, and on the maxoff-test store a live capped discount
+  was gone from the Discounts page seconds after uninstalling. The website FAQ
+  and the app's Settings screen now say so, and the uninstall webhook clears
+  MaxOff's own records so a reinstall starts clean.

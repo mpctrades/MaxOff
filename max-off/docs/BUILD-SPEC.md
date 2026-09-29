@@ -645,9 +645,9 @@ note sits with the other prefills rather than in a section of its own.
 - **How MaxOff runs** (V1) — a plain-language transparency panel. Rows: Engine (Shopify Function ·
   Active pill) · Plan · Dates and times ("Asia/Phnom_Penh — start and end dates use your store's
   timezone") · Storefront code ("None. MaxOff adds nothing to your theme.") · Where caps are
-  stored ("On the discount itself, in your Shopify store.") · If you uninstall ("Capped discounts
-  stop capping and can be deleted from Shopify's own Discounts page. Nothing is left behind in your
-  theme."). This panel is a trust feature — do not cut it.
+  stored ("On the discount itself, in your Shopify store.") · If you uninstall ("Shopify deletes your
+  capped discounts. Nothing is left behind in your theme." — Shopify deletes an app's discounts on
+  uninstall; verified on a test store, 29 Sep 2026). This panel is a trust feature — do not cut it.
 
 ### 4.8 Plans & billing
 
@@ -851,7 +851,7 @@ Use these words exactly. If you think one is wrong, say so — do not quietly im
 | Combinations banner | When discounts are combined, the maximum still holds. MaxOff caps its own share only — it never touches the other discount. |
 | Chart subtitle | Difference between the uncapped discount and what MaxOff actually gave away. |
 | Settings, theme | None. MaxOff adds nothing to your theme. |
-| Settings, uninstall | Capped discounts stop capping and can be deleted from Shopify's own Discounts page. Nothing is left behind in your theme. |
+| Settings, uninstall | Shopify deletes your capped discounts. Nothing is left behind in your theme. |
 | Billing footer | Charged through Shopify with the rest of your bill. Cancel any time from your Shopify admin. |
 | PRO toast | Per-item maximums are a Pro feature |
 | Export toast | Export is a Pro feature |

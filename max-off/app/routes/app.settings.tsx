@@ -547,9 +547,8 @@ export default function SettingsPage() {
 
           <TransparencyRow label="If you uninstall">
             <s-text>
-              Capped discounts stop capping and can be deleted from
-              Shopify&apos;s own Discounts page. Nothing is left behind in your
-              theme.
+              Shopify deletes your capped discounts. Nothing is left behind in
+              your theme.
             </s-text>
           </TransparencyRow>
         </s-stack>
