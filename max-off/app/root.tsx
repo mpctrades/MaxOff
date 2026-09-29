@@ -45,9 +45,10 @@ export default function App() {
  * Router's unbranded "Unexpected Server Error" page.
  *
  * It renders outside `AppProvider`, so Polaris web components and App Bridge
- * are not available: plain HTML with the brand tokens only. "Try again"
- * reloads the same URL, which keeps Shopify's `shop`/`host` parameters and so
- * works inside the admin iframe.
+ * are not available: plain HTML with the brand tokens only. "Try again" reloads
+ * the same URL; on a 404 that would only reload the same missing page, so it
+ * becomes "Back to MaxOff" instead. Both keep the query string, which carries
+ * Shopify's `shop`/`host` parameters and so works inside the admin iframe.
  */
 export function ErrorBoundary() {
   const error = useRouteError();
@@ -99,7 +100,7 @@ export function ErrorBoundary() {
               : "MaxOff couldn't load this page just now. Discounts already live at checkout are not affected. Try again in a moment."}
           </p>
           <a
-            href={`${location.pathname}${location.search}`}
+            href={`${notFound ? "/app" : location.pathname}${location.search}`}
             style={{
               display: "inline-block",
               padding: "8px 14px",
@@ -111,7 +112,7 @@ export function ErrorBoundary() {
               textDecoration: "none",
             }}
           >
-            Try again
+            {notFound ? "Back to MaxOff" : "Try again"}
           </a>
         </main>
         <Scripts />
