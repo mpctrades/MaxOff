@@ -466,7 +466,7 @@ export function validateDiscountForm(
 
   const capMinor = parseDecimalToMinor(state.capAmount);
   if (capMinor === null || capMinor < 1) {
-    errors.capAmount = "Enter a maximum greater than zero.";
+    errors.capAmount = "Enter an amount greater than zero, like 150.00.";
   }
 
   // One minimum or none, never both: the merchant picked which kind, and the
@@ -508,7 +508,7 @@ export function validateDiscountForm(
   if (state.endDateOn) {
     endsAt = combineDateTime(state.endDate, state.endTime, timeZone);
     if (endsAt === null) {
-      errors.endDate = "Enter an end date, or turn the end date off.";
+      errors.endDate = "Enter an end date and a time as HH:MM.";
     } else if (startsAt !== null && endsAt.getTime() <= startsAt.getTime()) {
       errors.endDate = END_BEFORE_START_ERROR;
     } else if (

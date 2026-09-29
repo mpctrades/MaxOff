@@ -104,15 +104,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     };
   } catch (error) {
     rethrowIfResponse(error);
-    // A read failure is shown as a read failure. Never an invented zero.
+    // A read failure is shown as a read failure. Never an invented zero. The
+    // detail goes to the server log, not the merchant: raw Prisma or GraphQL
+    // text on a screen explains nothing to them.
+    // eslint-disable-next-line no-console
+    console.error("[maxoff] home load failed", error);
     return {
       home: null,
       planBar: null,
       grace: null,
-      error:
-        error instanceof Error
-          ? error.message
-          : "MaxOff could not read your data.",
+      error: "MaxOff could not read your data.",
     };
   }
 };
@@ -124,7 +125,7 @@ export default function HomePage() {
     return (
       <s-page heading="MaxOff">
         <s-banner heading="MaxOff could not load your data" tone="critical">
-          {error ?? "Something went wrong."} Reload the page to try again.
+          {error} Reload the page to try again.
         </s-banner>
       </s-page>
     );

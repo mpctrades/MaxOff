@@ -108,7 +108,16 @@ export function validateEdit(
     endsAt = combineDateTime(state.endDate, state.endTime, context.timeZone);
 
     if (endsAt === null) {
-      errors.endDate = "Enter a valid date.";
+      // `combineDateTime` refuses a bad date and a bad time alike. Point at the
+      // field that is actually wrong: a well-formed date with a time that is
+      // not HH:MM is the time's fault, and the date field has no way to say so.
+      const timeIsBad =
+        state.endTime !== "" && !/^([01]\d|2[0-3]):[0-5]\d$/.test(state.endTime);
+      if (timeIsBad) {
+        errors.endTime = "Enter a time as HH:MM, for example 23:59.";
+      } else {
+        errors.endDate = "Enter a valid date.";
+      }
     } else if (endsAt.getTime() <= context.startsAt.getTime()) {
       errors.endDate = END_BEFORE_START_ERROR;
     } else if (days !== null) {

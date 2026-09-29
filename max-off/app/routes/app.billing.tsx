@@ -28,6 +28,7 @@ import { devPreviewAllowed } from "../lib/dev-preview";
 import { formatAmount } from "../lib/format";
 import { BrandButton } from "../components/BrandButton";
 import { PlanStrip } from "../components/PlanStrip";
+import { SupportEmail } from "../components/SupportEmail";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
@@ -97,7 +98,7 @@ export default function BillingPage() {
           Shopify reports an active subscription called “
           {data.unmappedSubscriptionName}”, which does not match a MaxOff plan.
           Until that is sorted out you have Free plan limits, even though you
-          are being charged. Contact support and we will put it right — your
+          are being charged. <SupportEmail /> and we will put it right — your
           discounts keep running in the meantime.
         </s-banner>
       )}
@@ -109,7 +110,8 @@ export default function BillingPage() {
         <s-banner tone="warning" heading="Plan changes are temporarily unavailable">
           We could not reach Shopify&rsquo;s plan page for this store. Your
           current plan and your capped discounts are unaffected. Try again in a
-          few minutes, or contact support and we will change your plan for you.
+          few minutes, or <SupportEmail midSentence /> and we will change your
+          plan for you.
         </s-banner>
       )}
 
@@ -325,7 +327,7 @@ function PlanAction({
   if (hostedPlanUrl === null) {
     return (
       <s-text color="subdued">
-        Plan changes are temporarily unavailable. Contact support and we will
+        Plan changes are temporarily unavailable. <SupportEmail /> and we will
         move you to {PLAN_LABELS[plan]}.
       </s-text>
     );

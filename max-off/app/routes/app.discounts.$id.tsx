@@ -19,6 +19,7 @@ import { readDiscountDetail, setDiscountPaused } from "../models/discounts.serve
 import { ensureShopSettings } from "../models/settings.server";
 import { getPlanSummary } from "../models/plan.server";
 import { BrandButton } from "../components/BrandButton";
+import { SupportEmail } from "../components/SupportEmail";
 import {
   InternalButtonLink,
   InternalLink,
@@ -203,7 +204,9 @@ const SCOPE_LABELS: Record<string, string> = {
 /** What went wrong, and what the merchant can do about it. */
 const PROBLEM_COPY: Record<
   CapConfigProblem | "unreachable",
-  { heading: string; body: string }
+  // `support` is how to reach a person, rendered after the body as a mailto
+  // link — a sentence in a plain string cannot carry one.
+  { heading: string; body: string; support?: string }
 > = {
   missing: {
     heading: "This discount has no MaxOff settings",
@@ -211,11 +214,13 @@ const PROBLEM_COPY: Record<
   },
   unreadable: {
     heading: "This discount's settings could not be read",
-    body: "MaxOff stores the percentage and the maximum on the discount itself, and this copy is not in a shape MaxOff understands. Nothing on this screen would be trustworthy, so nothing is shown. Contact support with the discount name.",
+    body: "MaxOff stores the percentage and the maximum on the discount itself, and this copy is not in a shape MaxOff understands. Nothing on this screen would be trustworthy, so nothing is shown.",
+    support: "with the discount name.",
   },
   "unsupported-version": {
     heading: "This discount was set up by a newer version of MaxOff",
-    body: "Its settings are in a format this version cannot read. Reload the page — if you keep seeing this, contact support.",
+    body: "Its settings are in a format this version cannot read. Reload the page — if you keep seeing this,",
+    support: "",
   },
   unreachable: {
     heading: "We could not reach Shopify",
@@ -255,6 +260,15 @@ function UnreadableDiscount({ data }: { data: UnreadableData }) {
 
       <s-banner tone="critical" heading={copy.heading}>
         {copy.body}
+        {copy.support !== undefined && (
+          <>
+            {" "}
+            {/* Mid-sentence after "if you keep seeing this,", a new sentence
+                otherwise ("Email team@… with the discount name."). */}
+            <SupportEmail midSentence={copy.body.endsWith(",")} />
+            {copy.support === "" ? "." : ` ${copy.support}`}
+          </>
+        )}
       </s-banner>
 
       <s-section>

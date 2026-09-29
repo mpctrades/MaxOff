@@ -273,6 +273,7 @@ export default function EditCappedDiscountPage() {
                 name="endTime"
                 placeholder="23:59"
                 value={state.endTime}
+                error={errors.endTime}
                 onChange={(event) => set("endTime")(event.currentTarget.value)}
               ></s-text-field>
             </s-grid>

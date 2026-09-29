@@ -4,7 +4,7 @@ import type {
   HeadersFunction,
   LoaderFunctionArgs,
 } from "react-router";
-import { useFetcher, useLoaderData, useSubmit } from "react-router";
+import { useFetcher, useLoaderData, useNavigate, useSubmit } from "react-router";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 
@@ -190,6 +190,7 @@ export default function DiscountsListPage() {
   const { list, tab, query, method, capType, exportGate, planBar, error } =
     useLoaderData<typeof loader>();
   const shopify = useAppBridge();
+  const navigate = useNavigate();
   const submit = useSubmit();
   const debounce = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -300,10 +301,6 @@ export default function DiscountsListPage() {
     );
   }
 
-  const hasScheduledOrExpired = list.rows.some(
-    (row) => row.status === "scheduled" || row.status === "expired",
-  );
-
   return (
     <s-page heading="Capped discounts">
       {planBar && <PlanBar {...planBar} />}
@@ -342,7 +339,11 @@ export default function DiscountsListPage() {
           onClick={
             exportGate.usable
               ? exportCsv
-              : () => shopify.toast.show(EXPORT_NOT_ON_PLAN)
+              : () =>
+                  shopify.toast.show(EXPORT_NOT_ON_PLAN, {
+                    action: "View plans",
+                    onAction: () => navigate("/app/billing"),
+                  })
           }
         >
           {exporting ? "Exporting…" : "Export"}
@@ -445,7 +446,7 @@ export default function DiscountsListPage() {
             {/* "Code" no longer fits every row: an automatic discount is
                 listed by the name the merchant gave it. */}
             <s-table-header listSlot="primary">Discount</s-table-header>
-            <s-table-header>Discount</s-table-header>
+            <s-table-header>Percentage</s-table-header>
             <s-table-header format="currency">Maximum</s-table-header>
             <s-table-header format="currency">Cap starts above</s-table-header>
             <s-table-header format="numeric">Used</s-table-header>
@@ -471,12 +472,6 @@ export default function DiscountsListPage() {
           <EmptyState storeIsEmpty={list.storeTotal === 0} />
         )}
 
-        {hasScheduledOrExpired && (
-          <s-paragraph color="subdued">
-            Cancel and Duplicate are not built yet. Cancelling a scheduled
-            discount and duplicating an expired one both need the create form.
-          </s-paragraph>
-        )}
       </s-section>
 
       {list.pageCount > 1 && (

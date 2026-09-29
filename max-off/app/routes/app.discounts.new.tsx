@@ -339,6 +339,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     code: result.code,
     title: result.title,
     mirrored: result.mirrored,
+    // The toast says "live" only when it is: a discount that starts later is
+    // scheduled, and saying otherwise is a promise checkout will not keep.
+    startsAt: parsed.value.startsAt.toISOString(),
   };
 };
 
@@ -679,7 +682,13 @@ export default function CreateDiscountPage() {
       shopify.saveBar.hide(SAVE_BAR_ID);
       // An automatic discount has no code to name it by, so the toast uses
       // whatever the merchant actually called it.
-      shopify.toast.show(`${data.code || data.title} is live at checkout`);
+      const name = data.code || data.title;
+      const startsAt = new Date(data.startsAt);
+      shopify.toast.show(
+        startsAt.getTime() > Date.now()
+          ? `${name} is scheduled to start ${formatDate(startsAt, timeZone)}`
+          : `${name} is live at checkout`,
+      );
       navigate("/app/discounts");
       return;
     }
@@ -699,7 +708,7 @@ export default function CreateDiscountPage() {
           : {}),
       });
     }
-  }, [saveFetcher.data, shopify, navigate]);
+  }, [saveFetcher.data, shopify, navigate, timeZone]);
 
   // Polaris fields that only emit `change` need a native listener; React's
   // onChange never fires for a custom element. See app/lib/polaris-events.ts.
@@ -1440,7 +1449,7 @@ export default function CreateDiscountPage() {
           {/* Polaris has no time field in this version, so the time is a
               validated text field rather than an invented component. */}
           <s-text-field
-            label="Start time (UTC, 24-hour)"
+            label="Start time (24-hour, store time)"
             name="startTime"
             value={state.startTime}
             placeholder="09:00"
@@ -1484,7 +1493,7 @@ export default function CreateDiscountPage() {
               {...(endDateError ? { error: endDateError } : {})}
             ></s-date-field>
             <s-text-field
-              label="End time (UTC, 24-hour)"
+              label="End time (24-hour, store time)"
               name="endTime"
               value={state.endTime}
               placeholder="23:59"
