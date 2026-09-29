@@ -624,8 +624,8 @@ footer{ background:var(--black); color:#fff; padding:56px 0 32px; }
         <li>
           <span class="step-num">6</span>
           <div class="step-body">
-            <h3>Watch what you kept</h3>
-            <p>every capped order is logged with the amount the cap saved you, per code and per month.</p>
+            <h3>Watch what you kept <span class="pill-scheduled">Coming soon</span></h3>
+            <p>every capped order will be logged with the amount the cap saved you, per code and per month.</p>
           </div>
         </li>
       </ol>
@@ -638,17 +638,17 @@ footer{ background:var(--black); color:#fff; padding:56px 0 32px; }
         <div class="admin-table-wrap">
           <table class="admin-table">
             <thead>
-              <tr><th>Code</th><th>Rule</th><th>Cap starts above</th><th>Kept</th></tr>
+              <tr><th>Code</th><th>Rule</th><th>Cap starts above</th></tr>
             </thead>
             <tbody>
-              <tr><td class="code">SUMMER15</td><td>15% · max 150</td><td>1,000.00</td><td class="kept">612.40</td></tr>
-              <tr><td class="code">VIP20</td><td>20% · max 80</td><td>400.00</td><td class="kept">388.20</td></tr>
-              <tr><td class="code">WELCOME10</td><td>10% · max 25</td><td>250.00</td><td class="kept">139.40</td></tr>
-              <tr><td class="code">BF30<span class="pill-scheduled">Scheduled</span></td><td>30% · max 200</td><td>666.67</td><td class="kept">—</td></tr>
+              <tr><td class="code">SUMMER15</td><td>15% · max 150</td><td>1,000.00</td></tr>
+              <tr><td class="code">VIP20</td><td>20% · max 80</td><td>400.00</td></tr>
+              <tr><td class="code">WELCOME10</td><td>10% · max 25</td><td>250.00</td></tr>
+              <tr><td class="code">BF30<span class="pill-scheduled">Scheduled</span></td><td>30% · max 200</td><td>666.67</td></tr>
             </tbody>
           </table>
         </div>
-        <div class="admin-strip">This month MaxOff kept <strong>1,240.00 USD</strong> across 87 capped orders.</div>
+        <div class="admin-strip">Example discounts. Every one shows where its maximum starts working.</div>
       </div>
     </div>
   </div>
@@ -688,7 +688,6 @@ footer{ background:var(--black); color:#fff; padding:56px 0 32px; }
         <ul>
           <li>Maximum per order or per item on Pro</li>
           <li>start and end dates, usage limits, one per customer</li>
-          <li>campaign budget that stops the code once it has given away a total</li>
           <li>your own wording under the discount line at checkout</li>
         </ul>
       </div>
@@ -696,10 +695,9 @@ footer{ background:var(--black); color:#fff; padding:56px 0 32px; }
         <span class="feature-key">D</span>
         <h3>Proof</h3>
         <ul>
-          <li>Money kept per code and per month</li>
-          <li>every capped order listed with the amount saved</li>
-          <li>live preview while you type</li>
+          <li>Live preview while you type</li>
           <li>cart tester showing the buyer's checkout before you launch</li>
+          <li>money kept per code and per month, coming soon</li>
         </ul>
       </div>
     </div>
@@ -729,9 +727,8 @@ footer{ background:var(--black); color:#fff; padding:56px 0 32px; }
           <tr><td>Live preview before saving</td><td class="mx">✓</td><td><span class="no">—</span></td><td><span class="no">—</span></td><td><span class="no">—</span></td></tr>
           <tr><td>Cart tester</td><td class="mx">✓</td><td><span class="no">—</span></td><td><span class="no">—</span></td><td><span class="no">—</span></td></tr>
           <tr><td>Tells you where the cap starts</td><td class="mx">✓</td><td><span class="no">—</span></td><td><span class="no">—</span></td><td><span class="no">—</span></td></tr>
-          <tr><td>Money-kept reporting</td><td class="mx">✓</td><td><span class="no">—</span></td><td><span class="no">—</span></td><td><span class="tilde">~</span></td></tr>
           <tr><td>One screen, three fields</td><td class="mx">✓</td><td><span class="tilde">~</span></td><td><span class="no">—</span></td><td><span class="no">—</span></td></tr>
-          <tr><td>Under 5 a month</td><td class="mx">✓</td><td><span class="ok">✓</span></td><td><span class="ok">✓</span></td><td><span class="no">—</span></td></tr>
+          <tr><td>Starts under 5 a month</td><td class="mx">✓</td><td><span class="ok">✓</span></td><td><span class="ok">✓</span></td><td><span class="no">—</span></td></tr>
         </tbody>
       </table>
     </div>
@@ -742,36 +739,17 @@ footer{ background:var(--black); color:#fff; padding:56px 0 32px; }
 <section id="insights">
   <div class="wrap">
     <div class="eyebrow reveal reveal-d1"><span class="eyebrow-num">05</span><span class="eyebrow-label">Insights</span></div>
-    <h2 class="section-heading reveal reveal-d2">Know exactly what the ceiling was worth</h2>
-    <p class="lede reveal reveal-d3">A cap only pays for itself if you can see it working. MaxOff answers four questions, every month, without you exporting anything.</p>
-
-    <div class="stats-grid">
-      <div class="stat-tile tint reveal reveal-d1">
-        <div class="stat-num" data-target="1240.00">1,240.00</div>
-        <div class="stat-label">money kept this month</div>
-      </div>
-      <div class="stat-tile reveal reveal-d2">
-        <div class="stat-num" data-target="87">87</div>
-        <div class="stat-label">orders capped, 21% of discounted orders</div>
-      </div>
-      <div class="stat-tile reveal reveal-d3">
-        <div class="stat-num" data-target="14.25">14.25</div>
-        <div class="stat-label">average kept per capped order</div>
-      </div>
-      <div class="stat-tile reveal reveal-d4">
-        <div class="stat-num" data-target="148.50">148.50</div>
-        <div class="stat-label">biggest single save, order #1042 · VIP20</div>
-      </div>
-    </div>
+    <h2 class="section-heading reveal reveal-d2">Know exactly what the ceiling was worth <span class="pill-scheduled">Coming soon</span></h2>
+    <p class="lede reveal reveal-d3">A cap only pays for itself if you can see it working. Order reporting is coming soon: MaxOff will show what the cap kept, every month, without you exporting anything.</p>
 
     <div class="insight-cards">
       <div class="bordered-card reveal reveal-d1">
-        <h3>Where the cap starts</h3>
+        <h3>Where the cap starts <span class="pill-scheduled">Available now</span></h3>
         <p>For every code, MaxOff shows the cart value at which the ceiling begins to bite — 15% with a 150 maximum starts working above 1,000. It is the number nobody explains, and the one that decides whether your cap is set sensibly.</p>
       </div>
       <div class="bordered-card reveal reveal-d2">
-        <h3>Which orders it caught</h3>
-        <p>Every capped order is listed with the cart total, the discount the customer would have received, what they actually received, and the difference. If a code is being shared on a coupon site, you will see it here first.</p>
+        <h3>Which orders it caught <span class="pill-scheduled">Coming soon</span></h3>
+        <p>Every capped order will be listed with the cart total, the discount the customer would have received, what they actually received, and the difference. If a code is being shared on a coupon site, you will see it there first.</p>
       </div>
     </div>
   </div>
@@ -791,6 +769,7 @@ footer{ background:var(--black); color:#fff; padding:56px 0 32px; }
           <li>3 active capped discounts</li>
           <li>maximum on the whole order</li>
           <li>live preview and cart tester</li>
+          <li>start and end dates, up to 15 days per discount</li>
         </ul>
         <a class="btn btn-black btn-block" href="#contact">Get early access</a>
       </div>
@@ -801,8 +780,8 @@ footer{ background:var(--black); color:#fff; padding:56px 0 32px; }
         <div class="price-amount">$4.99 <span class="unit">/month</span></div>
         <ul class="price-list">
           <li>20 active capped discounts</li>
-          <li>start and end dates, usage limits</li>
-          <li>money-kept dashboard</li>
+          <li>discounts that run for as long as you like</li>
+          <li>a limit on the total number of uses</li>
           <li>custom checkout wording</li>
           <li>email support</li>
         </ul>
@@ -813,7 +792,7 @@ footer{ background:var(--black); color:#fff; padding:56px 0 32px; }
         <div class="price-name">Pro</div>
         <div class="price-amount">$7.99 <span class="unit">/month</span></div>
         <ul class="price-list">
-          <li>unlimited capped discounts</li>
+          <li>unlimited active capped discounts</li>
           <li>everything in Growth</li>
           <li>maximum per item and per collection</li>
           <li>a different maximum per market currency</li>
@@ -828,7 +807,7 @@ footer{ background:var(--black); color:#fff; padding:56px 0 32px; }
       <li><span class="tick">✓</span> Cancel any time</li>
       <li><span class="tick">✓</span> Change plan instantly</li>
       <li><span class="tick">✓</span> Billed through Shopify</li>
-      <li><span class="tick">✓</span> Free while we are in early access</li>
+      <li><span class="tick">✓</span> Free, Growth $4.99 or Pro $7.99 a month, all in USD</li>
     </ul>
   </div>
 </section>
@@ -865,7 +844,7 @@ footer{ background:var(--black); color:#fff; padding:56px 0 32px; }
       </details>
       <details class="faq-item">
         <summary>What data can MaxOff see?<span class="icon" aria-hidden="true"></span></summary>
-        <div class="faq-panel"><p>Discounts, and the orders those discounts were used on, so it can report what the cap saved you. No customer payment details, no financial account data.</p></div>
+        <div class="faq-panel"><p>Your discounts, and your products so the cart tester can use your real prices. MaxOff does not read your orders. No customer payment details, no financial account data.</p></div>
       </details>
       <details class="faq-item">
         <summary>What happens if I uninstall?<span class="icon" aria-hidden="true"></span></summary>
@@ -873,7 +852,7 @@ footer{ background:var(--black); color:#fff; padding:56px 0 32px; }
       </details>
       <details class="faq-item">
         <summary>Is MaxOff on the Shopify App Store yet?<span class="icon" aria-hidden="true"></span></summary>
-        <div class="faq-panel"><p>Not yet — we are in early access while we finish the build. Early access is free, and early-access stores keep a discounted rate when we launch.</p></div>
+        <div class="faq-panel"><p>Not yet — we are in early access while we finish the build. Early access is free.</p></div>
       </details>
     </div>
 
