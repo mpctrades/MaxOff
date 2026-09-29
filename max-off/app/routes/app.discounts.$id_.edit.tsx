@@ -46,11 +46,17 @@ import { formatMoney, formatPercent } from "../lib/format";
 export const loader = async ({ params, request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
 
-  const found = await readDiscountDetail({
-    shop: session.shop,
-    id: params.id ?? "",
-    admin,
-  });
+  // Side by side, as on the detail screen: the plan does not depend on the
+  // discount, and two Admin API calls in sequence cost ~660 ms from the VPS.
+  const [found, settings, plan] = await Promise.all([
+    readDiscountDetail({
+      shop: session.shop,
+      id: params.id ?? "",
+      admin,
+    }),
+    ensureShopSettings(session.shop),
+    getPlanSummary({ shop: session.shop, admin }),
+  ]);
 
   if (found === null) {
     throw new Response("Not found", { status: 404 });
@@ -66,8 +72,6 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
   }
 
   const { row, live } = found;
-  const settings = await ensureShopSettings(session.shop);
-  const plan = await getPlanSummary({ shop: session.shop, admin });
   const timeZone = toTimeZone(settings.timezone);
 
   const endsAt = live?.endsAt ?? row.endsAt?.toISOString() ?? null;

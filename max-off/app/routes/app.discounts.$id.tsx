@@ -67,11 +67,19 @@ const NO_DATA = "—";
 export const loader = async ({ params, request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
 
-  const found = await readDiscountDetail({
-    shop: session.shop,
-    id: params.id ?? "",
-    admin,
-  });
+  // Side by side, not one after another. The plan does not depend on the
+  // discount, and each Admin API call costs ~330 ms from the VPS, so reading
+  // them in sequence made this the slowest screen in the app. A discount that
+  // turns out not to exist wastes one plan read; nothing on screen changes.
+  const [found, settings, plan] = await Promise.all([
+    readDiscountDetail({
+      shop: session.shop,
+      id: params.id ?? "",
+      admin,
+    }),
+    ensureShopSettings(session.shop),
+    getPlanSummary({ shop: session.shop, admin }),
+  ]);
 
   if (found === null) {
     throw new Response("Not found", { status: 404 });
@@ -79,7 +87,6 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
 
   const { row, live } = found;
 
-  const settings = await ensureShopSettings(session.shop);
   const timeZone = toTimeZone(settings.timezone);
 
   // What the screen can say without the metafield: which discount this is, and
@@ -111,8 +118,6 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
 
   // Non-null: `parseCapConfig` refuses a config whose capAmount will not parse.
   const capMinor = capAmountToMinor(config.capAmount) as number;
-
-  const plan = await getPlanSummary({ shop: session.shop, admin });
 
   // Shopify's dates are the live ones. The mirror's are what we last wrote, and
   // after a pause they are the only record of the end date the merchant chose
