@@ -3,6 +3,7 @@ import { useLoaderData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 
 import { authenticate } from "../shopify.server";
+import { rethrowIfResponse } from "../lib/rethrow-if-response";
 import { displayStatusLabel } from "../lib/cap";
 import { getHomeData } from "../models/home.server";
 import type { HomeData, HomeWeek } from "../models/home.server";
@@ -102,6 +103,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       error: null,
     };
   } catch (error) {
+    rethrowIfResponse(error);
     // A read failure is shown as a read failure. Never an invented zero.
     return {
       home: null,

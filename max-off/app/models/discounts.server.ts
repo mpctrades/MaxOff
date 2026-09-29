@@ -9,6 +9,7 @@
 import type { Prisma } from "@prisma/client";
 
 import prisma from "../db.server";
+import { rethrowIfResponse } from "../lib/rethrow-if-response";
 import {
   capStartsAboveMinor,
   displayStatus,
@@ -378,6 +379,43 @@ export interface AdminGraphqlClient {
   ) => Promise<{ json: () => Promise<unknown> }>;
 }
 
+/**
+ * `admin.graphql` for the write paths, with a thrown error turned back into a
+ * GraphQL `errors` body.
+ *
+ * `@shopify/shopify-api` throws `GraphqlQueryError` on top-level GraphQL
+ * errors (throttling, a bad request, Shopify having a moment), and `fetch`
+ * throws on a network failure. The helpers below were written to read
+ * `body.errors`, so without this a throw skipped every one of those branches
+ * and surfaced as a 500 page instead of a toast. A thrown `Response` is left
+ * alone: that is App Bridge asking to re-authenticate, and React Router must
+ * see it.
+ */
+export async function safeGraphql(
+  admin: AdminGraphqlClient,
+  query: string,
+  options?: { variables?: Record<string, unknown> },
+): Promise<{ json: () => Promise<unknown> }> {
+  try {
+    const response = await admin.graphql(query, options);
+    const body = await response.json();
+    return { json: async () => body };
+  } catch (error) {
+    rethrowIfResponse(error);
+    // eslint-disable-next-line no-console
+    console.error("[maxoff] Admin API call failed", error);
+    const body = {
+      errors: [
+        {
+          message:
+            "Shopify did not respond as expected. Please try again in a moment.",
+        },
+      ],
+    };
+    return { json: async () => body };
+  }
+}
+
 export type SetPausedResult =
   | { ok: true; code: string | null; title: string | null; status: DisplayStatus }
   | { ok: false; message: string; upgradeUrl?: string };
@@ -433,7 +471,8 @@ export async function setDiscountPaused(input: {
 
   const automatic = discount.method === "automatic";
 
-  const response = await input.admin.graphql(
+  const response = await safeGraphql(
+    input.admin,
     automatic
       ? input.paused
         ? PAUSE_AUTOMATIC_MUTATION
@@ -484,7 +523,8 @@ export async function setDiscountPaused(input: {
   // or the discount they paused for a fortnight comes back as a permanent one.
   // The guard above has already established it is in the future.
   if (!input.paused && discount.endsAt !== null) {
-    const restore = await input.admin.graphql(
+    const restore = await safeGraphql(
+      input.admin,
       automatic ? RESTORE_AUTOMATIC_ENDS_AT_MUTATION : RESTORE_ENDS_AT_MUTATION,
       {
         variables: {
@@ -734,7 +774,8 @@ export async function isCodeTaken(
     };
 
     return Boolean(body.data?.codeDiscountNodeByCode);
-  } catch {
+  } catch (error) {
+    rethrowIfResponse(error);
     return null;
   }
 }
@@ -845,10 +886,10 @@ export async function createCappedDiscount(
   };
 
   const response = automatic
-    ? await input.admin.graphql(CREATE_AUTOMATIC_MUTATION, {
+    ? await safeGraphql(input.admin, CREATE_AUTOMATIC_MUTATION, {
         variables: { discount: common },
       })
-    : await input.admin.graphql(CREATE_MUTATION, {
+    : await safeGraphql(input.admin, CREATE_MUTATION, {
         variables: {
           discount: {
             ...common,
@@ -1133,7 +1174,8 @@ export async function cancelCappedDiscount(input: {
 
   const automatic = row.method === "automatic";
 
-  const response = await input.admin.graphql(
+  const response = await safeGraphql(
+    input.admin,
     automatic ? DELETE_AUTOMATIC_MUTATION : DELETE_CODE_MUTATION,
     { variables: { id: row.discountGid } },
   );
@@ -1213,7 +1255,8 @@ export async function readCapConfigFor(input: {
     };
 
     return { row, config: body.data?.discountNode?.metafield?.jsonValue ?? null };
-  } catch {
+  } catch (error) {
+    rethrowIfResponse(error);
     // A duplicate that loses the targeting is worse than one that says so, but
     // the columns we do hold are still worth prefilling. The caller decides.
     return { row, config: null };
@@ -1357,7 +1400,8 @@ export async function restampRounding(input: {
       const written = body.data?.metafieldsSet?.metafields?.length ?? 0;
       updated += written;
       failed += batch.length - written;
-    } catch {
+    } catch (error) {
+      rethrowIfResponse(error);
       failed += batch.length;
     }
   }
@@ -1384,7 +1428,8 @@ async function readCapConfigJson(
     return typeof value === "object" && value !== null && !Array.isArray(value)
       ? (value as Record<string, unknown>)
       : null;
-  } catch {
+  } catch (error) {
+    rethrowIfResponse(error);
     return null;
   }
 }
@@ -1501,7 +1546,8 @@ export async function readDiscountDetail(input: {
             },
       unreachable: false,
     };
-  } catch {
+  } catch (error) {
+    rethrowIfResponse(error);
     // The row exists, so the screen can still say which discount this is and
     // offer a way back. It must not print a cap, though — that is the one
     // number only Shopify holds.
@@ -1572,7 +1618,8 @@ export async function editCappedDiscount(input: {
 
   const automatic = row.method === "automatic";
 
-  const response = await input.admin.graphql(
+  const response = await safeGraphql(
+    input.admin,
     automatic ? EDIT_AUTOMATIC_MUTATION : EDIT_CODE_MUTATION,
     {
       variables: {
@@ -1662,7 +1709,7 @@ async function rewriteCheckoutNote(input: {
   checkoutNote: string;
   admin: AdminGraphqlClient;
 }): Promise<{ ok: true } | { ok: false; message: string }> {
-  const read = await input.admin.graphql(READ_CAP_CONFIG_QUERY, {
+  const read = await safeGraphql(input.admin, READ_CAP_CONFIG_QUERY, {
     variables: { id: input.discountGid },
   });
 
@@ -1681,7 +1728,7 @@ async function rewriteCheckoutNote(input: {
 
   const next = { ...(existing as Record<string, unknown>), checkoutNote: input.checkoutNote };
 
-  const write = await input.admin.graphql(REWRITE_CAP_CONFIG_MUTATION, {
+  const write = await safeGraphql(input.admin, REWRITE_CAP_CONFIG_MUTATION, {
     variables: {
       metafields: [
         {

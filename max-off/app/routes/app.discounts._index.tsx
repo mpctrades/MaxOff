@@ -9,6 +9,7 @@ import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 
 import { authenticate } from "../shopify.server";
+import { rethrowIfResponse } from "../lib/rethrow-if-response";
 import {
   cancelCappedDiscount,
   exportCappedDiscountsCsv,
@@ -110,6 +111,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       error: null,
     };
   } catch (error) {
+    rethrowIfResponse(error);
     return {
       list: null,
       tab,

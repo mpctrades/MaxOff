@@ -10,6 +10,7 @@
 import type { Prisma, ShopSettings } from "@prisma/client";
 
 import prisma from "../db.server";
+import { rethrowIfResponse } from "../lib/rethrow-if-response";
 import {
   DEFAULT_CHECKOUT_NOTE,
   isCapScope,
@@ -104,7 +105,8 @@ export async function refreshShopProfile(input: {
     const body = (await response.json()) as ShopProfileResponse;
     liveCurrencyCode = body.data?.shop?.currencyCode ?? null;
     liveTimeZone = body.data?.shop?.ianaTimezone ?? null;
-  } catch {
+  } catch (error) {
+    rethrowIfResponse(error);
     return { settings, liveCurrencyCode: null, liveTimeZone: null };
   }
 

@@ -6,10 +6,12 @@ import type {
 import { useEffect, useState } from "react";
 import {
   Form,
+  isRouteErrorResponse,
   redirect,
   useActionData,
   useLoaderData,
   useNavigation,
+  useRouteError,
 } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { useAppBridge } from "@shopify/app-bridge-react";
@@ -19,6 +21,7 @@ import { editCappedDiscount, readDiscountDetail } from "../models/discounts.serv
 import { ensureShopSettings } from "../models/settings.server";
 import { getPlanSummary } from "../models/plan.server";
 import { BrandButton } from "../components/BrandButton";
+import { InternalButtonLink } from "../components/InternalNavigation";
 import {
   capAmountToMinor,
   CHECKOUT_NOTE_MAX_LENGTH,
@@ -347,6 +350,44 @@ export default function EditCappedDiscountPage() {
       </Form>
     </s-page>
   );
+}
+
+/**
+ * The loader throws 404 for a discount MaxOff does not know and 409 for one
+ * whose settings cannot be read. Both get a page with a way back, the same as
+ * the detail screen, instead of a bare line of text with no navigation.
+ */
+export function ErrorBoundary() {
+  const error = useRouteError();
+
+  if (isRouteErrorResponse(error) && (error.status === 404 || error.status === 409)) {
+    const notFound = error.status === 404;
+
+    return (
+      <s-page heading={notFound ? "Discount not found" : "This discount can't be edited here"}>
+        <s-link slot="breadcrumb-actions" href="/app/discounts">
+          Capped discounts
+        </s-link>
+
+        <s-section>
+          <s-stack direction="block" gap="base">
+            <s-paragraph>
+              {notFound
+                ? "MaxOff has no capped discount with this address. It may have been deleted, or the link may be out of date."
+                : "MaxOff could not read this discount's settings from Shopify, so it won't show an edit form it can't describe. Nothing was changed."}
+            </s-paragraph>
+            <s-stack direction="inline" gap="base" alignItems="center">
+              <InternalButtonLink href="/app/discounts">
+                Back to capped discounts
+              </InternalButtonLink>
+            </s-stack>
+          </s-stack>
+        </s-section>
+      </s-page>
+    );
+  }
+
+  return boundary.error(error);
 }
 
 export const headers: HeadersFunction = (headersArgs) => {

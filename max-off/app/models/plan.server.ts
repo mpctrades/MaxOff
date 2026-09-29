@@ -32,6 +32,7 @@
 import type { ShopSettings } from "@prisma/client";
 
 import prisma from "../db.server";
+import { rethrowIfResponse } from "../lib/rethrow-if-response";
 import {
   isPlanKey,
   PLAN_ACTIVE_DISCOUNT_LIMIT,
@@ -156,7 +157,8 @@ export async function getCurrentPlan(input: {
   try {
     const response = await input.admin.graphql(CURRENT_PLAN_QUERY);
     body = (await response.json()) as CurrentPlanResponse;
-  } catch {
+  } catch (error) {
+    rethrowIfResponse(error);
     return {
       plan: toPlanKey(settings.plan),
       source: "cache",
