@@ -42,10 +42,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     await recordPlanHandle({ shop: session.shop, planHandle });
   }
 
-  const [current, settings] = await Promise.all([
-    getCurrentPlan({ shop: session.shop, admin }),
-    prisma.shopSettings.findUnique({ where: { shop: session.shop } }),
-  ]);
+  // The settings row used to come too, for the store's currency. Plan prices
+  // are in USD whatever the store sells in, so it is no longer needed here.
+  const current = await getCurrentPlan({ shop: session.shop, admin });
 
   /* `/app/billing?plan=free` on a deployment that allows previews — see
      `dev-preview.ts`. A dev store sits on one plan and can never show the
@@ -77,7 +76,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       shop: session.shop,
       appHandle: current.appHandle,
     }),
-    currencyCode: settings?.currencyCode ?? "USD",
     activeCount,
     activeLimit: activeDiscountLimit(plan),
     /** The column the page recommends: whatever is one step up, nothing on
@@ -119,7 +117,6 @@ export default function BillingPage() {
       <s-section>
         <PlanStrip
           plan={data.plan}
-          currencyCode={data.currencyCode}
           activeCount={data.activeCount}
           lastKnown={data.planSource === "cache"}
           nextChargeOn={data.currentPeriodEnd}
@@ -146,7 +143,6 @@ export default function BillingPage() {
               plan={plan}
               currentPlan={data.plan}
               recommended={data.recommended}
-              currencyCode={data.currencyCode}
               hostedPlanUrl={data.hostedPlanUrl}
             />
           ))}
@@ -176,13 +172,11 @@ function PlanCard({
   plan,
   currentPlan,
   recommended,
-  currencyCode,
   hostedPlanUrl,
 }: {
   plan: PlanKey;
   currentPlan: PlanKey;
   recommended: PlanKey | null;
-  currencyCode: string;
   hostedPlanUrl: string | null;
 }) {
   const { allowance, rollupFrom, features } = planCard(plan);
@@ -221,11 +215,13 @@ function PlanCard({
       </div>
 
       <div className="maxoff-plan-card__price">
+        {/* In USD whatever the store's currency: Shopify bills the plan in
+            the Partner Dashboard's currency, not the store's. */}
         <span className="maxoff-plan-card__amount maxoff-tabular">
-          {formatAmount(PLAN_PRICE_MINOR[plan])}
+          ${formatAmount(PLAN_PRICE_MINOR[plan])}
         </span>
         <span className="maxoff-plan-card__per">
-          {currencyCode}
+          USD
           {PLAN_PRICE_MINOR[plan] > 0 && " / month"}
         </span>
       </div>

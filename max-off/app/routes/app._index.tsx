@@ -7,6 +7,7 @@ import { rethrowIfResponse } from "../lib/rethrow-if-response";
 import { displayStatusLabel } from "../lib/cap";
 import { getHomeData } from "../models/home.server";
 import type { HomeData, HomeWeek } from "../models/home.server";
+import { withUsageCounts } from "../models/discounts.server";
 import { getPlanSummary } from "../models/plan.server";
 import { activeDiscountLimit, isPlanKey } from "../lib/plans";
 import { evaluatePlanGrace } from "../models/plan-grace.server";
@@ -65,7 +66,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // form use. `getPlanSummary` is the wrapper that keeps "we could not tell"
     // apart from "Free" — see the note on it in `plan.server.ts`.
     const [home, planSummary] = await Promise.all([
-      getHomeData(session.shop),
+      // Shopify's usage counts follow the database read (they need its ids)
+      // but still run alongside the plan read.
+      getHomeData(session.shop).then(async (data) => ({
+        ...data,
+        discounts: await withUsageCounts(admin, data.discounts),
+      })),
       getPlanSummary({ shop: session.shop, admin }),
     ]);
 
@@ -677,7 +683,7 @@ function DiscountsCard({ home }: { home: HomeData }) {
                       : formatMoney(discount.capStartsAboveMinor, currencyCode)}
                   </s-text>
                 </s-table-cell>
-                <s-table-cell>{discount.timesUsed}</s-table-cell>
+                <s-table-cell>{discount.timesUsed === null ? "—" : discount.timesUsed}</s-table-cell>
                 <s-table-cell>
                   {discount.keptMinor === 0 ? (
                     "—"

@@ -11,6 +11,8 @@
  * is coming. BUILD-SPEC §2 and §3.6.
  */
 
+import { formatAmount } from "./format";
+
 export type PlanKey = "free" | "growth" | "pro";
 
 export const PLAN_KEYS: readonly PlanKey[] = ["free", "growth", "pro"];
@@ -27,6 +29,18 @@ export const PLAN_PRICE_MINOR: Record<PlanKey, number> = {
   growth: 499,
   pro: 799,
 };
+
+/**
+ * A plan price, as the merchant is charged it: "$4.99 USD".
+ *
+ * Always USD. Shopify bills app plans in the currency set in the Partner
+ * Dashboard, not in the store's, so "4.99 EUR" on a euro store would name a
+ * price nobody charges. This is the opposite of the cap amounts, which
+ * relabel to the store's currency — those are the store's money; this is ours.
+ */
+export function formatPlanPrice(minor: number): string {
+  return `$${formatAmount(minor)} USD`;
+}
 
 /**
  * How many capped discounts may be active at once. Null means unlimited.
@@ -46,7 +60,7 @@ export const PLAN_ACTIVE_DISCOUNT_LIMIT: Record<PlanKey, number | null> = {
 /**
  * How long a single capped discount may run, in days. Null means no limit.
  *
- * Free is a trial in disguise: five discounts, each for a fortnight. A
+ * Free is a trial in disguise: three active discounts, each for up to 15 days. A
  * merchant can run a real campaign and see the money kept, but a permanent
  * always-on code is what the paid plans are for.
  *
@@ -269,6 +283,18 @@ export function toPlanKey(value: string | null | undefined): PlanKey {
 /** How many capped discounts this plan may have active. Null is unlimited. */
 export function activeDiscountLimit(plan: string): number | null {
   return PLAN_ACTIVE_DISCOUNT_LIMIT[toPlanKey(plan)];
+}
+
+/**
+ * What a merchant at their active-discount limit is told — by the create
+ * form's banner before they start, and by the save if they get there anyway.
+ * The plan is named by the number, not by a hard-coded "Free": the limits live
+ * above and a sentence that names a plan goes stale the moment they move.
+ */
+export function planLimitMessage(limit: number): string {
+  return `Your plan allows ${limit} active capped discount${
+    limit === 1 ? "" : "s"
+  }. Pause one, or choose a plan.`;
 }
 
 /** How many days one discount may run on this plan. Null is no limit. */

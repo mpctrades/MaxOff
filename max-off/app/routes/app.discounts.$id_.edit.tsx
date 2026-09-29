@@ -32,6 +32,7 @@ import { validateEdit } from "../lib/discount-edit";
 import type { EditFieldErrors, EditFormState } from "../lib/discount-edit";
 import { hasNow, maxCampaignDays, PLAN_LABELS } from "../lib/plans";
 import { toTimeZone } from "../lib/timezone";
+import { displayStatus } from "../lib/cap";
 import { formatMoney, formatPercent } from "../lib/format";
 
 /**
@@ -74,7 +75,14 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
   const { row, live } = found;
   const timeZone = toTimeZone(settings.timezone);
 
-  const endsAt = live?.endsAt ?? row.endsAt?.toISOString() ?? null;
+  // Shopify clears endsAt when a discount is paused, so while paused our mirror
+  // is the only record of the end date the merchant chose. The detail screen
+  // reads it the same way; without this, Edit showed a blank end date and
+  // saving removed it.
+  const paused = displayStatus(row, new Date()) === "paused";
+  const endsAt = paused
+    ? (row.endsAt?.toISOString() ?? null)
+    : (live?.endsAt ?? row.endsAt?.toISOString() ?? null);
   const parts = endsAt === null ? null : splitInZone(new Date(endsAt), timeZone);
 
   return {
@@ -177,6 +185,12 @@ export const action = async ({ params, request }: ActionFunctionArgs): Promise<E
     method: found.row.method === "automatic" ? "automatic" : "code",
     plan: plan.plan,
     timeZone: toTimeZone(settings.timezone),
+    // Shopify's usage limit where we have it, and the wording MaxOff wrote,
+    // so fields this plan locks are saved exactly as they are.
+    existing: {
+      usageLimit: found.live?.usageLimit ?? found.row.usageLimit ?? null,
+      checkoutNote: found.row.checkoutNote ?? "",
+    },
   });
 
   if (!result.ok) {

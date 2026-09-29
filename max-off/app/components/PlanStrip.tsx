@@ -25,17 +25,17 @@
 
 import {
   activeDiscountLimit,
+  formatPlanPrice,
   planPitch,
   PLAN_LABELS,
   PLAN_PRICE_MINOR,
 } from "../lib/plans";
 import type { PlanKey } from "../lib/plans";
-import { formatDate, formatMoney, formatTrialRemaining } from "../lib/format";
+import { formatDate, formatTrialRemaining } from "../lib/format";
 import { BrandButton } from "./BrandButton";
 
 export interface PlanStripProps {
   plan: PlanKey;
-  currencyCode: string;
   activeCount: number;
   /** Shopify could not be reached, so the plan is the last one we saw. */
   lastKnown?: boolean;
@@ -49,7 +49,6 @@ export interface PlanStripProps {
 
 export function PlanStrip({
   plan,
-  currencyCode,
   activeCount,
   lastKnown = false,
   nextChargeOn = null,
@@ -67,7 +66,6 @@ export function PlanStrip({
     >
       <Identity
         plan={plan}
-        currencyCode={currencyCode}
         lastKnown={lastKnown}
         nextChargeOn={nextChargeOn}
         trialEndsAt={trialEndsAt}
@@ -81,7 +79,6 @@ export function PlanStrip({
 
       <Upgrade
         plan={plan}
-        currencyCode={currencyCode}
         upgradeHref={upgradeHref}
       />
     </div>
@@ -91,13 +88,11 @@ export function PlanStrip({
 /** Zone A — which plan, what it costs, and when it is next charged for. */
 function Identity({
   plan,
-  currencyCode,
   lastKnown,
   nextChargeOn,
   trialEndsAt,
 }: {
   plan: PlanKey;
-  currencyCode: string;
   lastKnown: boolean;
   nextChargeOn: string | null;
   trialEndsAt: string | null;
@@ -124,7 +119,7 @@ function Identity({
       {/* Nothing is charged monthly at zero, so nothing says "per month".
           The period belongs to the price, not to the layout. */}
       <span className="maxoff-plan-strip__price maxoff-tabular">
-        <strong>{formatMoney(price, currencyCode)}</strong>
+        <strong>{formatPlanPrice(price)}</strong>
         {price > 0 && <span className="maxoff-plan-strip__per"> / month</span>}
       </span>
 
@@ -252,11 +247,9 @@ function Usage({
  */
 function Upgrade({
   plan,
-  currencyCode,
   upgradeHref,
 }: {
   plan: PlanKey;
-  currencyCode: string;
   upgradeHref: string | null;
 }) {
   const pitch = planPitch(plan);
@@ -280,7 +273,8 @@ function Upgrade({
     );
   }
 
-  const targetPrice = formatMoney(PLAN_PRICE_MINOR[pitch.target], currencyCode);
+  // USD whatever the store's currency — see `formatPlanPrice`.
+  const targetPrice = formatPlanPrice(PLAN_PRICE_MINOR[pitch.target]);
 
   return (
     <div className="maxoff-plan-strip__zone maxoff-plan-strip__cta">

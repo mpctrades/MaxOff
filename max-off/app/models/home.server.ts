@@ -31,7 +31,13 @@ export interface HomeDiscountRow {
   capMinor: number;
   /** "Cap starts above" — null when it cannot be derived (§8: never NaN). */
   capStartsAboveMinor: number | null;
-  timesUsed: number;
+  /** Shopify's id, so the route can ask Shopify how often it has been used. */
+  discountGid: string;
+  /**
+   * Shopify's count, filled in by the route in one batched read. Null here and
+   * wherever Shopify does not answer — an em dash on screen, never a 0.
+   */
+  timesUsed: number | null;
   keptMinor: number;
   status: DisplayStatus;
 }
@@ -272,7 +278,8 @@ export async function getHomeData(shop: string): Promise<HomeData> {
         discount.capMinor,
         discount.percentage,
       ),
-      timesUsed: discount.timesUsed,
+      discountGid: discount.discountGid,
+      timesUsed: null,
       keptMinor: discount.keptMinor,
       // Derived, not the stored column — the same function the list uses.
       status: displayStatus(discount, now),

@@ -149,8 +149,10 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
     minSubtotalMinor:
       config.minSubtotal === undefined ? null : capAmountToMinor(config.minSubtotal),
     minQuantity: config.minQuantity ?? null,
+    // In minor units, like every other amount on the screen, so they format
+    // the same way ("150.00 EUR", not "150 EUR").
     marketMaximums: Object.entries(config.capsByCurrency ?? {}).map(
-      ([code, amount]) => ({ code, amount }),
+      ([code, amount]) => ({ code, amount, minor: capAmountToMinor(amount) }),
     ),
     checkoutNote: config.checkoutNote,
     startsAt,
@@ -325,6 +327,13 @@ function ReadableDiscount({ data }: { data: ReadableData }) {
   const money = (minor: number) => formatMoney(minor, data.currencyCode);
   const paused = data.status === "paused";
   const busy = fetcher.state !== "idle";
+  // The same rule as the list's row action. Pause and Activate only mean
+  // something for a running or paused discount; on an expired one Pause just
+  // flips it to paused. A cancelled discount is gone from Shopify, so editing
+  // it can only fail, and the cart tester accepts active discounts alone.
+  const canPauseOrActivate = data.status === "active" || paused;
+  const canEdit = data.status !== "cancelled";
+  const canTest = data.status === "active";
 
   useEffect(() => {
     if (!fetcher.data || busy) {
@@ -376,24 +385,26 @@ function ReadableDiscount({ data }: { data: ReadableData }) {
         justifyContent="end"
         paddingBlockEnd="small-100"
       >
-        <BrandButton
-          variant="secondary"
-          disabled={busy}
-          onClick={() =>
-            fetcher.submit(
-              { intent: "set-paused", paused: String(!paused) },
-              { method: "post" },
-            )
-          }
-        >
-          {busy
-            ? paused
-              ? "Activating…"
-              : "Pausing…"
-            : paused
-              ? "Activate"
-              : "Pause"}
-        </BrandButton>
+        {canPauseOrActivate && (
+          <BrandButton
+            variant="secondary"
+            disabled={busy}
+            onClick={() =>
+              fetcher.submit(
+                { intent: "set-paused", paused: String(!paused) },
+                { method: "post" },
+              )
+            }
+          >
+            {busy
+              ? paused
+                ? "Activating…"
+                : "Pausing…"
+              : paused
+                ? "Activate"
+                : "Pause"}
+          </BrandButton>
+        )}
 
         <BrandButton
           variant="secondary"
@@ -402,14 +413,18 @@ function ReadableDiscount({ data }: { data: ReadableData }) {
           Duplicate
         </BrandButton>
 
-        <BrandButton
-          variant="secondary"
-          href={`/app/test?discount=${encodeURIComponent(data.id)}`}
-        >
-          Test a cart
-        </BrandButton>
+        {canTest && (
+          <BrandButton
+            variant="secondary"
+            href={`/app/test?discount=${encodeURIComponent(data.id)}`}
+          >
+            Test a cart
+          </BrandButton>
+        )}
 
-        <BrandButton href={`/app/discounts/${data.id}/edit`}>Edit</BrandButton>
+        {canEdit && (
+          <BrandButton href={`/app/discounts/${data.id}/edit`}>Edit</BrandButton>
+        )}
       </s-stack>
 
       {data.liveDisagrees && (
@@ -525,7 +540,11 @@ function ReadableDiscount({ data }: { data: ReadableData }) {
               <Row
                 label="Other market maximums"
                 value={data.marketMaximums
-                  .map((entry) => `${entry.amount} ${entry.code}`)
+                  .map((entry) =>
+                    entry.minor === null
+                      ? `${entry.amount} ${entry.code}`
+                      : formatMoney(entry.minor, entry.code),
+                  )
                   .join(", ")}
               />
             )}

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   ActionFunctionArgs,
   HeadersFunction,
@@ -17,6 +17,7 @@ import {
   isMethodFilter,
   listCappedDiscounts,
   setDiscountPaused,
+  withUsageCounts,
 } from "../models/discounts.server";
 import type {
   CapTypeFilter,
@@ -88,6 +89,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     /* In parallel, so the billing read and the list are not queued behind each
        other. The bar is on every page now, and a page that waits for two
        sequential round trips before it can name a plan is worse than no bar. */
+    /* The usage counts follow the list (they need its ids), but the pair still
+       runs alongside the plan read: the database answers in milliseconds, so
+       the page waits for roughly one Shopify round trip, not two. */
     const [list, planBar] = await Promise.all([
       listCappedDiscounts({
         shop: session.shop,
@@ -96,7 +100,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         method,
         capType,
         page: Number.isNaN(page) ? 1 : page,
-      }),
+      }).then(async (found) => ({
+        ...found,
+        rows: await withUsageCounts(admin, found.rows),
+      })),
       readPlanBar({ shop: session.shop, admin }),
     ]);
 
@@ -147,6 +154,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     const csv = await exportCappedDiscountsCsv({
       shop: session.shop,
+      admin,
       tab: isDiscountTab(tabParam) ? tabParam : "all",
       query: url.searchParams.get("q") ?? "",
       method: isMethodFilter(url.searchParams.get("method"))
@@ -191,6 +199,7 @@ export default function DiscountsListPage() {
     useLoaderData<typeof loader>();
   const shopify = useAppBridge();
   const navigate = useNavigate();
+  const [pendingCancel, setPendingCancel] = useState<CancelRequest | null>(null);
   const submit = useSubmit();
   const debounce = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -207,7 +216,12 @@ export default function DiscountsListPage() {
   const exportCsv = () =>
     exportFetcher.submit(
       { intent: "export" },
-      { method: "post", action: `?${new URLSearchParams({ tab, q: query })}` },
+      // Every filter on screen, so the file holds what the merchant is looking
+      // at. The action already reads method and capType; they were never sent.
+      {
+        method: "post",
+        action: `?${new URLSearchParams({ tab, q: query, method, capType })}`,
+      },
     );
 
   useEffect(() => {
@@ -459,7 +473,14 @@ export default function DiscountsListPage() {
 
           <s-table-body>
             {list.rows.map((row) => (
-              <DiscountRow key={row.id} row={row} />
+              <DiscountRow
+                key={row.id}
+                row={row}
+                onRequestCancel={(request) => {
+                  setPendingCancel(request);
+                  shopify.modal.show(CANCEL_MODAL_ID);
+                }}
+              />
             ))}
           </s-table-body>
         </s-table>
@@ -480,9 +501,43 @@ export default function DiscountsListPage() {
           {list.total === 1 ? "discount" : "discounts"}
         </s-paragraph>
       )}
+
+      {/* One modal for the page, outside the table: a row asks, this confirms.
+          The wording is the confirmation the browser dialog used to show. */}
+      <s-modal
+        id={CANCEL_MODAL_ID}
+        heading={`Cancel ${pendingCancel?.name ?? "this discount"}?`}
+      >
+        <s-paragraph>
+          It is deleted in Shopify and cannot be used again. MaxOff keeps the
+          record.
+        </s-paragraph>
+        <s-button
+          slot="primary-action"
+          variant="primary"
+          tone="critical"
+          onClick={() => {
+            pendingCancel?.confirm();
+            setPendingCancel(null);
+            shopify.modal.hide(CANCEL_MODAL_ID);
+          }}
+        >
+          Cancel discount
+        </s-button>
+        <s-button
+          slot="secondary-actions"
+          variant="secondary"
+          commandFor={CANCEL_MODAL_ID}
+          command="--hide"
+        >
+          Keep it
+        </s-button>
+      </s-modal>
     </s-page>
   );
 }
+
+const CANCEL_MODAL_ID = "maxoff-cancel-discount";
 
 /**
  * What names a discount in the list.
@@ -500,7 +555,19 @@ function rowLabel(row: DiscountListRow): string {
   return row.code ?? "No code";
 }
 
-function DiscountRow({ row }: { row: DiscountListRow }) {
+/** What the page's one confirmation modal needs from the row asking. */
+interface CancelRequest {
+  name: string;
+  confirm: () => void;
+}
+
+function DiscountRow({
+  row,
+  onRequestCancel,
+}: {
+  row: DiscountListRow;
+  onRequestCancel: (request: CancelRequest) => void;
+}) {
   const fetcher = useFetcher<typeof action>();
   const shopify = useAppBridge();
   const seen = useRef<unknown>(null);
@@ -565,18 +632,15 @@ function DiscountRow({ row }: { row: DiscountListRow }) {
     );
 
   // Cancelling deletes the discount in Shopify and cannot be undone, so it
-  // asks first. `window.confirm` is the one blocking dialog available without
-  // App Bridge's modal, and §4.3 reserves that for the create form's save bar.
-  const cancel = () => {
-    const named = row.code ?? row.title ?? "this discount";
-    if (
-      window.confirm(
-        `Cancel ${named}? It is deleted in Shopify and cannot be used again. MaxOff keeps the record.`,
-      )
-    ) {
-      fetcher.submit({ intent: "cancel", id: row.id }, { method: "post" });
-    }
-  };
+  // asks first — in the page's Polaris modal, not a browser dialog inside the
+  // admin iframe. The row hands over its own submit so its fetcher still
+  // carries the loading state and the toast.
+  const cancel = () =>
+    onRequestCancel({
+      name: row.code ?? row.title ?? "this discount",
+      confirm: () =>
+        fetcher.submit({ intent: "cancel", id: row.id }, { method: "post" }),
+    });
 
   const busy = fetcher.state !== "idle";
 
@@ -597,7 +661,7 @@ function DiscountRow({ row }: { row: DiscountListRow }) {
           ? "—"
           : formatMoney(row.capStartsAboveMinor, row.currencyCode)}
       </s-table-cell>
-      <s-table-cell>{row.timesUsed}</s-table-cell>
+      <s-table-cell>{row.timesUsed === null ? "—" : row.timesUsed}</s-table-cell>
       <s-table-cell>
         {row.keptMinor === 0 ? "—" : formatMoney(row.keptMinor, row.currencyCode)}
       </s-table-cell>

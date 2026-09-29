@@ -9,6 +9,7 @@ import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 
 import { authenticate } from "../shopify.server";
+import { rethrowIfResponse } from "../lib/rethrow-if-response";
 import { refreshShopProfile, upsertSettings } from "../models/settings.server";
 import { restampRounding } from "../models/discounts.server";
 import { getPlanForGate } from "../models/plan.server";
@@ -109,12 +110,35 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   const form = await request.formData();
 
+  // A throw here (the database, not Shopify: the plan read and the restamp
+  // already absorb their own failures) would reach the app error boundary and
+  // take the merchant's unsaved form with it. Answered as a failed save
+  // instead, which the page already shows as "Settings were not saved."
+  try {
+    return await saveSettings({ shop: session.shop, admin, form });
+  } catch (error) {
+    rethrowIfResponse(error);
+    // eslint-disable-next-line no-console
+    console.error("[maxoff] settings save failed", error);
+    return { ok: false as const, fieldErrors: {}, restamped: null };
+  }
+};
+
+async function saveSettings({
+  shop,
+  admin,
+  form,
+}: {
+  shop: string;
+  admin: Awaited<ReturnType<typeof authenticate.admin>>["admin"];
+  form: FormData;
+}) {
   // The plan is checked again here, live, and never taken from the form. What
   // the loader read decides what the page *offers*; this decides what is
   // allowed to be written.
-  const plan = await getPlanForGate({ shop: session.shop, admin });
+  const plan = await getPlanForGate({ shop, admin });
 
-  const result = await upsertSettings({ shop: session.shop, plan, form });
+  const result = await upsertSettings({ shop, plan, form });
 
   if (!result.ok) {
     return {
@@ -130,14 +154,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // page applies to an existing discount — the defaults only prefill a form.
   const restamped = result.changed.includes("rounding")
     ? await restampRounding({
-        shop: session.shop,
+        shop,
         admin,
         rounding: result.settings.rounding,
       })
     : null;
 
   return { ok: true as const, changed: result.changed, restamped };
-};
+}
 
 /** Every field this page edits, in one object, so "dirty" is one comparison. */
 interface SettingsForm {

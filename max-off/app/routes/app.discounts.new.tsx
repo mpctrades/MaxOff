@@ -23,6 +23,7 @@ import { readPlanBar } from "../models/plan-bar.server";
 import { PlanBar } from "../components/PlanBar";
 import { CheckoutPreviewModal } from "../components/CheckoutPreviewModal";
 import { CheckoutReceipt } from "../components/CheckoutReceipt";
+import { InternalLink } from "../components/InternalNavigation";
 import {
   capDiscountMinor,
   capStartsAboveMinor,
@@ -33,6 +34,7 @@ import {
   DEFAULT_CHECKOUT_NOTE,
   isAppliesTo,
   isCapScope,
+  parseCapConfig,
 } from "../lib/cap-config";
 import type { AppliesTo, CapScope } from "../lib/cap-config";
 import {
@@ -47,7 +49,7 @@ import {
   USAGE_LIMIT_NOT_ON_PLAN,
   validateDiscountForm,
 } from "../lib/discount-form";
-import { can, gateFor, maxCampaignDays } from "../lib/plans";
+import { can, gateFor, maxCampaignDays, planLimitMessage } from "../lib/plans";
 import { toRoundingMode } from "../lib/rounding";
 import { toTimeZone } from "../lib/timezone";
 import type { CapabilityGate } from "../lib/plans";
@@ -164,6 +166,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       ? null
       : await readCapConfigFor({ shop: session.shop, id: duplicateId, admin });
 
+  // A copy is only made from settings we could actually read. Without them
+  // `duplicateFormState` would fall back to "all products, whole order" — a
+  // discount limited to one collection would come back sitewide, silently.
+  // An id that is not ours, or a config Shopify would not give us, is refused
+  // and the merchant is told, rather than handed a form that looks like a copy.
+  const duplicateReadable =
+    duplicate !== null && parseCapConfig(duplicate.config).ok;
+  const duplicateRefused = duplicateId !== null && !duplicateReadable;
+
   return {
     planBar: planContext.bar,
     currencyCode: settings.currencyCode,
@@ -194,7 +205,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       timeZone: toTimeZone(settings.timezone),
     } satisfies DiscountDefaults,
     plan,
-    duplicateFrom: duplicate === null ? null : duplicateFormState(duplicate),
+    duplicateFrom:
+      duplicate !== null && duplicateReadable ? duplicateFormState(duplicate) : null,
+    duplicateRefused,
   };
 };
 
@@ -520,6 +533,7 @@ export default function CreateDiscountPage() {
     defaults,
     plan,
     duplicateFrom,
+    duplicateRefused,
     planBar,
   } = useLoaderData<typeof loader>();
 
@@ -536,6 +550,15 @@ export default function CreateDiscountPage() {
   const navigate = useNavigate();
 
   const saveFetcher = useFetcher<typeof action>();
+  const submittingRef = useRef(false);
+
+  // Released once the save has answered, success or failure, so a merchant who
+  // fixes a field error can save again.
+  useEffect(() => {
+    if (saveFetcher.state === "idle") {
+      submittingRef.current = false;
+    }
+  }, [saveFetcher.state]);
   const codeFetcher = useFetcher<typeof action>();
 
   const [state, setState] = useState<DiscountFormState>(() => ({
@@ -846,9 +869,13 @@ export default function CreateDiscountPage() {
   };
 
   const save = () => {
-    if (!validate()) {
+    // A double click lands both clicks before `saving` re-renders, and an
+    // automatic discount has no unique code for Shopify to refuse the second
+    // one with. The ref is set synchronously, so the second click stops here.
+    if (submittingRef.current || !validate()) {
       return;
     }
+    submittingRef.current = true;
 
     saveFetcher.submit(
       {
@@ -931,6 +958,23 @@ export default function CreateDiscountPage() {
         </button>
         <button onClick={discard}>Discard</button>
       </ui-save-bar>
+
+      {/* Said before the merchant fills anything in. The save refuses with the
+          same sentence, but finding out after the whole form is the version
+          of this that feels like a trap. */}
+      {planBar.activeLimit !== null &&
+        planBar.activeCount >= planBar.activeLimit && (
+          <s-banner tone="warning">
+            {planLimitMessage(planBar.activeLimit)}{" "}
+            <InternalLink href="/app/billing">View plans</InternalLink>
+          </s-banner>
+        )}
+
+      {duplicateRefused && (
+        <s-banner tone="warning">
+          That discount could not be copied, so this is a blank form.
+        </s-banner>
+      )}
 
       {notMirrored && (
         <s-banner

@@ -67,6 +67,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // The shop's Settings choice. The tester exists to show what checkout
     // does, so it has to round the way checkout rounds.
     rounding: toRoundingMode(settings.rounding),
+    // How many are active in all, so the page can say when it shows fewer.
+    activeTotal: active.total,
     discounts: active.rows.map((row) => ({
       id: row.id,
       code: row.code,
@@ -112,6 +114,7 @@ export default function TestACartPage() {
     checkoutNote,
     rounding,
     discounts,
+    activeTotal,
     requestedDiscountId,
     planBar,
   } = useLoaderData<typeof loader>();
@@ -276,6 +279,15 @@ export default function TestACartPage() {
                 </s-choice>
               ))}
             </s-choice-list>
+
+            {/* The tester reads one page of the active list. Past that, say so
+                rather than let the missing discounts look like they do not
+                exist. */}
+            {activeTotal > discounts.length && (
+              <s-text color="subdued">
+                Showing the first {discounts.length} active discounts.
+              </s-text>
+            )}
 
             {discount && (
               <s-paragraph color="subdued">

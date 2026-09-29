@@ -78,6 +78,15 @@ export interface EditFormContext {
   method: "code" | "automatic";
   plan: string;
   timeZone: string;
+  /**
+   * What the discount carries today. When given, a field the plan does not
+   * unlock is not read from the form at all and keeps this value: the field is
+   * locked on screen, and a locked field means "unchanged". Without it, a shop
+   * that downgraded could not save any edit to a discount that already had a
+   * usage limit or its own wording — or would have them wiped, depending on
+   * whether the browser sent the disabled field.
+   */
+  existing?: { usageLimit: number | null; checkoutNote: string };
 }
 
 /**
@@ -133,8 +142,14 @@ export function validateEdit(
 
   let usageLimit: number | null = null;
   const rawLimit = state.usageLimit.trim();
+  const usageLimitLocked =
+    context.existing !== undefined &&
+    context.method === "code" &&
+    !hasNow(context.plan, "usageLimits");
 
-  if (rawLimit !== "") {
+  if (usageLimitLocked) {
+    usageLimit = context.existing?.usageLimit ?? null;
+  } else if (rawLimit !== "") {
     // An automatic discount has no usage limit to set: `usageLimit` is not a
     // field on DiscountAutomaticAppInput. The form hides it; this refuses it,
     // so a hand-posted form cannot send one either.
@@ -160,9 +175,16 @@ export function validateEdit(
 
   /* ---------------------------------------------------------- checkout note */
 
-  const checkoutNote = normaliseCheckoutNote(state.checkoutNote);
+  const checkoutNoteLocked =
+    context.existing !== undefined &&
+    !hasNow(context.plan, "customCheckoutWording");
+  const checkoutNote = checkoutNoteLocked
+    ? (context.existing?.checkoutNote ?? "")
+    : normaliseCheckoutNote(state.checkoutNote);
 
-  if (state.checkoutNote.trim().length > CHECKOUT_NOTE_MAX_LENGTH) {
+  if (checkoutNoteLocked) {
+    // Kept as it is; nothing from the form to check.
+  } else if (state.checkoutNote.trim().length > CHECKOUT_NOTE_MAX_LENGTH) {
     errors.checkoutNote = CHECKOUT_NOTE_TOO_LONG;
   } else if (
     state.checkoutNote.trim() !== "" &&

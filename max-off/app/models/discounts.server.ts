@@ -25,7 +25,7 @@ import {
 } from "../lib/cap-config";
 import type { CapScope } from "../lib/cap-config";
 import { formatMoney } from "../lib/format";
-import { activeDiscountLimit } from "../lib/plans";
+import { activeDiscountLimit, planLimitMessage } from "../lib/plans";
 import { toRoundingMode } from "../lib/rounding";
 import { getPlanForGate } from "./plan.server";
 import { ensureShopSettings } from "./settings.server";
@@ -47,7 +47,13 @@ export interface DiscountListRow {
   capMinor: number;
   /** Null when it cannot be derived — rendered as an em dash, never NaN. */
   capStartsAboveMinor: number | null;
-  timesUsed: number;
+  /**
+   * Shopify's own count (`asyncUsageCount`), filled in by `withUsageCounts`.
+   * Null when we do not know it — rendered as an em dash, never as 0. Our
+   * `timesUsed` column only moves on the orders webhook, which needs
+   * read_orders, so it is not a number to show.
+   */
+  timesUsed: number | null;
   keptMinor: number;
   status: DisplayStatus;
   currencyCode: string;
@@ -232,7 +238,7 @@ export async function listCappedDiscounts(input: {
       percentage: row.percentage,
       capMinor: row.capMinor,
       capStartsAboveMinor: capStartsAboveMinor(row.capMinor, row.percentage),
-      timesUsed: row.timesUsed,
+      timesUsed: null,
       keptMinor: row.keptMinor,
       status: displayStatus(row, now),
       currencyCode: row.currencyCode,
@@ -414,6 +420,92 @@ export async function safeGraphql(
     };
     return { json: async () => body };
   }
+}
+
+// The concrete node types, not `DiscountNode`. The ids MaxOff stores are
+// DiscountCodeNode / DiscountAutomaticNode ids, and `nodes` returns objects of
+// exactly those types, so a `... on DiscountNode` fragment validates against
+// the schema and then matches nothing — which is how the first version of
+// this read showed an em dash on every row.
+const USAGE_COUNTS_QUERY = `#graphql
+  query MaxOffUsageCounts($ids: [ID!]!) {
+    nodes(ids: $ids) {
+      ... on DiscountCodeNode {
+        id
+        codeDiscount {
+          ... on DiscountCodeApp {
+            asyncUsageCount
+          }
+        }
+      }
+      ... on DiscountAutomaticNode {
+        id
+        automaticDiscount {
+          ... on DiscountAutomaticApp {
+            asyncUsageCount
+          }
+        }
+      }
+    }
+  }`;
+
+/**
+ * How many times Shopify says each discount has been used, in one call.
+ *
+ * One `nodes(ids:)` read for the whole list, never one per row. A discount
+ * Shopify does not return — deleted there, or the read failing outright — is
+ * simply absent from the map, and the screen shows an em dash for it. A count
+ * we do not have is never a zero.
+ */
+export async function readUsageCounts(
+  admin: AdminGraphqlClient,
+  discountGids: string[],
+): Promise<Map<string, number>> {
+  const counts = new Map<string, number>();
+  if (discountGids.length === 0) {
+    return counts;
+  }
+
+  try {
+    const response = await admin.graphql(USAGE_COUNTS_QUERY, {
+      variables: { ids: discountGids },
+    });
+    type UsageDiscount = { asyncUsageCount?: number | null } | null;
+    const body = (await response.json()) as {
+      data?: {
+        nodes?: ({
+          id?: string;
+          codeDiscount?: UsageDiscount;
+          automaticDiscount?: UsageDiscount;
+        } | null)[];
+      } | null;
+    };
+
+    for (const node of body.data?.nodes ?? []) {
+      const count = (node?.codeDiscount ?? node?.automaticDiscount)?.asyncUsageCount;
+      if (node?.id && typeof count === "number") {
+        counts.set(node.id, count);
+      }
+    }
+  } catch (error) {
+    rethrowIfResponse(error);
+    // eslint-disable-next-line no-console
+    console.error("[maxoff] usage counts could not be read", error);
+  }
+
+  return counts;
+}
+
+/** The rows, with Shopify's usage count where it answered and null where not. */
+export async function withUsageCounts<Row extends { discountGid: string }>(
+  admin: AdminGraphqlClient,
+  rows: Row[],
+): Promise<(Row & { timesUsed: number | null })[]> {
+  const counts = await readUsageCounts(
+    admin,
+    rows.map((row) => row.discountGid),
+  );
+  return rows.map((row) => ({ ...row, timesUsed: counts.get(row.discountGid) ?? null }));
 }
 
 export type SetPausedResult =
@@ -611,12 +703,8 @@ export async function planLimitRefusal(input: {
 
   return {
     ok: false,
-    // The plan is named by the number, not by a hard-coded "Free": the limits
-    // live in plans.ts and a sentence that names a plan goes stale the moment
-    // they move.
-    message: `Your plan allows ${limit} active capped discount${
-      limit === 1 ? "" : "s"
-    }. Pause one, or choose a plan.`,
+    // Shared with the banner the create form shows before anything is typed.
+    message: planLimitMessage(limit),
     upgradeUrl: "/app/billing",
   };
 }
@@ -987,11 +1075,13 @@ function fieldErrorsFrom(errors: UserError[]): Record<string, string> {
       case "code":
         mapped.code = error.message;
         break;
+      // The form names its date fields startDate and endDate. Keyed by
+      // Shopify's names these errors reached no field and showed only in the toast.
       case "startsAt":
-        mapped.startsAt = error.message;
+        mapped.startDate = error.message;
         break;
       case "endsAt":
-        mapped.endsAt = error.message;
+        mapped.endDate = error.message;
         break;
       case "usageLimit":
         mapped.usageLimit = error.message;
@@ -1021,6 +1111,7 @@ function fieldErrorsFrom(errors: UserError[]): Record<string, string> {
  */
 export async function exportCappedDiscountsCsv(input: {
   shop: string;
+  admin: AdminGraphqlClient;
   tab: DiscountTab;
   query: string;
   method?: MethodFilter;
@@ -1043,14 +1134,16 @@ export async function exportCappedDiscountsCsv(input: {
     ],
   ];
 
-  // One page at a time rather than one query, so a shop with a great many
-  // discounts does not build the whole result set in memory at once.
+  // Read page by page, then written once: the usage counts come from Shopify
+  // in a single `nodes` call for the whole export, which needs every id first.
+  const listed: DiscountListRow[] = [];
+  const dates = new Map<string, { startsAt: Date; endsAt: Date | null }>();
+
   for (let page = 1; ; page += 1) {
     const list = await listCappedDiscounts({ ...input, page });
 
     // The list rows carry everything but the dates, so those are fetched for
     // the whole page in one query rather than one per row.
-    const dates = new Map<string, { startsAt: Date; endsAt: Date | null }>();
     if (list.rows.length > 0) {
       const records = await prisma.cappedDiscount.findMany({
         where: { id: { in: list.rows.map((row) => row.id) } },
@@ -1061,28 +1154,33 @@ export async function exportCappedDiscountsCsv(input: {
       }
     }
 
-    for (const row of list.rows) {
-      const record = dates.get(row.id);
-
-      rows.push([
-        row.code ?? "",
-        row.title ?? "",
-        row.method === "automatic" ? "Automatic" : "Code",
-        String(row.percentage),
-        decimalString(row.capMinor),
-        row.capStartsAboveMinor === null ? "" : decimalString(row.capStartsAboveMinor),
-        row.currencyCode,
-        displayStatusLabel(row.status),
-        String(row.timesUsed),
-        decimalString(row.keptMinor),
-        isoDate(record?.startsAt ?? null),
-        isoDate(record?.endsAt ?? null),
-      ]);
-    }
+    listed.push(...list.rows);
 
     if (list.rows.length === 0 || page >= list.pageCount) {
       break;
     }
+  }
+
+  for (const row of await withUsageCounts(input.admin, listed)) {
+    const record = dates.get(row.id);
+
+    rows.push([
+      row.code ?? "",
+      row.title ?? "",
+      row.method === "automatic" ? "Automatic" : "Code",
+      String(row.percentage),
+      decimalString(row.capMinor),
+      row.capStartsAboveMinor === null ? "" : decimalString(row.capStartsAboveMinor),
+      row.currencyCode,
+      displayStatusLabel(row.status),
+      // Blank, never 0, for a number we do not have: Shopify's count where it
+      // answered, and "money kept" only once an order has actually been capped
+      // (the table shows an em dash for the same 0).
+      row.timesUsed === null ? "" : String(row.timesUsed),
+      row.keptMinor === 0 ? "" : decimalString(row.keptMinor),
+      isoDate(record?.startsAt ?? null),
+      isoDate(record?.endsAt ?? null),
+    ]);
   }
 
   return rows.map((row) => row.map(csvCell).join(",")).join("\r\n");
@@ -1618,42 +1716,56 @@ export async function editCappedDiscount(input: {
 
   const automatic = row.method === "automatic";
 
-  const response = await safeGraphql(
-    input.admin,
-    automatic ? EDIT_AUTOMATIC_MUTATION : EDIT_CODE_MUTATION,
-    {
-      variables: {
-        id: row.discountGid,
-        discount: {
-          endsAt: input.endsAt === null ? null : input.endsAt.toISOString(),
-          ...(automatic ? {} : { usageLimit: input.usageLimit }),
+  // A paused discount's end date stays in MaxOff only. Shopify has no paused
+  // state: pausing set its endsAt to the moment of the pause, so sending a
+  // future endsAt now would quietly make it live again while MaxOff still
+  // shows it paused. The mirror keeps the merchant's date, and Activate
+  // (`setDiscountPaused`) writes it back to Shopify — see the restore there.
+  const paused = row.status === "paused";
+  const shopifyChanges: Record<string, unknown> = {
+    ...(paused
+      ? {}
+      : { endsAt: input.endsAt === null ? null : input.endsAt.toISOString() }),
+    ...(automatic ? {} : { usageLimit: input.usageLimit }),
+  };
+
+  // A paused automatic discount has nothing left to tell Shopify, and an empty
+  // update is a round trip that can only fail.
+  if (Object.keys(shopifyChanges).length > 0) {
+    const response = await safeGraphql(
+      input.admin,
+      automatic ? EDIT_AUTOMATIC_MUTATION : EDIT_CODE_MUTATION,
+      {
+        variables: {
+          id: row.discountGid,
+          discount: shopifyChanges,
         },
       },
-    },
-  );
+    );
 
-  const body = (await response.json()) as MutationResponse;
+    const body = (await response.json()) as MutationResponse;
 
-  const transportError = body.errors?.[0]?.message;
-  if (transportError) {
-    return { ok: false, message: transportError };
-  }
+    const transportError = body.errors?.[0]?.message;
+    if (transportError) {
+      return { ok: false, message: transportError };
+    }
 
-  const payload = automatic
-    ? body.data?.discountAutomaticAppUpdate
-    : body.data?.discountCodeAppUpdate;
+    const payload = automatic
+      ? body.data?.discountAutomaticAppUpdate
+      : body.data?.discountCodeAppUpdate;
 
-  const userError = payload?.userErrors?.[0];
-  if (userError) {
-    // Shopify refused. Nothing local changed, so the screen reverts to truth.
-    return { ok: false, message: userError.message };
-  }
+    const userError = payload?.userErrors?.[0];
+    if (userError) {
+      // Shopify refused. Nothing local changed, so the screen reverts to truth.
+      return { ok: false, message: userError.message };
+    }
 
-  if (!payload) {
-    return {
-      ok: false,
-      message: "Shopify did not confirm the change. Nothing was changed.",
-    };
+    if (!payload) {
+      return {
+        ok: false,
+        message: "Shopify did not confirm the change. Nothing was changed.",
+      };
+    }
   }
 
   const name = row.code ?? row.title ?? "The discount";
