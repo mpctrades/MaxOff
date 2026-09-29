@@ -29,7 +29,8 @@ APP_DIR=/opt/maxoff
 ACTIVE_FILE=/etc/nginx/maxoff/dev-active-upstream.conf
 HEALTH_URL_HOST=127.0.0.1
 BLUE_PORT=3010
-GREEN_PORT=3011
+GREEN_PORT=3012
+# Not 3011: PrintFlex, another app on this VPS, listens there (29 Sep 2026).
 # How long the outgoing colour keeps serving after nginx has been pointed away
 # from it. See the note above `sleep` at the end of this script.
 DRAIN_SECONDS=${DRAIN_SECONDS:-5}
